@@ -807,22 +807,7 @@ export default function App() {
     setAuthChecked(true);
   }, []);
 
-  const handleLogout = () => {
-    clearAuthSession();
-    setIsAuthed(false);
-  };
-
-  // 로그인 체크 중에는 빈 화면
-  if (!authChecked) {
-    return <div className="min-h-screen bg-[#FAF7F2]"></div>;
-  }
-
-  // 로그인 안 됐으면 로그인 화면
-  if (!isAuthed) {
-    return <LoginScreen onSuccess={() => setIsAuthed(true)} />;
-  }
-
-
+  // 데이터 로드 (로그인 상관없이 먼저 실행)
   useEffect(() => {
     (async () => {
       const [c, i, o] = await Promise.all([
@@ -838,12 +823,27 @@ export default function App() {
   useEffect(() => { if (loaded) saveData(STORAGE_KEYS.items, items); }, [items, loaded]);
   useEffect(() => { if (loaded) saveData(STORAGE_KEYS.orders, orders); }, [orders, loaded]);
 
+  const itemsWithStock = useMemo(() => calcAvailStock(items, orders), [items, orders]);
+
+  const handleLogout = () => {
+    clearAuthSession();
+    setIsAuthed(false);
+  };
+
+  // 로그인 체크 중에는 빈 화면
+  if (!authChecked) {
+    return <div className="min-h-screen bg-[#FAF7F2]"></div>;
+  }
+
+  // 로그인 안 됐으면 로그인 화면
+  if (!isAuthed) {
+    return <LoginScreen onSuccess={() => setIsAuthed(true)} />;
+  }
+
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 2200);
   };
-
-  const itemsWithStock = useMemo(() => calcAvailStock(items, orders), [items, orders]);
 
   const nav = [
     { id: 'dashboard', label: '대시보드', icon: BarChart3 },
