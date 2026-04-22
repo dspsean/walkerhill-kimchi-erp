@@ -695,7 +695,7 @@ function shipStatusStyle(s) {
 // ============================================================
 // 🔐 보안 설정
 // ============================================================
-// ⚠️ 비밀번호 변경 방법: 아래 PASSWORD 값을 원하는 비밀번호로 수정
+// ⚠️ 관리자 비밀번호 변경 방법: 아래 PASSWORD 값을 원하는 비밀번호로 수정
 const PASSWORD = 'lock7lock^^';
 const SESSION_HOURS = 24; // 1일 자동로그인
 const MAX_ATTEMPTS = 5; // 최대 시도 횟수
@@ -703,6 +703,14 @@ const LOCKOUT_MINUTES = 10; // 차단 시간
 
 const AUTH_KEY = 'wh:auth:session';
 const ATTEMPT_KEY = 'wh:auth:attempts';
+const DRIVERS_KEY = 'wh:v5:drivers';
+
+// 🚚 기본 배송기사 계정 (초기 설정용)
+const INITIAL_DRIVERS = [
+  { id: 'D001', name: '기사1', password: 'driver01', zones: ['Zone1', 'Zone2'], phone: '' },
+  { id: 'D002', name: '기사2', password: 'driver02', zones: ['Zone3', 'Zone4'], phone: '' },
+  { id: 'D003', name: '기사3', password: 'driver03', zones: ['Zone5', 'Zone6'], phone: '' },
+];
 
 function getAuthSession() {
   try {
@@ -717,9 +725,9 @@ function getAuthSession() {
   } catch { return null; }
 }
 
-function saveAuthSession() {
+function saveAuthSession(sessionData = {}) {
   const expires = Date.now() + SESSION_HOURS * 60 * 60 * 1000;
-  localStorage.setItem(AUTH_KEY, JSON.stringify({ expires }));
+  localStorage.setItem(AUTH_KEY, JSON.stringify({ expires, ...sessionData }));
 }
 
 function clearAuthSession() {
@@ -738,7 +746,12 @@ function saveAttempts(data) {
   localStorage.setItem(ATTEMPT_KEY, JSON.stringify(data));
 }
 
-function LoginScreen({ onSuccess }) {
+// 배송기사 비밀번호 검증
+function verifyDriver(password, drivers) {
+  return drivers.find(d => d.password === password) || null;
+}
+
+function LoginScreen({ onSuccess, drivers = [] }) {
   const [input, setInput] = useState('');
   const [error, setError] = useState('');
   const [shake, setShake] = useState(false);
@@ -766,28 +779,40 @@ function LoginScreen({ onSuccess }) {
     e?.preventDefault();
     if (isLocked) return;
 
+    // 1. 관리자 비밀번호 확인
     if (input === PASSWORD) {
-      saveAuthSession();
+      saveAuthSession({ role: 'admin' });
       saveAttempts({ count: 0, lockedUntil: 0 });
-      onSuccess();
-    } else {
-      const newCount = attempts.count + 1;
-      if (newCount >= MAX_ATTEMPTS) {
-        const lockedUntil = Date.now() + LOCKOUT_MINUTES * 60 * 1000;
-        const newAttempts = { count: newCount, lockedUntil };
-        saveAttempts(newAttempts);
-        setAttempts(newAttempts);
-        setError(`${MAX_ATTEMPTS}번 틀려 ${LOCKOUT_MINUTES}분간 접속이 차단됩니다.`);
-      } else {
-        const newAttempts = { count: newCount, lockedUntil: 0 };
-        saveAttempts(newAttempts);
-        setAttempts(newAttempts);
-        setError(`비밀번호가 틀렸습니다. (${MAX_ATTEMPTS - newCount}회 남음)`);
-      }
-      setShake(true);
-      setInput('');
-      setTimeout(() => setShake(false), 500);
+      onSuccess({ role: 'admin' });
+      return;
     }
+
+    // 2. 배송기사 비밀번호 확인
+    const driver = verifyDriver(input, drivers);
+    if (driver) {
+      saveAuthSession({ role: 'driver', driverId: driver.id, driverName: driver.name });
+      saveAttempts({ count: 0, lockedUntil: 0 });
+      onSuccess({ role: 'driver', driver });
+      return;
+    }
+
+    // 3. 실패
+    const newCount = attempts.count + 1;
+    if (newCount >= MAX_ATTEMPTS) {
+      const lockedUntil = Date.now() + LOCKOUT_MINUTES * 60 * 1000;
+      const newAttempts = { count: newCount, lockedUntil };
+      saveAttempts(newAttempts);
+      setAttempts(newAttempts);
+      setError(`${MAX_ATTEMPTS}번 틀려 ${LOCKOUT_MINUTES}분간 접속이 차단됩니다.`);
+    } else {
+      const newAttempts = { count: newCount, lockedUntil: 0 };
+      saveAttempts(newAttempts);
+      setAttempts(newAttempts);
+      setError(`비밀번호가 틀렸습니다. (${MAX_ATTEMPTS - newCount}회 남음)`);
+    }
+    setShake(true);
+    setInput('');
+    setTimeout(() => setShake(false), 500);
   };
 
   const formatTimeLeft = (ms) => {
@@ -871,9 +896,24 @@ function LoginScreen({ onSuccess }) {
                 🔓 로그인
               </button>
 
-              <div className="mt-5 pt-4 border-t border-stone-100 text-[11px] text-stone-400 text-center leading-relaxed">
-                🔐 로그인 후 24시간 동안 자동로그인됩니다<br/>
-                비밀번호 5회 오류 시 10분간 차단됩니다
+              <div className="mt-5 pt-4 border-t border-stone-100 space-y-1.5">
+                <div className="flex items-center gap-2 p-2 bg-stone-50 rounded-lg">
+                  <span className="text-base">👔</span>
+                  <div className="flex-1">
+                    <div className="text-[11px] font-bold text-stone-700">관리자</div>
+                    <div className="text-[10px] text-stone-500">전체 시스템 접근 가능</div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 p-2 bg-sky-50 rounded-lg">
+                  <span className="text-base">🚚</span>
+                  <div className="flex-1">
+                    <div className="text-[11px] font-bold text-sky-800">배송기사</div>
+                    <div className="text-[10px] text-sky-600">담당 Zone 배송 확인 전용</div>
+                  </div>
+                </div>
+                <div className="text-[10px] text-stone-400 text-center pt-1">
+                  🔐 24시간 자동로그인 · 5회 오류 시 10분 차단
+                </div>
               </div>
             </form>
           )}
@@ -890,10 +930,13 @@ function LoginScreen({ onSuccess }) {
 export default function App() {
   const [isAuthed, setIsAuthed] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
+  const [userRole, setUserRole] = useState(null); // 'admin' | 'driver'
+  const [currentDriver, setCurrentDriver] = useState(null);
   const [view, setView] = useState('dashboard');
   const [customers, setCustomers] = useState(INITIAL_CUSTOMERS);
   const [items, setItems] = useState(INITIAL_ITEMS);
   const [orders, setOrders] = useState(INITIAL_ORDERS);
+  const [drivers, setDrivers] = useState(INITIAL_DRIVERS);
   const [loaded, setLoaded] = useState(false);
   const [toast, setToast] = useState(null);
   const [resetConfirm, setResetConfirm] = useState(false);
@@ -901,31 +944,51 @@ export default function App() {
   // 로그인 체크 (앱 시작 시)
   useEffect(() => {
     const session = getAuthSession();
-    setIsAuthed(!!session);
+    if (session) {
+      setIsAuthed(true);
+      setUserRole(session.role || 'admin');
+      if (session.role === 'driver' && session.driverId) {
+        setCurrentDriver({ id: session.driverId, name: session.driverName });
+      }
+    }
     setAuthChecked(true);
   }, []);
 
   // 데이터 로드 (로그인 상관없이 먼저 실행)
   useEffect(() => {
     (async () => {
-      const [c, i, o] = await Promise.all([
+      const [c, i, o, d] = await Promise.all([
         loadData(STORAGE_KEYS.customers, INITIAL_CUSTOMERS),
         loadData(STORAGE_KEYS.items, INITIAL_ITEMS),
         loadData(STORAGE_KEYS.orders, INITIAL_ORDERS),
+        loadData(DRIVERS_KEY, INITIAL_DRIVERS),
       ]);
-      setCustomers(c); setItems(i); setOrders(o); setLoaded(true);
+      setCustomers(c); setItems(i); setOrders(o); setDrivers(d); setLoaded(true);
     })();
   }, []);
 
   useEffect(() => { if (loaded) saveData(STORAGE_KEYS.customers, customers); }, [customers, loaded]);
   useEffect(() => { if (loaded) saveData(STORAGE_KEYS.items, items); }, [items, loaded]);
   useEffect(() => { if (loaded) saveData(STORAGE_KEYS.orders, orders); }, [orders, loaded]);
+  useEffect(() => { if (loaded) saveData(DRIVERS_KEY, drivers); }, [drivers, loaded]);
 
   const itemsWithStock = useMemo(() => calcAvailStock(items, orders), [items, orders]);
 
   const handleLogout = () => {
     clearAuthSession();
     setIsAuthed(false);
+    setUserRole(null);
+    setCurrentDriver(null);
+  };
+
+  const handleLoginSuccess = (result) => {
+    setIsAuthed(true);
+    setUserRole(result.role);
+    if (result.role === 'driver') {
+      setCurrentDriver(result.driver);
+    } else {
+      setCurrentDriver(null);
+    }
   };
 
   // 로그인 체크 중에는 빈 화면
@@ -935,7 +998,7 @@ export default function App() {
 
   // 로그인 안 됐으면 로그인 화면
   if (!isAuthed) {
-    return <LoginScreen onSuccess={() => setIsAuthed(true)} />;
+    return <LoginScreen onSuccess={handleLoginSuccess} drivers={drivers} />;
   }
 
   const showToast = (msg, type = 'success') => {
@@ -943,12 +1006,29 @@ export default function App() {
     setTimeout(() => setToast(null), 2200);
   };
 
+  // 🚚 배송기사 뷰 (모바일 최적화)
+  if (userRole === 'driver') {
+    return (
+      <DriverApp
+        driver={drivers.find(d => d.id === currentDriver?.id) || currentDriver}
+        customers={customers}
+        items={items}
+        orders={orders}
+        setOrders={setOrders}
+        onLogout={handleLogout}
+        showToast={showToast}
+        toast={toast}
+      />
+    );
+  }
+
   const nav = [
     { id: 'dashboard', label: '대시보드', icon: BarChart3 },
     { id: 'orders', label: '주문관리', icon: ShoppingCart },
     { id: 'customers', label: '고객관리', icon: Users },
     { id: 'items', label: '품목/재고', icon: Package },
     { id: 'shipping', label: '배송관리', icon: Truck },
+    { id: 'drivers', label: '기사관리', icon: Truck },
   ];
 
   const lowStockCount = itemsWithStock.filter(i => i.availStock <= 20).length;
@@ -1076,6 +1156,7 @@ export default function App() {
               {view === 'customers' && '고객 정보를 관리하세요 (최대 4,500명)'}
               {view === 'items' && '품목과 재고를 관리하세요'}
               {view === 'shipping' && '배송 상태를 업데이트하세요'}
+              {view === 'drivers' && '배송기사 계정을 관리하고 담당 Zone을 지정하세요'}
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -1098,6 +1179,7 @@ export default function App() {
           {view === 'customers' && <Customers customers={customers} setCustomers={setCustomers} items={itemsWithStock} orders={orders} showToast={showToast} />}
           {view === 'items' && <Items items={itemsWithStock} setItems={setItems} showToast={showToast} />}
           {view === 'shipping' && <Shipping customers={customers} orders={orders} setOrders={setOrders} showToast={showToast} />}
+          {view === 'drivers' && <DriversManagement drivers={drivers} setDrivers={setDrivers} orders={orders} showToast={showToast} />}
         </div>
       </main>
 
@@ -3337,6 +3419,848 @@ function ShippingModal({ order, customer, onSave, onClose }) {
           <button onClick={onClose} className="px-4 py-2 text-sm text-stone-600 hover:bg-stone-100 rounded-lg">취소</button>
           <button onClick={() => onSave({ ...order, ...form })}
             className="px-5 py-2 bg-red-800 text-white rounded-lg text-sm font-semibold hover:bg-red-900">
+            저장
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// 🚚 DriversManagement - 관리자용 배송기사 계정 관리
+// ============================================================
+function DriversManagement({ drivers, setDrivers, orders, showToast }) {
+  const [editTarget, setEditTarget] = useState(null);
+  const [showForm, setShowForm] = useState(false);
+
+  // 기사별 담당 주문 개수 집계
+  const driverStats = useMemo(() => {
+    const stats = {};
+    drivers.forEach(d => {
+      const zoneOrders = orders.filter(o => d.zones.includes(o.shippingGroup));
+      const pending = zoneOrders.filter(o => o.shipStatus !== '배송완료' && o.shipStatus !== '취소').length;
+      const completed = zoneOrders.filter(o => o.shipStatus === '배송완료').length;
+      stats[d.id] = { total: zoneOrders.length, pending, completed };
+    });
+    return stats;
+  }, [drivers, orders]);
+
+  const nextDriverId = () => {
+    const nums = drivers.map(d => parseInt(d.id.replace('D',''), 10)).filter(n => !isNaN(n));
+    const max = nums.length > 0 ? Math.max(...nums) : 0;
+    return 'D' + String(max + 1).padStart(3, '0');
+  };
+
+  const handleSave = (driver) => {
+    if (editTarget) {
+      setDrivers(drivers.map(d => d.id === editTarget.id ? { ...driver, id: editTarget.id } : d));
+      showToast('기사 정보가 수정되었습니다');
+    } else {
+      // 중복 비밀번호 체크
+      if (drivers.some(d => d.password === driver.password)) {
+        showToast('이미 사용중인 비밀번호입니다', 'error');
+        return;
+      }
+      setDrivers([...drivers, { ...driver, id: nextDriverId() }]);
+      showToast('기사가 추가되었습니다');
+    }
+    setShowForm(false);
+    setEditTarget(null);
+  };
+
+  const handleDelete = (id) => {
+    if (!window.confirm('정말 이 기사 계정을 삭제하시겠습니까?')) return;
+    setDrivers(drivers.filter(d => d.id !== id));
+    showToast('기사 계정이 삭제되었습니다');
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* 안내 */}
+      <div className="bg-sky-50 border-2 border-sky-200 rounded-xl p-4">
+        <div className="flex items-start gap-3">
+          <span className="text-2xl">🚚</span>
+          <div>
+            <div className="font-bold text-sky-900 text-sm">배송기사 계정 관리</div>
+            <div className="text-xs text-sky-700 mt-1">
+              기사에게 비밀번호를 전달하면, 로그인 화면에서 해당 비밀번호 입력 시 자동으로 기사 전용 모바일 화면으로 진입합니다.<br/>
+              기사는 <span className="font-bold">담당 Zone의 배송 목록만</span> 볼 수 있고, 배송 상태를 업데이트할 수 있습니다.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <div className="text-xs text-stone-500">
+          총 <span className="font-bold text-stone-800">{drivers.length}</span>명의 기사
+        </div>
+        <button
+          onClick={() => { setEditTarget(null); setShowForm(true); }}
+          className="flex items-center gap-2 px-4 py-2.5 bg-sky-700 text-white rounded-lg text-sm font-semibold hover:bg-sky-800 shadow-sm"
+        >
+          <Plus size={16} /> 기사 추가
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {drivers.map(d => {
+          const stat = driverStats[d.id] || { total: 0, pending: 0, completed: 0 };
+          return (
+            <div key={d.id} className="bg-white rounded-2xl border-2 border-stone-200 p-5 hover:border-sky-300 transition-all">
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-sky-500 to-sky-700 flex items-center justify-center text-white text-xl">🚚</div>
+                  <div>
+                    <div className="font-bold text-lg text-stone-800">{d.name}</div>
+                    <div className="text-xs text-stone-500 font-mono">{d.id}</div>
+                  </div>
+                </div>
+                <div className="flex gap-1">
+                  <button onClick={() => { setEditTarget(d); setShowForm(true); }}
+                    className="p-1.5 text-stone-500 hover:bg-stone-100 rounded" title="수정">
+                    <Edit2 size={14} />
+                  </button>
+                  <button onClick={() => handleDelete(d.id)}
+                    className="p-1.5 text-stone-500 hover:bg-red-50 hover:text-red-700 rounded" title="삭제">
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2 mb-3 text-center">
+                <div className="p-2 bg-stone-50 rounded-lg">
+                  <div className="text-[10px] text-stone-500 font-medium">총 배송</div>
+                  <div className="text-lg font-bold text-stone-800">{stat.total}</div>
+                </div>
+                <div className="p-2 bg-amber-50 rounded-lg">
+                  <div className="text-[10px] text-amber-700 font-medium">대기</div>
+                  <div className="text-lg font-bold text-amber-800">{stat.pending}</div>
+                </div>
+                <div className="p-2 bg-emerald-50 rounded-lg">
+                  <div className="text-[10px] text-emerald-700 font-medium">완료</div>
+                  <div className="text-lg font-bold text-emerald-800">{stat.completed}</div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div>
+                  <div className="text-[10px] text-stone-500 font-semibold mb-1">🗺️ 담당 Zone</div>
+                  <div className="flex flex-wrap gap-1">
+                    {d.zones.length > 0 ? d.zones.map(z => (
+                      <span key={z} className={`text-[11px] px-2 py-0.5 rounded font-bold ${ZONE_COLORS[z] || 'bg-stone-100 text-stone-600'}`}>
+                        {z.replace('Zone', 'Z')}
+                      </span>
+                    )) : <span className="text-[10px] text-stone-400">미지정</span>}
+                  </div>
+                </div>
+                <div className="flex items-center justify-between text-[11px] pt-2 border-t border-stone-100">
+                  <span className="text-stone-500">🔑 비밀번호</span>
+                  <span className="font-mono font-bold text-sky-700">{d.password}</span>
+                </div>
+                {d.phone && (
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-stone-500">📞 연락처</span>
+                    <span className="font-mono text-stone-700">{d.phone}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {showForm && (
+        <DriverFormModal
+          editTarget={editTarget}
+          drivers={drivers}
+          onSave={handleSave}
+          onClose={() => { setShowForm(false); setEditTarget(null); }}
+        />
+      )}
+    </div>
+  );
+}
+
+function DriverFormModal({ editTarget, drivers, onSave, onClose }) {
+  const [form, setForm] = useState(editTarget || {
+    name: '', password: '', phone: '', zones: []
+  });
+
+  const toggleZone = (z) => {
+    const zones = form.zones.includes(z)
+      ? form.zones.filter(x => x !== z)
+      : [...form.zones, z];
+    setForm({...form, zones});
+  };
+
+  const canSubmit = form.name && form.password && form.password.length >= 4;
+
+  return (
+    <div className="fixed inset-0 bg-stone-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto scrollbar-slim" onClick={e => e.stopPropagation()}>
+        <div className="px-6 py-5 border-b border-stone-200 flex items-center justify-between">
+          <h2 className="font-serif-ko text-xl font-bold text-stone-800">
+            {editTarget ? '🚚 기사 정보 수정' : '🚚 새 기사 추가'}
+          </h2>
+          <button onClick={onClose} className="p-1.5 hover:bg-stone-100 rounded-lg"><X size={18} /></button>
+        </div>
+        <div className="p-6 space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-stone-600 mb-1.5">기사명 *</label>
+            <input value={form.name} onChange={e => setForm({...form, name: e.target.value})}
+              placeholder="예: 김기사"
+              className="w-full px-3 py-2 border border-stone-200 rounded-lg text-sm focus:outline-none focus:border-sky-700 focus:ring-2 focus:ring-sky-100" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-stone-600 mb-1.5">
+              로그인 비밀번호 * <span className="text-stone-400 font-normal">(4자 이상)</span>
+            </label>
+            <input value={form.password} onChange={e => setForm({...form, password: e.target.value})}
+              placeholder="예: driver01"
+              className="w-full px-3 py-2 border border-stone-200 rounded-lg text-sm font-mono focus:outline-none focus:border-sky-700 focus:ring-2 focus:ring-sky-100" />
+            <div className="text-[10px] text-stone-400 mt-1">⚠️ 이 비밀번호로 기사가 로그인합니다. 관리자 비밀번호와 달라야 합니다.</div>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-stone-600 mb-1.5">연락처 (선택)</label>
+            <input value={form.phone} onChange={e => setForm({...form, phone: e.target.value})}
+              placeholder="예: 0400 123 456"
+              className="w-full px-3 py-2 border border-stone-200 rounded-lg text-sm focus:outline-none focus:border-sky-700 focus:ring-2 focus:ring-sky-100" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-stone-600 mb-1.5">
+              🗺️ 담당 Zone <span className="text-stone-400 font-normal">({form.zones.length}개 선택됨)</span>
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              {SHIPPING_ZONES.map(z => (
+                <button
+                  key={z}
+                  type="button"
+                  onClick={() => toggleZone(z)}
+                  className={`px-3 py-2.5 rounded-lg text-sm font-bold border-2 transition-all ${
+                    form.zones.includes(z)
+                      ? 'border-sky-600 bg-sky-600 text-white'
+                      : `border-stone-200 ${ZONE_COLORS[z]} hover:opacity-80`
+                  }`}
+                >
+                  {z.replace('Zone', 'Z')}
+                </button>
+              ))}
+            </div>
+            <div className="text-[10px] text-stone-400 mt-1">💡 여러 Zone 선택 가능 · 선택한 Zone의 배송만 이 기사에게 보입니다</div>
+          </div>
+        </div>
+        <div className="px-6 py-4 border-t border-stone-200 flex items-center justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-stone-600 hover:bg-stone-100 rounded-lg">취소</button>
+          <button
+            onClick={() => canSubmit && onSave(form)}
+            disabled={!canSubmit}
+            className="px-5 py-2 bg-sky-700 text-white rounded-lg text-sm font-semibold hover:bg-sky-800 disabled:bg-stone-300 disabled:cursor-not-allowed"
+          >
+            {editTarget ? '수정' : '추가'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// 📱 DriverApp - 배송기사 모바일 전용 앱 (Today View)
+// ============================================================
+function DriverApp({ driver, customers, items, orders, setOrders, onLogout, showToast, toast }) {
+  const [tab, setTab] = useState('today'); // today | all | profile
+  const [editTarget, setEditTarget] = useState(null);
+
+  // 고객 맵
+  const customerMap = useMemo(() => {
+    const map = {};
+    customers.forEach(c => { map[c.id] = c; });
+    return map;
+  }, [customers]);
+
+  // 내 담당 Zone 주문만 필터링
+  const myOrders = useMemo(() => {
+    if (!driver?.zones) return [];
+    return orders.filter(o => driver.zones.includes(o.shippingGroup));
+  }, [orders, driver]);
+
+  // 오늘 날짜 (YYYY-MM-DD)
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  // 오늘 배송할 주문 (출고일 = 오늘, 완료/취소 제외)
+  const todayOrders = useMemo(() => {
+    return myOrders
+      .filter(o => o.shipDate === todayStr && o.shipStatus !== '배송완료' && o.shipStatus !== '취소')
+      .sort((a, b) => {
+        // Zone 순 → 주문번호 순
+        const za = a.shippingGroup || '';
+        const zb = b.shippingGroup || '';
+        if (za !== zb) return za.localeCompare(zb);
+        return a.id.localeCompare(b.id);
+      });
+  }, [myOrders, todayStr]);
+
+  // 통계
+  const stats = useMemo(() => {
+    const pending = myOrders.filter(o => o.shipStatus !== '배송완료' && o.shipStatus !== '취소').length;
+    const completed = myOrders.filter(o => o.shipStatus === '배송완료').length;
+    const todayPending = todayOrders.length;
+    const todayDone = myOrders.filter(o => o.shipDate === todayStr && o.shipStatus === '배송완료').length;
+    return { pending, completed, todayPending, todayDone };
+  }, [myOrders, todayOrders, todayStr]);
+
+  const handleQuickUpdate = (order, newStatus) => {
+    setOrders(orders.map(o => o.id === order.id ? { ...o, shipStatus: newStatus } : o));
+    showToast(newStatus === '배송완료' ? '✓ 배송 완료로 변경됨' : `${newStatus}(으)로 변경됨`);
+  };
+
+  const handleSaveDetail = (updated) => {
+    setOrders(orders.map(o => o.id === updated.id ? updated : o));
+    showToast('배송 정보가 업데이트되었습니다');
+    setEditTarget(null);
+  };
+
+  return (
+    <div className="min-h-screen bg-stone-50" style={{ fontFamily: "'Pretendard', -apple-system, 'Malgun Gothic', sans-serif" }}>
+      <style>{`
+        @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+        .scrollbar-slim::-webkit-scrollbar { display: none; }
+        * { -webkit-tap-highlight-color: transparent; }
+      `}</style>
+
+      {/* 모바일 헤더 */}
+      <header className="sticky top-0 z-20 bg-gradient-to-br from-sky-600 to-sky-800 text-white shadow-lg">
+        <div className="px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center text-xl">🚚</div>
+            <div>
+              <div className="font-bold text-base leading-tight">{driver?.name || '기사'}님</div>
+              <div className="text-[10px] text-sky-100 flex items-center gap-1">
+                <span>담당:</span>
+                {driver?.zones?.map(z => (
+                  <span key={z} className="bg-white/20 px-1.5 py-0.5 rounded font-bold">
+                    {z.replace('Zone', 'Z')}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+          <button onClick={onLogout} className="p-2 hover:bg-white/20 rounded-lg">
+            <LogOut size={18} />
+          </button>
+        </div>
+
+        {/* 오늘 날짜 + 빠른 통계 */}
+        <div className="px-4 pb-3 grid grid-cols-4 gap-2">
+          <div className="bg-white/15 backdrop-blur rounded-xl p-2 text-center">
+            <div className="text-[9px] text-sky-100 font-medium">오늘 예정</div>
+            <div className="text-xl font-bold tabular-nums">{stats.todayPending}</div>
+          </div>
+          <div className="bg-white/15 backdrop-blur rounded-xl p-2 text-center">
+            <div className="text-[9px] text-sky-100 font-medium">오늘 완료</div>
+            <div className="text-xl font-bold tabular-nums">{stats.todayDone}</div>
+          </div>
+          <div className="bg-white/15 backdrop-blur rounded-xl p-2 text-center">
+            <div className="text-[9px] text-sky-100 font-medium">전체 대기</div>
+            <div className="text-xl font-bold tabular-nums">{stats.pending}</div>
+          </div>
+          <div className="bg-white/15 backdrop-blur rounded-xl p-2 text-center">
+            <div className="text-[9px] text-sky-100 font-medium">전체 완료</div>
+            <div className="text-xl font-bold tabular-nums">{stats.completed}</div>
+          </div>
+        </div>
+      </header>
+
+      {/* 메인 컨텐츠 */}
+      <main className="pb-20">
+        {tab === 'today' && (
+          <DriverTodayView
+            orders={todayOrders}
+            customerMap={customerMap}
+            items={items}
+            onQuickUpdate={handleQuickUpdate}
+            onEdit={setEditTarget}
+            todayStr={todayStr}
+          />
+        )}
+        {tab === 'all' && (
+          <DriverAllView
+            orders={myOrders}
+            customerMap={customerMap}
+            items={items}
+            onQuickUpdate={handleQuickUpdate}
+            onEdit={setEditTarget}
+            driver={driver}
+          />
+        )}
+        {tab === 'profile' && (
+          <DriverProfileView driver={driver} stats={stats} onLogout={onLogout} />
+        )}
+      </main>
+
+      {/* 하단 탭 바 */}
+      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-stone-200 z-20 shadow-2xl">
+        <div className="grid grid-cols-3">
+          {[
+            { id: 'today', icon: '📅', label: '오늘 배송', badge: stats.todayPending },
+            { id: 'all', icon: '📋', label: '전체 배송', badge: stats.pending },
+            { id: 'profile', icon: '👤', label: '내 정보', badge: 0 },
+          ].map(t => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`py-2.5 flex flex-col items-center gap-0.5 relative transition-all ${
+                tab === t.id ? 'text-sky-700' : 'text-stone-400'
+              }`}
+            >
+              <div className="relative">
+                <span className="text-xl">{t.icon}</span>
+                {t.badge > 0 && (
+                  <span className="absolute -top-1 -right-2 bg-red-500 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
+                    {t.badge > 99 ? '99+' : t.badge}
+                  </span>
+                )}
+              </div>
+              <span className={`text-[10px] font-semibold ${tab === t.id ? 'text-sky-700' : 'text-stone-500'}`}>
+                {t.label}
+              </span>
+              {tab === t.id && <div className="absolute bottom-0 left-1/4 right-1/4 h-0.5 bg-sky-700 rounded-t" />}
+            </button>
+          ))}
+        </div>
+      </nav>
+
+      {editTarget && (
+        <DriverOrderDetailModal
+          order={editTarget}
+          customer={customerMap[editTarget.customerId]}
+          item={items.find(i => i.name === editTarget.itemName)}
+          onSave={handleSaveDetail}
+          onClose={() => setEditTarget(null)}
+        />
+      )}
+
+      {toast && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 px-5 py-3 rounded-xl shadow-2xl text-sm font-medium bg-stone-900 text-white z-50">
+          {toast.msg}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// 📅 Today View - 오늘 배송할 주문만 카드 형태로
+function DriverTodayView({ orders, customerMap, items, onQuickUpdate, onEdit, todayStr }) {
+  const today = new Date(todayStr);
+  const dayName = ['일요일','월요일','화요일','수요일','목요일','금요일','토요일'][today.getDay()];
+  const dateStr = `${today.getMonth()+1}월 ${today.getDate()}일 (${dayName})`;
+
+  return (
+    <div className="px-4 py-4 space-y-3">
+      <div className="bg-white rounded-2xl border border-stone-200 p-4 flex items-center gap-3">
+        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center text-2xl">📅</div>
+        <div className="flex-1">
+          <div className="text-xs text-stone-500">오늘의 배송</div>
+          <div className="font-bold text-stone-800">{dateStr}</div>
+        </div>
+        <div className="text-right">
+          <div className="text-xs text-stone-500">남은 배송</div>
+          <div className="text-2xl font-bold text-sky-700 tabular-nums">{orders.length}</div>
+        </div>
+      </div>
+
+      {orders.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-stone-200 p-8 text-center">
+          <div className="text-5xl mb-3">🎉</div>
+          <div className="font-bold text-stone-800 mb-1">오늘 배송 완료!</div>
+          <div className="text-xs text-stone-500">오늘 배송해야 할 주문이 모두 끝났어요</div>
+        </div>
+      ) : (
+        orders.map(o => (
+          <DriverOrderCard
+            key={o.id}
+            order={o}
+            customer={customerMap[o.customerId]}
+            item={items.find(i => i.name === o.itemName)}
+            onQuickUpdate={onQuickUpdate}
+            onEdit={onEdit}
+          />
+        ))
+      )}
+    </div>
+  );
+}
+
+// 📋 전체 배송 - 날짜별/Zone별 그룹화
+function DriverAllView({ orders, customerMap, items, onQuickUpdate, onEdit, driver }) {
+  const [filter, setFilter] = useState('pending'); // pending | all | done
+
+  const filtered = useMemo(() => {
+    let result = [...orders];
+    if (filter === 'pending') {
+      result = result.filter(o => o.shipStatus !== '배송완료' && o.shipStatus !== '취소');
+    } else if (filter === 'done') {
+      result = result.filter(o => o.shipStatus === '배송완료');
+    }
+    // Zone → 출고일 → ID 순
+    result.sort((a, b) => {
+      const za = a.shippingGroup || '';
+      const zb = b.shippingGroup || '';
+      if (za !== zb) return za.localeCompare(zb);
+      const da = a.shipDate || '9999';
+      const db = b.shipDate || '9999';
+      if (da !== db) return da.localeCompare(db);
+      return a.id.localeCompare(b.id);
+    });
+    return result;
+  }, [orders, filter]);
+
+  return (
+    <div className="px-4 py-4 space-y-3">
+      {/* 필터 탭 */}
+      <div className="bg-white rounded-2xl p-1 border border-stone-200 flex gap-1">
+        {[
+          { id: 'pending', label: '대기', count: orders.filter(o => o.shipStatus !== '배송완료' && o.shipStatus !== '취소').length },
+          { id: 'done', label: '완료', count: orders.filter(o => o.shipStatus === '배송완료').length },
+          { id: 'all', label: '전체', count: orders.length },
+        ].map(f => (
+          <button
+            key={f.id}
+            onClick={() => setFilter(f.id)}
+            className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${
+              filter === f.id ? 'bg-sky-700 text-white' : 'text-stone-500'
+            }`}
+          >
+            {f.label} {f.count}
+          </button>
+        ))}
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-stone-200 p-8 text-center">
+          <div className="text-5xl mb-3">📭</div>
+          <div className="text-sm text-stone-500">해당하는 배송이 없어요</div>
+        </div>
+      ) : (
+        filtered.map(o => (
+          <DriverOrderCard
+            key={o.id}
+            order={o}
+            customer={customerMap[o.customerId]}
+            item={items.find(i => i.name === o.itemName)}
+            onQuickUpdate={onQuickUpdate}
+            onEdit={onEdit}
+          />
+        ))
+      )}
+    </div>
+  );
+}
+
+// 👤 프로필 & 로그아웃
+function DriverProfileView({ driver, stats, onLogout }) {
+  return (
+    <div className="px-4 py-4 space-y-3">
+      <div className="bg-white rounded-2xl border border-stone-200 p-6 text-center">
+        <div className="w-20 h-20 mx-auto rounded-2xl bg-gradient-to-br from-sky-500 to-sky-700 flex items-center justify-center text-4xl mb-3">🚚</div>
+        <div className="text-xl font-bold text-stone-800">{driver?.name}님</div>
+        <div className="text-xs text-stone-500 font-mono mt-0.5">{driver?.id}</div>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-stone-200 p-4">
+        <div className="text-xs font-bold text-stone-500 mb-2">🗺️ 담당 Zone</div>
+        <div className="flex flex-wrap gap-2">
+          {driver?.zones?.map(z => (
+            <span key={z} className={`text-sm px-3 py-1.5 rounded-lg font-bold ${ZONE_COLORS[z] || 'bg-stone-100 text-stone-600'}`}>
+              {z}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-stone-200 p-4">
+        <div className="text-xs font-bold text-stone-500 mb-3">📊 배송 현황</div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="p-3 bg-amber-50 rounded-xl text-center">
+            <div className="text-[10px] text-amber-700 font-semibold">대기 중</div>
+            <div className="text-2xl font-bold text-amber-800 tabular-nums">{stats.pending}</div>
+          </div>
+          <div className="p-3 bg-emerald-50 rounded-xl text-center">
+            <div className="text-[10px] text-emerald-700 font-semibold">배송 완료</div>
+            <div className="text-2xl font-bold text-emerald-800 tabular-nums">{stats.completed}</div>
+          </div>
+        </div>
+      </div>
+
+      {driver?.phone && (
+        <div className="bg-white rounded-2xl border border-stone-200 p-4 flex items-center justify-between">
+          <div>
+            <div className="text-xs text-stone-500">📞 내 연락처</div>
+            <div className="font-mono font-bold text-stone-800">{driver.phone}</div>
+          </div>
+        </div>
+      )}
+
+      <button
+        onClick={onLogout}
+        className="w-full py-3 bg-red-50 text-red-700 rounded-2xl font-bold text-sm border-2 border-red-200 hover:bg-red-100"
+      >
+        🚪 로그아웃
+      </button>
+
+      <div className="text-center text-[10px] text-stone-400 pt-2">
+        워커힐김치 OMS · 배송기사 앱<br/>
+        © 2026 Walkerhill Kimchi
+      </div>
+    </div>
+  );
+}
+
+// 📦 주문 카드 (터치 최적화)
+function DriverOrderCard({ order, customer, item, onQuickUpdate, onEdit }) {
+  const statusColors = {
+    '배송준비중': 'bg-stone-100 text-stone-700 border-stone-300',
+    '출고대기': 'bg-amber-100 text-amber-700 border-amber-300',
+    '배송중': 'bg-blue-100 text-blue-700 border-blue-300',
+    '배송완료': 'bg-emerald-100 text-emerald-700 border-emerald-300',
+    '반송': 'bg-red-100 text-red-700 border-red-300',
+    '취소': 'bg-stone-100 text-stone-500 border-stone-200',
+  };
+
+  const isDone = order.shipStatus === '배송완료';
+  const phone = customer?.phone?.replace(/\s/g, '');
+  const address = customer?.address || '';
+  const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+
+  return (
+    <div className={`bg-white rounded-2xl border-2 ${isDone ? 'border-emerald-200 opacity-70' : 'border-stone-200'} overflow-hidden`}>
+      {/* 상단: 주문번호 + Zone + 상태 */}
+      <div className="px-4 py-3 flex items-center justify-between border-b border-stone-100">
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-xs font-bold text-red-800">{order.id}</span>
+          {order.shippingGroup && (
+            <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${ZONE_COLORS[order.shippingGroup] || 'bg-stone-100'}`}>
+              {order.shippingGroup.replace('Zone', 'Z')} · {ZONE_DAY_LABEL[order.shippingGroup]}
+            </span>
+          )}
+          {order.isPickup && <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-sky-500 text-white">📍 픽업</span>}
+          {order.isService && <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-amber-500 text-white">🎁</span>}
+        </div>
+        <span className={`text-[10px] px-2 py-0.5 rounded border font-bold ${statusColors[order.shipStatus] || 'bg-stone-100'}`}>
+          {order.shipStatus}
+        </span>
+      </div>
+
+      {/* 고객 정보 */}
+      <div className="px-4 py-3 border-b border-stone-100">
+        <div className="flex items-start justify-between mb-1.5">
+          <div className="flex items-center gap-1.5">
+            <span className="text-base font-bold text-stone-800">{customer?.name || '-'}</span>
+            {customer?.agedCare && <span className="text-[9px] px-1 py-0.5 rounded bg-amber-200 text-amber-900 font-bold">🏥 Aged</span>}
+          </div>
+          <div className="text-[10px] text-stone-500">
+            {order.shipDate && `📅 ${order.shipDate}`}
+          </div>
+        </div>
+        <div className="text-xs text-stone-600">📦 {order.itemName} × {order.qty}</div>
+      </div>
+
+      {/* 주소 + 액션 버튼 */}
+      <div className="px-4 py-3 bg-stone-50 border-b border-stone-100">
+        <div className="text-xs text-stone-700 mb-2 leading-relaxed">
+          📍 {address || '-'}
+        </div>
+        <div className="flex gap-2">
+          {address && (
+            <a
+              href={mapUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold active:scale-95 transition-all"
+            >
+              🗺️ 지도 보기
+            </a>
+          )}
+          {phone && (
+            <a
+              href={`tel:${phone}`}
+              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-bold active:scale-95 transition-all"
+            >
+              📞 전화
+            </a>
+          )}
+        </div>
+      </div>
+
+      {/* 배송 메모 */}
+      {order.deliveryMemo && (
+        <div className="px-4 py-2 bg-amber-50 border-b border-amber-100 text-xs text-amber-900">
+          💬 {order.deliveryMemo}
+        </div>
+      )}
+
+      {/* 배송방법 & 결제 정보 */}
+      <div className="px-4 py-2 flex items-center gap-2 text-[10px] flex-wrap border-b border-stone-100">
+        {order.isPickup ? (
+          <span className="px-2 py-0.5 rounded bg-sky-100 text-sky-700 font-bold">📍 픽업</span>
+        ) : order.deliveryMethod && (
+          <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-bold">{order.deliveryMethod}</span>
+        )}
+        {!order.isService && order.paymentType && (
+          <span className="px-2 py-0.5 rounded bg-stone-100 text-stone-700 font-bold">💳 {order.paymentType}</span>
+        )}
+        {!order.isService && order.paymentStatus && (
+          <span className={`px-2 py-0.5 rounded font-bold ${
+            order.paymentStatus === '결제완료' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
+          }`}>
+            {order.paymentStatus === '결제완료' ? '✓ 결제완료' : '✗ 미결제'}
+          </span>
+        )}
+      </div>
+
+      {/* 상태 변경 버튼 */}
+      <div className="px-3 py-2.5 grid grid-cols-3 gap-1.5">
+        {order.shipStatus !== '배송중' && !isDone && (
+          <button
+            onClick={() => onQuickUpdate(order, '배송중')}
+            className="py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-bold active:scale-95 transition-all border border-blue-200"
+          >
+            🚛 배송중
+          </button>
+        )}
+        {!isDone && (
+          <button
+            onClick={() => onQuickUpdate(order, '배송완료')}
+            className="py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold active:scale-95 transition-all col-span-2"
+          >
+            ✓ 배송완료
+          </button>
+        )}
+        {isDone && (
+          <button
+            onClick={() => onQuickUpdate(order, '배송중')}
+            className="py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-600 rounded-lg text-xs font-bold col-span-2"
+          >
+            ↩️ 완료 취소
+          </button>
+        )}
+        <button
+          onClick={() => onEdit(order)}
+          className={`py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-lg text-xs font-bold border border-stone-200 ${isDone ? '' : ''}`}
+        >
+          ⚙️ 상세
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// 상세 편집 모달 (모바일 최적화)
+function DriverOrderDetailModal({ order, customer, item, onSave, onClose }) {
+  const [form, setForm] = useState({
+    shipStatus: order.shipStatus,
+    deliveryMethod: order.deliveryMethod || '',
+    paymentStatus: order.paymentStatus || '미결제',
+    deliveryMemo: order.deliveryMemo || '',
+  });
+
+  return (
+    <div className="fixed inset-0 bg-stone-900/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center" onClick={onClose}>
+      <div className="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-3xl shadow-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="sticky top-0 bg-white px-5 py-4 border-b border-stone-200 flex items-center justify-between">
+          <div>
+            <h2 className="font-bold text-base text-stone-800">배송 상세 업데이트</h2>
+            <div className="text-[10px] text-stone-500">{order.id} · {customer?.name}고객님</div>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-stone-100 rounded-lg"><X size={20} /></button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-stone-600 mb-2">배송 상태</label>
+            <div className="grid grid-cols-2 gap-2">
+              {['배송준비중','출고대기','배송중','배송완료','반송','취소'].map(s => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setForm({...form, shipStatus: s})}
+                  className={`py-2.5 rounded-lg text-xs font-bold border-2 transition-all ${
+                    form.shipStatus === s
+                      ? s === '배송완료' ? 'bg-emerald-600 text-white border-emerald-600'
+                        : s === '배송중' ? 'bg-blue-600 text-white border-blue-600'
+                        : 'bg-stone-800 text-white border-stone-800'
+                      : 'bg-white text-stone-600 border-stone-200'
+                  }`}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {!order.isPickup && (
+            <div>
+              <label className="block text-xs font-bold text-stone-600 mb-2">배송 방법</label>
+              <div className="grid grid-cols-3 gap-2">
+                {['대면배송','비대면배송','미배송'].map(m => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setForm({...form, deliveryMethod: form.deliveryMethod === m ? '' : m})}
+                    className={`py-2.5 rounded-lg text-xs font-bold border-2 transition-all ${
+                      form.deliveryMethod === m
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : 'bg-white text-stone-600 border-stone-200'
+                    }`}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {!order.isService && (
+            <div>
+              <label className="block text-xs font-bold text-stone-600 mb-2">결제 상태</label>
+              <div className="grid grid-cols-2 gap-2">
+                {['결제완료','미결제'].map(s => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setForm({...form, paymentStatus: s})}
+                    className={`py-2.5 rounded-lg text-xs font-bold border-2 transition-all ${
+                      form.paymentStatus === s
+                        ? s === '결제완료' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-red-500 text-white border-red-500'
+                        : 'bg-white text-stone-600 border-stone-200'
+                    }`}
+                  >
+                    {s === '결제완료' ? '✓ 결제완료' : '✗ 미결제'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-xs font-bold text-stone-600 mb-2">배송 메모</label>
+            <textarea
+              value={form.deliveryMemo}
+              onChange={e => setForm({...form, deliveryMemo: e.target.value})}
+              placeholder="예: 문앞에 놓아주세요"
+              rows={3}
+              className="w-full px-3 py-2.5 border-2 border-stone-200 rounded-lg text-sm focus:outline-none focus:border-sky-600 resize-none"
+            />
+          </div>
+        </div>
+
+        <div className="sticky bottom-0 bg-white px-5 py-4 border-t border-stone-200 flex gap-2">
+          <button onClick={onClose} className="flex-1 py-3 text-sm font-bold text-stone-600 bg-stone-100 rounded-xl">취소</button>
+          <button
+            onClick={() => onSave({ ...order, ...form })}
+            className="flex-1 py-3 bg-sky-700 hover:bg-sky-800 text-white rounded-xl text-sm font-bold"
+          >
             저장
           </button>
         </div>
