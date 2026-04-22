@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Search, Plus, Edit2, Trash2, Copy, Check, Package, Users, ShoppingCart, Truck, BarChart3, Download, X, Send, AlertTriangle, TrendingUp, Bell, FileDown, RotateCcw, History } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2, Copy, Check, Package, Users, ShoppingCart, Truck, BarChart3, Download, X, Send, AlertTriangle, TrendingUp, Bell, FileDown, RotateCcw, History, LogOut } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 const INITIAL_CUSTOMERS = [
@@ -594,7 +594,204 @@ function shipStatusStyle(s) {
   }[s] || 'bg-slate-100 text-slate-700';
 }
 
+// ============================================================
+// 🔐 보안 설정
+// ============================================================
+// ⚠️ 비밀번호 변경 방법: 아래 PASSWORD 값을 원하는 비밀번호로 수정
+const PASSWORD = 'lock7lock^^';
+const SESSION_HOURS = 24; // 1일 자동로그인
+const MAX_ATTEMPTS = 5; // 최대 시도 횟수
+const LOCKOUT_MINUTES = 10; // 차단 시간
+
+const AUTH_KEY = 'wh:auth:session';
+const ATTEMPT_KEY = 'wh:auth:attempts';
+
+function getAuthSession() {
+  try {
+    const data = localStorage.getItem(AUTH_KEY);
+    if (!data) return null;
+    const session = JSON.parse(data);
+    if (Date.now() > session.expires) {
+      localStorage.removeItem(AUTH_KEY);
+      return null;
+    }
+    return session;
+  } catch { return null; }
+}
+
+function saveAuthSession() {
+  const expires = Date.now() + SESSION_HOURS * 60 * 60 * 1000;
+  localStorage.setItem(AUTH_KEY, JSON.stringify({ expires }));
+}
+
+function clearAuthSession() {
+  localStorage.removeItem(AUTH_KEY);
+}
+
+function getAttempts() {
+  try {
+    const data = localStorage.getItem(ATTEMPT_KEY);
+    if (!data) return { count: 0, lockedUntil: 0 };
+    return JSON.parse(data);
+  } catch { return { count: 0, lockedUntil: 0 }; }
+}
+
+function saveAttempts(data) {
+  localStorage.setItem(ATTEMPT_KEY, JSON.stringify(data));
+}
+
+function LoginScreen({ onSuccess }) {
+  const [input, setInput] = useState('');
+  const [error, setError] = useState('');
+  const [shake, setShake] = useState(false);
+  const [attempts, setAttempts] = useState(getAttempts());
+  const [timeLeft, setTimeLeft] = useState(0);
+
+  useEffect(() => {
+    if (attempts.lockedUntil > Date.now()) {
+      const interval = setInterval(() => {
+        const remaining = Math.max(0, attempts.lockedUntil - Date.now());
+        setTimeLeft(remaining);
+        if (remaining === 0) {
+          const reset = { count: 0, lockedUntil: 0 };
+          saveAttempts(reset);
+          setAttempts(reset);
+        }
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [attempts.lockedUntil]);
+
+  const isLocked = attempts.lockedUntil > Date.now();
+
+  const handleSubmit = (e) => {
+    e?.preventDefault();
+    if (isLocked) return;
+
+    if (input === PASSWORD) {
+      saveAuthSession();
+      saveAttempts({ count: 0, lockedUntil: 0 });
+      onSuccess();
+    } else {
+      const newCount = attempts.count + 1;
+      if (newCount >= MAX_ATTEMPTS) {
+        const lockedUntil = Date.now() + LOCKOUT_MINUTES * 60 * 1000;
+        const newAttempts = { count: newCount, lockedUntil };
+        saveAttempts(newAttempts);
+        setAttempts(newAttempts);
+        setError(`${MAX_ATTEMPTS}번 틀려 ${LOCKOUT_MINUTES}분간 접속이 차단됩니다.`);
+      } else {
+        const newAttempts = { count: newCount, lockedUntil: 0 };
+        saveAttempts(newAttempts);
+        setAttempts(newAttempts);
+        setError(`비밀번호가 틀렸습니다. (${MAX_ATTEMPTS - newCount}회 남음)`);
+      }
+      setShake(true);
+      setInput('');
+      setTimeout(() => setShake(false), 500);
+    }
+  };
+
+  const formatTimeLeft = (ms) => {
+    const minutes = Math.floor(ms / 60000);
+    const seconds = Math.floor((ms % 60000) / 1000);
+    return `${minutes}분 ${String(seconds).padStart(2, '0')}초`;
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-red-950 via-red-900 to-stone-900 flex items-center justify-center p-4"
+      style={{ fontFamily: "'Pretendard', -apple-system, 'Malgun Gothic', sans-serif" }}>
+      <style>{`
+        @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+        @import url('https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&display=swap');
+        .font-serif-ko { font-family: 'Gowun Batang', serif; }
+        @keyframes shake {
+          0%, 100% { transform: translateX(0); }
+          10%, 30%, 50%, 70%, 90% { transform: translateX(-8px); }
+          20%, 40%, 60%, 80% { transform: translateX(8px); }
+        }
+        .shake { animation: shake 0.5s; }
+      `}</style>
+
+      <div className={`w-full max-w-md ${shake ? 'shake' : ''}`}>
+        {/* 로고 + 타이틀 */}
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-white/10 backdrop-blur mb-4 text-5xl">
+            🥬
+          </div>
+          <h1 className="font-serif-ko text-3xl font-bold text-white mb-2">워커힐김치</h1>
+          <div className="text-xs tracking-[0.3em] text-red-200/80 font-semibold">ERP SYSTEM</div>
+        </div>
+
+        {/* 로그인 카드 */}
+        <div className="bg-white/95 backdrop-blur-lg rounded-2xl shadow-2xl p-8">
+          {isLocked ? (
+            <div className="text-center py-6">
+              <div className="text-5xl mb-4">🔒</div>
+              <h2 className="font-serif-ko text-xl font-bold text-red-800 mb-2">접속 차단됨</h2>
+              <p className="text-sm text-stone-600 mb-4">
+                비밀번호를 너무 많이 틀렸습니다.
+              </p>
+              <div className="p-4 bg-red-50 rounded-xl">
+                <div className="text-xs text-red-600 mb-1">차단 해제까지</div>
+                <div className="text-3xl font-bold text-red-800 tabular-nums">
+                  {formatTimeLeft(timeLeft)}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit}>
+              <h2 className="font-serif-ko text-xl font-bold text-stone-800 mb-1">로그인</h2>
+              <p className="text-xs text-stone-500 mb-5">비밀번호를 입력해주세요</p>
+
+              <div className="mb-4">
+                <label className="block text-xs font-semibold text-stone-600 mb-1.5">비밀번호</label>
+                <input
+                  type="password"
+                  value={input}
+                  onChange={e => { setInput(e.target.value); setError(''); }}
+                  autoFocus
+                  placeholder="••••••••••••"
+                  className={`w-full px-4 py-3 border-2 rounded-xl text-sm focus:outline-none transition-colors ${
+                    error ? 'border-red-400 bg-red-50' : 'border-stone-200 focus:border-red-700 focus:ring-2 focus:ring-red-100'
+                  }`}
+                />
+              </div>
+
+              {error && (
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 flex items-start gap-2">
+                  <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                  <span>{error}</span>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={!input}
+                className="w-full py-3 bg-gradient-to-br from-red-700 to-red-900 hover:from-red-800 hover:to-red-950 disabled:from-stone-300 disabled:to-stone-400 disabled:cursor-not-allowed text-white rounded-xl text-sm font-bold shadow-lg transition-all"
+              >
+                🔓 로그인
+              </button>
+
+              <div className="mt-5 pt-4 border-t border-stone-100 text-[11px] text-stone-400 text-center leading-relaxed">
+                🔐 로그인 후 24시간 동안 자동로그인됩니다<br/>
+                비밀번호 5회 오류 시 10분간 차단됩니다
+              </div>
+            </form>
+          )}
+        </div>
+
+        <div className="text-center mt-6 text-[11px] text-red-200/60">
+          © 2026 워커힐김치 ERP
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
+  const [isAuthed, setIsAuthed] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
   const [view, setView] = useState('dashboard');
   const [customers, setCustomers] = useState(INITIAL_CUSTOMERS);
   const [items, setItems] = useState(INITIAL_ITEMS);
@@ -602,6 +799,29 @@ export default function App() {
   const [loaded, setLoaded] = useState(false);
   const [toast, setToast] = useState(null);
   const [resetConfirm, setResetConfirm] = useState(false);
+
+  // 로그인 체크 (앱 시작 시)
+  useEffect(() => {
+    const session = getAuthSession();
+    setIsAuthed(!!session);
+    setAuthChecked(true);
+  }, []);
+
+  const handleLogout = () => {
+    clearAuthSession();
+    setIsAuthed(false);
+  };
+
+  // 로그인 체크 중에는 빈 화면
+  if (!authChecked) {
+    return <div className="min-h-screen bg-[#FAF7F2]"></div>;
+  }
+
+  // 로그인 안 됐으면 로그인 화면
+  if (!isAuthed) {
+    return <LoginScreen onSuccess={() => setIsAuthed(true)} />;
+  }
+
 
   useEffect(() => {
     (async () => {
@@ -726,6 +946,13 @@ export default function App() {
           >
             <RotateCcw size={13} />
             <span>{resetConfirm ? '한번 더 클릭 → 정말 초기화!' : '데이터 초기화'}</span>
+          </button>
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center gap-2 px-3 py-2 bg-stone-50 hover:bg-red-50 hover:text-red-700 text-stone-500 rounded-lg text-xs font-medium transition-all border border-stone-100"
+          >
+            <LogOut size={13} />
+            <span>로그아웃</span>
           </button>
           <div className="text-[10px] text-stone-500 leading-relaxed px-1">
             💾 데이터가 자동 저장됩니다. 주 1회 백업을 권장해요.
