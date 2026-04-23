@@ -1732,16 +1732,16 @@ function Dashboard({ customers, items, orders, setView }) {
           {/* Zone별 배송 현황 */}
           <div className="mt-5 pt-4 border-t border-stone-100">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-bold text-stone-700">🚚 차량별 배송 현황</h3>
+              <h3 className="text-sm font-bold text-stone-700">🚚 Zone별 배송 현황</h3>
               <button onClick={() => setView('shipping')} className="text-[10px] text-stone-400 hover:text-stone-700">관리 →</button>
             </div>
-            <div className="grid grid-cols-3 gap-1.5">
+            <div className="grid grid-cols-4 gap-1.5">
               {SHIPPING_ZONES.map(z => {
                 // 취소 제외한 활성 주문만 카운트
                 const cnt = orders.filter(o => o.shippingGroup === z && o.shipStatus !== '취소').length;
                 return (
                   <div key={z} className={`px-2 py-2 rounded-lg text-center ${ZONE_COLORS[z]}`}>
-                    <div className="text-[10px] font-bold opacity-80">{ZONE_VEHICLE[z]} · {z.replace('Zone', 'Z')}</div>
+                    <div className="text-[10px] font-bold opacity-80">{z.replace('Zone', 'Zone ')}</div>
                     <div className="text-sm font-bold tabular-nums">{cnt}</div>
                   </div>
                 );
@@ -3276,7 +3276,6 @@ function Shipping({ customers, orders, setOrders, showToast }) {
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <span className="text-sm font-bold text-stone-700">🗺️ 배송 Zone별 필터</span>
-            <span className="text-xs text-stone-400">(2그룹씩 3일간 배송 운영)</span>
           </div>
           {(zoneFilter || paymentFilter || statusFilter || pickupFilter) && (
             <button
@@ -3286,14 +3285,16 @@ function Shipping({ customers, orders, setOrders, showToast }) {
             </button>
           )}
         </div>
-        <div className="grid grid-cols-7 gap-2">
-          <button
-            onClick={() => setZoneFilter('')}
-            className={`px-3 py-2.5 rounded-lg text-xs font-bold border-2 transition-all ${
-              zoneFilter === '' ? 'border-stone-800 bg-stone-800 text-white' : 'border-stone-200 bg-white text-stone-600 hover:bg-stone-50'
-            }`}>
-            전체<div className="text-[10px] font-normal opacity-70 mt-0.5">{orders.length}건</div>
-          </button>
+        {/* 전체 버튼 (윗줄 풀 너비) */}
+        <button
+          onClick={() => setZoneFilter('')}
+          className={`w-full px-3 py-2.5 rounded-lg text-xs font-bold border-2 transition-all mb-2 ${
+            zoneFilter === '' ? 'border-indigo-700 bg-indigo-700 text-white' : 'border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
+          }`}>
+          전체 <span className="font-normal opacity-80 ml-1">{orders.length}건</span>
+        </button>
+        {/* Zone 1~8 버튼 (4x2 배열) */}
+        <div className="grid grid-cols-4 gap-2">
           {SHIPPING_ZONES.map(z => (
             <button key={z} onClick={() => setZoneFilter(zoneFilter === z ? '' : z)}
               className={`px-3 py-2.5 rounded-lg text-xs font-bold border-2 transition-all ${
@@ -3301,7 +3302,7 @@ function Shipping({ customers, orders, setOrders, showToast }) {
                   ? 'border-stone-800 bg-stone-800 text-white'
                   : `border-stone-200 ${ZONE_COLORS[z]} hover:opacity-80`
               }`}>
-              {z.replace('Zone', 'Z')}
+              {z.replace('Zone', 'Zone ')}
               <div className="text-[10px] font-normal opacity-70 mt-0.5">{zoneCounts[z]}건</div>
             </button>
           ))}
@@ -3371,7 +3372,7 @@ function Shipping({ customers, orders, setOrders, showToast }) {
                       {o.shippingGroup ? (
                         <div className="space-y-0.5">
                           <span className={`inline-block text-[10px] px-1.5 py-0.5 rounded font-bold ${ZONE_COLORS[o.shippingGroup] || 'bg-stone-100 text-stone-600'}`}>
-                            {ZONE_VEHICLE[o.shippingGroup] || o.shippingGroup.replace('Zone', 'Z')}
+                            {o.shippingGroup.replace('Zone', 'Zone ')}
                           </span>
                           {o.sequence && (
                             <div className="text-[9px] text-stone-500">
@@ -4507,7 +4508,7 @@ function DriverDeliveryGroupCard({ group, customer, items, onGroupUpdate, onEdit
           )}
           {group.shippingGroup && (
             <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${ZONE_COLORS[group.shippingGroup] || 'bg-stone-100'}`}>
-              {ZONE_VEHICLE[group.shippingGroup] || group.shippingGroup.replace('Zone', 'Z')}
+              {group.shippingGroup.replace('Zone', 'Zone ')}
             </span>
           )}
           {group.arrivalTime && (
@@ -5076,15 +5077,14 @@ function ExcelUploadPreviewModal({ preview, onApply, onCancel }) {
 
           {/* 차량별 배정 요약 */}
           <div>
-            <div className="text-sm font-bold text-stone-700 mb-2">🚚 차량별 배정 현황</div>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="text-sm font-bold text-stone-700 mb-2">🗺️ Zone별 배정 현황</div>
+            <div className="grid grid-cols-4 gap-2">
               {SHIPPING_ZONES.map(z => {
                 const count = Object.values(preview.orderUpdates).filter(u => u.shippingGroup === z).length;
                 return (
                   <div key={z} className={`p-2.5 rounded-lg ${ZONE_COLORS[z]} flex items-center justify-between`}>
                     <div>
-                      <div className="text-[10px] font-bold opacity-80">{ZONE_VEHICLE[z]}</div>
-                      <div className="text-[9px] opacity-70">{z.replace('Zone','Z')}</div>
+                      <div className="text-[11px] font-bold opacity-90">{z.replace('Zone', 'Zone ')}</div>
                     </div>
                     <div className="text-lg font-bold tabular-nums">{count}</div>
                   </div>
