@@ -3507,12 +3507,20 @@ function ShippingModal({ order, customer, onSave, onClose }) {
   return (
     <div className="fixed inset-0 bg-stone-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto scrollbar-slim" onClick={e => e.stopPropagation()}>
-        <div className="px-6 py-5 border-b border-stone-200 flex items-center justify-between">
-          <div>
-            <h2 className="font-serif-ko text-xl font-bold text-stone-800">배송 정보 업데이트</h2>
-            <div className="text-xs text-stone-500 mt-0.5">{order.id} · {customer?.name}고객님</div>
+        <div className="sticky top-0 bg-white z-10 px-6 py-4 border-b border-stone-200 flex items-center justify-between shadow-sm">
+          <div className="flex-1 min-w-0">
+            <h2 className="font-serif-ko text-lg font-bold text-stone-800 truncate">배송 정보 업데이트</h2>
+            <div className="text-xs text-stone-500 mt-0.5 truncate">{order.id} · {customer?.name}고객님</div>
           </div>
-          <button onClick={onClose} className="p-1.5 hover:bg-stone-100 rounded-lg"><X size={18} /></button>
+          <div className="flex items-center gap-2 ml-3">
+            <button
+              onClick={() => onSave({ ...order, ...form })}
+              className="px-4 py-2 bg-red-800 hover:bg-red-900 text-white rounded-lg text-sm font-bold shadow-sm active:scale-95 transition-all"
+            >
+              💾 저장
+            </button>
+            <button onClick={onClose} className="p-1.5 hover:bg-stone-100 rounded-lg"><X size={18} /></button>
+          </div>
         </div>
         <div className="p-6 space-y-4">
           <div className="p-3 bg-stone-50 rounded-lg text-xs text-stone-600">
@@ -3671,11 +3679,11 @@ function ShippingModal({ order, customer, onSave, onClose }) {
             />
           </div>
         </div>
-        <div className="px-6 py-4 border-t border-stone-200 flex items-center justify-end gap-2">
+        <div className="sticky bottom-0 bg-white px-6 py-4 border-t border-stone-200 flex items-center justify-end gap-2 shadow-[0_-2px_8px_rgba(0,0,0,0.04)]">
           <button onClick={onClose} className="px-4 py-2 text-sm text-stone-600 hover:bg-stone-100 rounded-lg">취소</button>
           <button onClick={() => onSave({ ...order, ...form })}
-            className="px-5 py-2 bg-red-800 text-white rounded-lg text-sm font-semibold hover:bg-red-900">
-            저장
+            className="px-5 py-2 bg-red-800 text-white rounded-lg text-sm font-semibold hover:bg-red-900 active:scale-95 transition-all">
+            💾 저장
           </button>
         </div>
       </div>
@@ -4019,15 +4027,26 @@ function DriverApp({ driver, customers, items, orders, setOrders, onLogout, show
       });
   }, [myOrders, todayStr, priceMap]);
 
-  // 통계 (그룹 기준으로 "배송지 수", 주문 건수는 orders로)
+  // 통계 (모두 "배송지 수" 기준 - 같은 고객 여러 주문은 1건으로)
   const stats = useMemo(() => {
-    const pending = myOrders.filter(o => o.shipStatus !== '배송완료' && o.shipStatus !== '취소').length;
-    const completed = myOrders.filter(o => o.shipStatus === '배송완료').length;
-    const todayPending = todayGroups.length; // 배송지 수
-    const todayDone = myOrders.filter(o => o.shipDate === todayStr && o.shipStatus === '배송완료').length;
+    // 전체 내 담당 주문을 그룹화
+    const allGroups = groupOrdersByCustomer(myOrders);
+
+    // 배송지(그룹) 기준으로 카운트
+    const pending = allGroups.filter(g => g.shipStatus !== '배송완료' && g.shipStatus !== '취소').length;
+    const completed = allGroups.filter(g => g.shipStatus === '배송완료').length;
+
+    // 오늘 배송지 수
+    const todayPending = todayGroups.length;
+    const todayAllGroups = allGroups.filter(g =>
+      g.orders.some(o => o.shipDate === todayStr)
+    );
+    const todayDone = todayAllGroups.filter(g => g.shipStatus === '배송완료').length;
+
     // 오늘 받을 총 금액 / 받은 금액
     const todayTotalAmount = todayGroups.reduce((s, g) => s + g.finalTotal, 0);
     const todayReceivedAmount = todayGroups.reduce((s, g) => s + g.totalPaid, 0);
+
     return { pending, completed, todayPending, todayDone, todayTotalAmount, todayReceivedAmount };
   }, [myOrders, todayGroups, todayStr]);
 
@@ -4035,7 +4054,10 @@ function DriverApp({ driver, customers, items, orders, setOrders, onLogout, show
   const handleGroupQuickUpdate = (group, newStatus) => {
     const groupOrderIds = new Set(group.orders.map(o => o.id));
     setOrders(orders.map(o => groupOrderIds.has(o.id) ? { ...o, shipStatus: newStatus } : o));
-    showToast(newStatus === '배송완료' ? `✓ ${group.orders.length}건 배송완료로 변경됨` : `${newStatus}(으)로 변경됨`);
+    const msg = newStatus === '배송완료'
+      ? (group.orders.length > 1 ? `✓ ${group.orders.length}개 품목 배송완료` : '✓ 배송완료')
+      : `${newStatus}(으)로 변경됨`;
+    showToast(msg);
   };
 
   const handleSaveDetail = (updated) => {
@@ -4111,23 +4133,23 @@ function DriverApp({ driver, customers, items, orders, setOrders, onLogout, show
           </button>
         </div>
 
-        {/* 오늘 날짜 + 빠른 통계 */}
+        {/* 오늘 날짜 + 빠른 통계 (모두 배송지 단위) */}
         <div className="px-4 pb-3 grid grid-cols-4 gap-2">
           <div className="bg-white/15 backdrop-blur rounded-xl p-2 text-center">
             <div className="text-[9px] text-sky-100 font-medium">오늘 예정</div>
-            <div className="text-xl font-bold tabular-nums">{stats.todayPending}</div>
+            <div className="text-xl font-bold tabular-nums">{stats.todayPending}<span className="text-[10px] font-normal ml-0.5">집</span></div>
           </div>
           <div className="bg-white/15 backdrop-blur rounded-xl p-2 text-center">
             <div className="text-[9px] text-sky-100 font-medium">오늘 완료</div>
-            <div className="text-xl font-bold tabular-nums">{stats.todayDone}</div>
+            <div className="text-xl font-bold tabular-nums">{stats.todayDone}<span className="text-[10px] font-normal ml-0.5">집</span></div>
           </div>
           <div className="bg-white/15 backdrop-blur rounded-xl p-2 text-center">
             <div className="text-[9px] text-sky-100 font-medium">전체 대기</div>
-            <div className="text-xl font-bold tabular-nums">{stats.pending}</div>
+            <div className="text-xl font-bold tabular-nums">{stats.pending}<span className="text-[10px] font-normal ml-0.5">집</span></div>
           </div>
           <div className="bg-white/15 backdrop-blur rounded-xl p-2 text-center">
             <div className="text-[9px] text-sky-100 font-medium">전체 완료</div>
-            <div className="text-xl font-bold tabular-nums">{stats.completed}</div>
+            <div className="text-xl font-bold tabular-nums">{stats.completed}<span className="text-[10px] font-normal ml-0.5">집</span></div>
           </div>
         </div>
 
@@ -4291,14 +4313,16 @@ function DriverTodayView({ groups, customerMap, items, onGroupUpdate, onEdit, on
 function DriverAllView({ orders, customerMap, items, priceMap, groupOrdersByCustomer, onGroupUpdate, onEdit, onCashClick, driver }) {
   const [filter, setFilter] = useState('pending');
 
+  // 전체 주문을 그룹화 → 그룹 상태로 필터 (더 정확)
+  const allGroups = useMemo(() => groupOrdersByCustomer(orders), [orders, groupOrdersByCustomer]);
+
   const filteredGroups = useMemo(() => {
-    let filteredOrders = [...orders];
+    let groups = [...allGroups];
     if (filter === 'pending') {
-      filteredOrders = filteredOrders.filter(o => o.shipStatus !== '배송완료' && o.shipStatus !== '취소');
+      groups = groups.filter(g => g.shipStatus !== '배송완료' && g.shipStatus !== '취소');
     } else if (filter === 'done') {
-      filteredOrders = filteredOrders.filter(o => o.shipStatus === '배송완료');
+      groups = groups.filter(g => g.shipStatus === '배송완료');
     }
-    const groups = groupOrdersByCustomer(filteredOrders);
     // Zone → sequence → 출고일 → customerId 순
     groups.sort((a, b) => {
       const za = a.shippingGroup || '';
@@ -4311,19 +4335,17 @@ function DriverAllView({ orders, customerMap, items, priceMap, groupOrdersByCust
       return a.customerId.localeCompare(b.customerId);
     });
     return groups;
-  }, [orders, filter, groupOrdersByCustomer]);
+  }, [allGroups, filter]);
 
   const pendingCount = useMemo(() => {
-    return groupOrdersByCustomer(orders.filter(o => o.shipStatus !== '배송완료' && o.shipStatus !== '취소')).length;
-  }, [orders, groupOrdersByCustomer]);
+    return allGroups.filter(g => g.shipStatus !== '배송완료' && g.shipStatus !== '취소').length;
+  }, [allGroups]);
 
   const doneCount = useMemo(() => {
-    return groupOrdersByCustomer(orders.filter(o => o.shipStatus === '배송완료')).length;
-  }, [orders, groupOrdersByCustomer]);
+    return allGroups.filter(g => g.shipStatus === '배송완료').length;
+  }, [allGroups]);
 
-  const allCount = useMemo(() => {
-    return groupOrdersByCustomer(orders).length;
-  }, [orders, groupOrdersByCustomer]);
+  const allCount = useMemo(() => allGroups.length, [allGroups]);
 
   return (
     <div className="px-4 py-4 space-y-3">
