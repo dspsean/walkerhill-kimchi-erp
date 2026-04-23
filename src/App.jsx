@@ -2,13 +2,11 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Search, Plus, Edit2, Trash2, Copy, Check, Package, Users, ShoppingCart, Truck, BarChart3, Download, X, Send, AlertTriangle, TrendingUp, Bell, FileDown, RotateCcw, History, LogOut, Cloud, CloudOff } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
-  isFirebaseConfigured,
-  subscribeToCollection,
-  saveDocument,
+  isSupabaseConfigured,
+  subscribeToTable,
   saveBatch,
-  deleteDocument,
-  COLLECTIONS,
-} from './firebase.js';
+  TABLES,
+} from './supabase.js';
 
 const INITIAL_CUSTOMERS = [
   { id: 'C0001', name: '송현숙', phone: '0433 110 140', agedCare: false, address: '2108/3 NETWORK Place North Ryde', grade: '일반', joinDate: '2025-04-21', memo: '' },
@@ -986,7 +984,7 @@ export default function App() {
   }, []);
 
   // 🔥 Firebase 연결 상태
-  const [syncStatus, setSyncStatus] = useState(isFirebaseConfigured ? 'connecting' : 'local');
+  const [syncStatus, setSyncStatus] = useState(isSupabaseConfigured ? 'connecting' : 'local');
   const initialSyncDoneRef = useRef(false);
   // Firebase에서 받은 데이터로 업데이트 중인지 여부 (무한루프 방지)
   const isReceivingFromFirebaseRef = useRef(false);
@@ -998,7 +996,7 @@ export default function App() {
     let unsubOrders = null;
     let unsubDrivers = null;
 
-    if (isFirebaseConfigured) {
+    if (isSupabaseConfigured) {
       // 🔥 Firebase 실시간 구독 모드
       (async () => {
         try {
@@ -1029,14 +1027,29 @@ export default function App() {
             return true;
           };
 
-          unsubCustomers = subscribeToCollection(COLLECTIONS.customers, (data) => {
+          // Firebase 에러 핸들러 (Quota 초과, 권한 오류 등)
+          const handleFirebaseError = (err) => {
+            const errCode = err?.code || '';
+            if (errCode.includes('resource-exhausted') || errCode.includes('permission-denied') || errCode.includes('unavailable')) {
+              console.warn('⚠️ Firebase 오류 - 로컬 모드로 전환:', errCode);
+              setSyncStatus('error');
+            }
+          };
+
+          // 5초 내 연결 확인 안 되면 오프라인 처리
+          const connectionTimeout = setTimeout(() => {
+            setSyncStatus(current => current === 'connecting' ? 'error' : current);
+          }, 5000);
+
+          unsubCustomers = subscribeToTable(TABLES.customers, (data) => {
+            clearTimeout(connectionTimeout);
             if (data.length === 0 && !initialSyncDoneRef.current) {
               // Firestore 비어있음 → 초기 마이그레이션 (최초 1회만)
               console.log('🔄 초기 데이터 마이그레이션 중...');
-              saveBatch(COLLECTIONS.customers, localC);
-              saveBatch(COLLECTIONS.items, localI);
-              saveBatch(COLLECTIONS.orders, localO);
-              saveBatch(COLLECTIONS.drivers, localD);
+              saveBatch(TABLES.customers, localC);
+              saveBatch(TABLES.items, localI);
+              saveBatch(TABLES.orders, localO);
+              saveBatch(TABLES.drivers, localD);
               initialSyncDoneRef.current = true;
             } else if (data.length > 0) {
               // 🔑 핵심: 현재 state와 내용이 실제로 다를 때만 업데이트
@@ -1048,9 +1061,9 @@ export default function App() {
               initialSyncDoneRef.current = true;
             }
             setSyncStatus('synced');
-          });
+          }, handleFirebaseError);
 
-          unsubItems = subscribeToCollection(COLLECTIONS.items, (data) => {
+          unsubItems = subscribeToTable(TABLES.items, (data) => {
             if (data.length > 0) {
               _setItemsInternal(current => {
                 if (arraysEqual(current, data)) return current;
@@ -1058,9 +1071,9 @@ export default function App() {
                 return data;
               });
             }
-          });
+          }, handleFirebaseError);
 
-          unsubOrders = subscribeToCollection(COLLECTIONS.orders, (data) => {
+          unsubOrders = subscribeToTable(TABLES.orders, (data) => {
             if (data.length > 0) {
               _setOrdersInternal(current => {
                 if (arraysEqual(current, data)) return current;
@@ -1068,9 +1081,9 @@ export default function App() {
                 return data;
               });
             }
-          });
+          }, handleFirebaseError);
 
-          unsubDrivers = subscribeToCollection(COLLECTIONS.drivers, (data) => {
+          unsubDrivers = subscribeToTable(TABLES.drivers, (data) => {
             if (data.length > 0) {
               _setDriversInternal(current => {
                 if (arraysEqual(current, data)) return current;
@@ -1078,7 +1091,7 @@ export default function App() {
                 return data;
               });
             }
-          });
+          }, handleFirebaseError);
         } catch (err) {
           console.error('Firebase 연결 실패, 로컬 모드로 전환:', err);
           setSyncStatus('error');
@@ -1116,8 +1129,8 @@ export default function App() {
     const resolved = typeof newValue === 'function' ? newValue(customers) : newValue;
     _setCustomersInternal(resolved);
     saveData(STORAGE_KEYS.customers, resolved);
-    if (isFirebaseConfigured && initialSyncDoneRef.current) {
-      saveBatch(COLLECTIONS.customers, resolved);
+    if (isSupabaseConfigured && initialSyncDoneRef.current) {
+      saveBatch(TABLES.customers, resolved);
     }
   };
 
@@ -1125,8 +1138,8 @@ export default function App() {
     const resolved = typeof newValue === 'function' ? newValue(items) : newValue;
     _setItemsInternal(resolved);
     saveData(STORAGE_KEYS.items, resolved);
-    if (isFirebaseConfigured && initialSyncDoneRef.current) {
-      saveBatch(COLLECTIONS.items, resolved);
+    if (isSupabaseConfigured && initialSyncDoneRef.current) {
+      saveBatch(TABLES.items, resolved);
     }
   };
 
@@ -1134,8 +1147,8 @@ export default function App() {
     const resolved = typeof newValue === 'function' ? newValue(orders) : newValue;
     _setOrdersInternal(resolved);
     saveData(STORAGE_KEYS.orders, resolved);
-    if (isFirebaseConfigured && initialSyncDoneRef.current) {
-      saveBatch(COLLECTIONS.orders, resolved);
+    if (isSupabaseConfigured && initialSyncDoneRef.current) {
+      saveBatch(TABLES.orders, resolved);
     }
   };
 
@@ -1143,8 +1156,8 @@ export default function App() {
     const resolved = typeof newValue === 'function' ? newValue(drivers) : newValue;
     _setDriversInternal(resolved);
     saveData(DRIVERS_KEY, resolved);
-    if (isFirebaseConfigured && initialSyncDoneRef.current) {
-      saveBatch(COLLECTIONS.drivers, resolved);
+    if (isSupabaseConfigured && initialSyncDoneRef.current) {
+      saveBatch(TABLES.drivers, resolved);
     }
   };
 
@@ -1352,7 +1365,7 @@ export default function App() {
           </div>
           <div className="flex items-center gap-3">
             {/* 🔥 실시간 동기화 상태 */}
-            {isFirebaseConfigured ? (
+            {isSupabaseConfigured ? (
               <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold ring-1 ${
                 syncStatus === 'synced' ? 'bg-emerald-50 text-emerald-700 ring-emerald-200' :
                 syncStatus === 'connecting' ? 'bg-amber-50 text-amber-700 ring-amber-200' :
@@ -4114,7 +4127,7 @@ function DriverApp({ driver, customers, items, orders, setOrders, onLogout, show
             <div>
               <div className="font-bold text-base leading-tight flex items-center gap-1.5">
                 {driver?.name || '기사'}님
-                {isFirebaseConfigured && (
+                {isSupabaseConfigured && (
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" title="실시간 연결됨" />
                 )}
               </div>
