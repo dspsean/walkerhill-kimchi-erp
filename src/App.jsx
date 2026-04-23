@@ -1311,15 +1311,24 @@ export default function App() {
       `}</style>
 
       <aside className="fixed left-0 top-0 h-full w-60 bg-white border-r border-stone-200 flex flex-col z-20">
-        <div className="px-5 pt-6 pb-4 border-b border-stone-100">
+        <button
+          onClick={() => {
+            // 대시보드로 이동 후 페이지 새로고침
+            setView('dashboard');
+            // 짧은 지연 후 새로고침 (view 전환이 먼저 반영되도록)
+            setTimeout(() => window.location.reload(), 50);
+          }}
+          className="px-5 pt-6 pb-4 border-b border-stone-100 hover:bg-stone-50 active:bg-stone-100 transition-all group text-left w-full"
+          title="대시보드로 이동 + 새로고침"
+        >
           <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-red-700 to-red-900 flex items-center justify-center text-white text-lg">🥬</div>
+            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-red-700 to-red-900 flex items-center justify-center text-white text-lg group-hover:scale-105 group-active:scale-95 transition-transform">🥬</div>
             <div>
-              <div className="font-serif-ko text-lg font-bold text-stone-800 leading-tight">워커힐김치</div>
+              <div className="font-serif-ko text-lg font-bold text-stone-800 leading-tight group-hover:text-red-800 transition-colors">워커힐김치</div>
               <div className="text-xs tracking-[0.4em] text-stone-400 font-semibold pl-1">OMS</div>
             </div>
           </div>
-        </div>
+        </button>
 
         <nav className="flex-1 px-3 py-4 space-y-1">
           {nav.map(({ id, label, icon: Icon }) => (
