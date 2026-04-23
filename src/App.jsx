@@ -499,9 +499,9 @@ function calcCustomerGrade(customerId, orders, items) {
 }
 
 // ============================================================
-// 🗺️ 배송 Zone 설정 (엑셀 차량 A~F 기준)
+// 🗺️ 배송 Zone 설정 (엑셀 Zone A~H 기준)
 // ============================================================
-const SHIPPING_ZONES = ['Zone1', 'Zone2', 'Zone3', 'Zone4', 'Zone5', 'Zone6'];
+const SHIPPING_ZONES = ['Zone1', 'Zone2', 'Zone3', 'Zone4', 'Zone5', 'Zone6', 'Zone7', 'Zone8'];
 const ZONE_COLORS = {
   'Zone1': 'bg-red-100 text-red-700',
   'Zone2': 'bg-orange-100 text-orange-700',
@@ -509,12 +509,14 @@ const ZONE_COLORS = {
   'Zone4': 'bg-emerald-100 text-emerald-700',
   'Zone5': 'bg-blue-100 text-blue-700',
   'Zone6': 'bg-violet-100 text-violet-700',
+  'Zone7': 'bg-pink-100 text-pink-700',
+  'Zone8': 'bg-teal-100 text-teal-700',
 };
 
 // 차량 라벨 (Zone → 차량)
 const ZONE_VEHICLE = {
-  'Zone1': '차량A', 'Zone2': '차량B', 'Zone3': '차량C',
-  'Zone4': '차량D', 'Zone5': '차량E', 'Zone6': '차량F',
+  'Zone1': '차량A', 'Zone2': '차량B', 'Zone3': '차량C', 'Zone4': '차량D',
+  'Zone5': '차량E', 'Zone6': '차량F', 'Zone7': '차량G', 'Zone8': '차량H',
 };
 
 // 지역 설명
@@ -524,21 +526,28 @@ const ZONE_REGIONS = {
   'Zone3': 'Kellyville·Castle Hill',
   'Zone4': 'Parramatta·Burwood',
   'Zone5': 'Strathfield·Campsie',
-  'Zone6': '서부 외곽·City·Hurstville',
+  'Zone6': '서부 외곽·City',
+  'Zone7': 'Hurstville·Kogarah',
+  'Zone8': 'Eastwood·Chatswood',
 };
 
-// Zone별 배송일 오프셋 (2그룹씩 3일간 배송)
-// Day 1: Zone1, Zone2 / Day 2: Zone3, Zone4 / Day 3: Zone5, Zone6
+// 배송 출발지
+const DEPARTURE_ADDRESS = '36 Middural Rd, Dural';
+
+// Zone별 배송일 오프셋 (2그룹씩 4일간 배송)
+// Day 1: Zone1, Zone2 / Day 2: Zone3, Zone4 / Day 3: Zone5, Zone6 / Day 4: Zone7, Zone8
 const ZONE_DAY_OFFSET = {
-  'Zone1': 0, 'Zone2': 0,  // Day 1 (배송 시작일)
-  'Zone3': 1, 'Zone4': 1,  // Day 2 (+1일)
-  'Zone5': 2, 'Zone6': 2,  // Day 3 (+2일)
+  'Zone1': 0, 'Zone2': 0,  // Day 1
+  'Zone3': 1, 'Zone4': 1,  // Day 2
+  'Zone5': 2, 'Zone6': 2,  // Day 3
+  'Zone7': 3, 'Zone8': 3,  // Day 4
 };
 
 const ZONE_DAY_LABEL = {
   'Zone1': 'Day 1', 'Zone2': 'Day 1',
   'Zone3': 'Day 2', 'Zone4': 'Day 2',
   'Zone5': 'Day 3', 'Zone6': 'Day 3',
+  'Zone7': 'Day 4', 'Zone8': 'Day 4',
 };
 
 // 시작일 + Zone → 실제 출고일 계산
@@ -5133,98 +5142,157 @@ function parseUploadedExcel(wb, customers, items, orders) {
   const newOrders = [];
   const cancelled = [];
 
-  const vehicleToZone = {
+  // 새 양식: Zone A ~ Zone H 시트명 → Zone1 ~ Zone8
+  const zoneSheetMap = {
+    'Zone A': 'Zone1', 'Zone B': 'Zone2', 'Zone C': 'Zone3', 'Zone D': 'Zone4',
+    'Zone E': 'Zone5', 'Zone F': 'Zone6', 'Zone G': 'Zone7', 'Zone H': 'Zone8',
+    // 구 양식 호환 (차량A~F)
     '차량A': 'Zone1', '차량B': 'Zone2', '차량C': 'Zone3',
     '차량D': 'Zone4', '차량E': 'Zone5', '차량F': 'Zone6',
   };
 
   // 엑셀 No. → 시스템 customerId (C0XXX) 매핑
-  // No.1 = C0001, No.2 = C0002 식으로 가정
   const noToCustomerId = (no) => `C${String(no).padStart(4, '0')}`;
 
-  // 차량별 시트 파싱
-  const processedNos = new Set();
-  for (const [vehicle, zone] of Object.entries(vehicleToZone)) {
-    if (!wb.Sheets[vehicle]) continue;
-    const ws = wb.Sheets[vehicle];
+  // 이름 → 기존 고객 찾기 (새 양식은 No. 컬럼이 없을 수 있음)
+  const customerByName = {};
+  customers.forEach(c => {
+    if (c.name) customerByName[c.name.trim()] = c;
+  });
+
+  // Zone별 시트 파싱
+  const processedCustomerIds = new Set();
+  for (const [sheetName, zone] of Object.entries(zoneSheetMap)) {
+    if (!wb.Sheets[sheetName]) continue;
+    const ws = wb.Sheets[sheetName];
     const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
 
-    // 3번째 행부터 데이터 (0: 제목, 1: 출발 정보, 2: 헤더)
-    for (let i = 2; i < rows.length; i++) {
+    // 새 양식: 행 0: 제목, 행 1: 출발지, 행 2: 헤더, 행 3+: 데이터
+    // 구 양식: 행 0: 제목, 행 1: 출발 정보, 행 2: 헤더, 행 3+: 데이터
+    // 컬럼: [순번, 도착시간, 이름, 주소, 연락처, ...]
+    for (let i = 3; i < rows.length; i++) {
       const row = rows[i];
       if (!row || row.length === 0) continue;
       const seq = row[0];
       const arrivalTime = row[1];
-      const no = row[3];
-      const name = row[4];
+      const name = row[2] ? String(row[2]).trim() : '';
 
-      if (typeof seq !== 'number' || typeof no !== 'number') continue;
-      processedNos.add(no);
+      // 순번이 있고 이름이 있는 행만 처리
+      if (typeof seq !== 'number') continue;
+      if (!name) continue;  // 빈 slot 건너뛰기
 
-      const cId = noToCustomerId(no);
-      // 해당 고객의 주문 찾기
-      const custOrders = orders.filter(o => o.customerId === cId);
-      if (custOrders.length > 0) {
-        // 첫 주문에 배정
-        custOrders.forEach(o => {
-          orderUpdates[o.id] = {
-            shippingGroup: zone,
-            sequence: Math.floor(seq),
-            arrivalTime: String(arrivalTime || ''),
-          };
-        });
+      // 이름으로 기존 고객 찾기
+      const existingCustomer = customerByName[name];
+
+      if (existingCustomer) {
+        // 기존 고객의 모든 주문에 배정
+        processedCustomerIds.add(existingCustomer.id);
+        const custOrders = orders.filter(o => o.customerId === existingCustomer.id && !o.isService);
+        if (custOrders.length > 0) {
+          custOrders.forEach(o => {
+            orderUpdates[o.id] = {
+              shippingGroup: zone,
+              sequence: Math.floor(seq),
+              arrivalTime: String(arrivalTime || ''),
+            };
+          });
+        }
       } else {
         // 신규 고객 + 신규 주문
-        const address = String(row[5] || '');
-        const phone = String(row[6] || '');
-        // 새 customerId 생성
+        const address = String(row[3] || '');
+        const phone = String(row[4] || '');
         const newCid = `C${String(customers.length + newCustomers.length + 1).padStart(4, '0')}`;
         newCustomers.push({
           id: newCid,
-          name: String(name),
+          name,
           phone,
           agedCare: false,
           address,
           grade: '일반',
           joinDate: new Date().toISOString().slice(0, 10),
-          memo: `엑셀 신규 ${vehicle}`,
+          memo: `엑셀 신규 ${sheetName}`,
         });
-        // 기본 품목 추정 (혼합세트)
-        const defaultItem = items.find(i => i.name.includes('혼합')) || items[2] || items[0];
+        processedCustomerIds.add(newCid);
+
+        // 엑셀 품목 수량 읽기 (H~M 컬럼)
+        // 새 양식 컬럼: [순번, 도착시간, 이름, 주소, 연락처, 가격, 수금액, 4KG, 4KG*2, 4KG*3, 총각, 총긱2, 혼합]
+        const qty4KG = Number(row[7]) || 0;
+        const qty4KG2 = Number(row[8]) || 0;
+        const qty4KG3 = Number(row[9]) || 0;
+        const qtyChonggak = Number(row[10]) || 0;
+        const qtyChonggak2 = Number(row[11]) || 0;
+        const qtyMix = Number(row[12]) || 0;
+
         const maxOrderNum = orders.reduce((max, o) => {
           const n = parseInt(o.id.replace('ORD-', ''), 10);
           return isNaN(n) ? max : Math.max(max, n);
         }, 0);
-        const newOrderId = `ORD-${String(maxOrderNum + newOrders.length + 1).padStart(4, '0')}`;
-        newOrders.push({
-          id: newOrderId,
-          date: new Date().toISOString().slice(0, 10),
-          customerId: newCid,
-          itemName: defaultItem?.name || '혼합세트 (배추4KG + 총각2KG)',
-          qty: 1,
-          shipStatus: '배송준비중',
-          deliveryMethod: '',
-          paymentType: '',
-          paymentStatus: '미결제',
-          deliveryMemo: `엑셀 신규 고객`,
-          shipDate: '',
-          arriveDate: '',
-          shippingGroup: zone,
-          isService: false,
-          isPickup: false,
-          sequence: Math.floor(seq),
-          arrivalTime: String(arrivalTime || ''),
-        });
+
+        // 품목별로 주문 생성
+        const itemQtyPairs = [
+          { name: '배추김치 4KG', qty: qty4KG },
+          { name: '배추김치 4KG - 2세트(할인)', qty: qty4KG2 },
+          { name: '배추김치 4KG - 3세트(할인)', qty: qty4KG3 },
+          { name: '총각김치 2KG', qty: qtyChonggak },
+          { name: '총각김치 2KG - 2세트(할인)', qty: qtyChonggak2 },
+          { name: '혼합세트 (배추4KG + 총각2KG)', qty: qtyMix },
+        ];
+
+        const orderedItems = itemQtyPairs.filter(x => x.qty > 0);
+
+        if (orderedItems.length === 0) {
+          // 품목 미지정 → 혼합세트 기본값
+          const newOrderId = `ORD-${String(maxOrderNum + newOrders.length + 1).padStart(4, '0')}`;
+          newOrders.push({
+            id: newOrderId,
+            date: new Date().toISOString().slice(0, 10),
+            customerId: newCid,
+            itemName: '혼합세트 (배추4KG + 총각2KG)',
+            qty: 1,
+            shipStatus: '배송준비중',
+            deliveryMethod: '',
+            paymentType: '',
+            paymentStatus: '미결제',
+            deliveryMemo: `엑셀 신규 고객`,
+            shipDate: '',
+            arriveDate: '',
+            shippingGroup: zone,
+            isService: false,
+            isPickup: false,
+            sequence: Math.floor(seq),
+            arrivalTime: String(arrivalTime || ''),
+          });
+        } else {
+          orderedItems.forEach(it => {
+            const newOrderId = `ORD-${String(maxOrderNum + newOrders.length + 1).padStart(4, '0')}`;
+            newOrders.push({
+              id: newOrderId,
+              date: new Date().toISOString().slice(0, 10),
+              customerId: newCid,
+              itemName: it.name,
+              qty: it.qty,
+              shipStatus: '배송준비중',
+              deliveryMethod: '',
+              paymentType: '',
+              paymentStatus: '미결제',
+              deliveryMemo: `엑셀 신규 고객`,
+              shipDate: '',
+              arriveDate: '',
+              shippingGroup: zone,
+              isService: false,
+              isPickup: false,
+              sequence: Math.floor(seq),
+              arrivalTime: String(arrivalTime || ''),
+            });
+          });
+        }
       }
     }
   }
 
-  // 배정받지 못한 주문 = 취소 (단, 기존에 이미 취소된 것은 제외)
+  // 배정받지 못한 주문 = 취소 (기존 취소/서비스 제외)
   orders.forEach(o => {
-    const noMatch = o.customerId.match(/^C(\d+)$/);
-    if (!noMatch) return;
-    const no = parseInt(noMatch[1], 10);
-    if (!processedNos.has(no) && !orderUpdates[o.id] && o.shipStatus !== '취소' && !o.isService) {
+    if (!processedCustomerIds.has(o.customerId) && !orderUpdates[o.id] && o.shipStatus !== '취소' && !o.isService) {
       cancelled.push({
         orderId: o.id,
         customerName: customers.find(c => c.id === o.customerId)?.name || o.customerId,
@@ -5248,7 +5316,7 @@ function generateBatchTemplate(customers, items, orders) {
   const customerMap = {};
   customers.forEach(c => { customerMap[c.id] = c; });
 
-  // 품목 → 컬럼 매핑 (0421_updated 형식)
+  // 품목 → 컬럼 매핑 (0421_Walkerhill_base 형식)
   const getItemColumns = (itemName, qty) => {
     const cols = { '4KG': '', '4KG*2': '', '4KG*3': '', '총각': '', '총긱2': '', '혼합': '' };
     if (itemName.includes('배추김치 4KG - 3세트')) cols['4KG*3'] = qty;
@@ -5260,39 +5328,34 @@ function generateBatchTemplate(customers, items, orders) {
     return cols;
   };
 
-  // =============================================
-  // 시트 1: 📋 요약
-  // =============================================
-  const summaryData = [
-    ['📦 NSW 배송 배차 양식', '', '', '', '', '', '', '', ''],
-    ['차량', '건수', 'Dural출발', '첫배송', '마지막', '차고지', '총업무', '평균이동', '커버 구역'],
-  ];
-
-  const vehicleZones = {
-    '차량 A': 'Zone1', '차량 B': 'Zone2', '차량 C': 'Zone3',
-    '차량 D': 'Zone4', '차량 E': 'Zone5', '차량 F': 'Zone6',
+  // 품목별 단가 (새 양식의 가격 수식에서 사용)
+  const unitPrices = {
+    '4KG': 70,      // G열 단가
+    '4KG*2': 130,   // H열 단가
+    '4KG*3': 180,   // I열 단가
+    '총각': 55,     // J열 단가
+    '총긱2': 100,   // K열 단가
+    '혼합': 120,    // L열 단가
   };
 
-  Object.entries(vehicleZones).forEach(([veh, zone]) => {
-    const count = orders.filter(o => o.shippingGroup === zone && o.shipStatus !== '취소' && !o.isService).length;
-    summaryData.push([veh, count, '07:40', '08:00', '13:00', '13:10', '5.5h', '5분', ZONE_REGIONS[zone] || '']);
-  });
-  summaryData.push(['합계', orders.filter(o => o.shippingGroup && o.shipStatus !== '취소' && !o.isService).length, '', '', '', '', '', '', '']);
-  summaryData.push(['💡 이 파일을 수정해서 업로드하면 배차 정보가 자동 반영됩니다']);
-
-  const ws1 = XLSX.utils.aoa_to_sheet(summaryData);
-  ws1['!cols'] = [{wch:8},{wch:6},{wch:10},{wch:10},{wch:10},{wch:10},{wch:8},{wch:8},{wch:50}];
-  XLSX.utils.book_append_sheet(wb, ws1, '📋 요약');
-
   // =============================================
-  // 시트 2: 전체(원본) - 모든 주문
+  // 시트 1: 전체(원본) - 모든 주문
   // =============================================
-  const origHeader = ['No.', '이름', '주소', '연락처', '가격', '수금액', '4KG', '4KG*2', '4KG*3', '총각', '총긱2', '혼합', '배송비', '비고', '배차', '도착시간', '이동시간'];
-  const origData = [origHeader];
+  // 행1: 단가 정보 (G1~L1)
+  // 행2: 빈 행
+  // 행3: 빈 행
+  // 행4: 헤더
+  // 행5~: 데이터
+  const origData = [
+    ['', '', '', '', '', '', 70, 130, 180, 55, 100, 120, '', ''],  // 행1: 단가
+    ['', '', '', '', '', '', '', '', '', '', '', '', '', ''],       // 행2: 빈
+    ['', '', '', '', '', '', '', '', '', '', '', '', '', ''],       // 행3: 빈
+    ['No.', '이름', '주소', '연락처', '가격', '수금액', '4KG', '4KG*2', '4KG*3', '총각', '총긱2', '혼합', '배송비', '비고'],  // 행4: 헤더
+  ];
 
-  // 주문을 ORD-0001부터 순서대로
+  // 주문 정렬 (ORD-0001부터)
   const sortedOrders = [...orders]
-    .filter(o => !o.isService)
+    .filter(o => !o.isService && o.shipStatus !== '취소')
     .sort((a, b) => a.id.localeCompare(b.id));
 
   sortedOrders.forEach((o, idx) => {
@@ -5302,77 +5365,112 @@ function generateBatchTemplate(customers, items, orders) {
       .filter(x => x.customerId === o.customerId && !x.isService)
       .reduce((s, x) => s + (priceMap[x.itemName] || 0) * x.qty, 0);
     const needsShipping = !o.isPickup && customerTotal < SHIPPING_THRESHOLD;
-    const vehicle = o.shippingGroup ? ZONE_VEHICLE[o.shippingGroup] || '' : '';
+    const rowNum = idx + 5; // 데이터는 5행부터
 
     origData.push([
       idx + 1,
       c.name || '',
       c.address || '',
       c.phone || '',
-      0, // 가격
+      { f: `G${rowNum}*$G$1+H${rowNum}*$H$1+I${rowNum}*$I$1+J${rowNum}*$J$1+K${rowNum}*$K$1+L${rowNum}*$L$1` }, // 가격 수식
       '', // 수금액
       cols['4KG'], cols['4KG*2'], cols['4KG*3'],
       cols['총각'], cols['총긱2'], cols['혼합'],
       needsShipping ? SHIPPING_FEE : '',
-      c.memo || '',
-      vehicle.replace('차량', '차량'),
-      o.arrivalTime || '',
-      o.sequence ? `${o.sequence}번` : '',
+      c.memo || (o.deliveryMemo || ''),
     ]);
   });
 
-  const ws2 = XLSX.utils.aoa_to_sheet(origData);
-  ws2['!cols'] = [{wch:5},{wch:15},{wch:40},{wch:14},{wch:5},{wch:6},{wch:5},{wch:6},{wch:6},{wch:5},{wch:5},{wch:5},{wch:6},{wch:25},{wch:8},{wch:10},{wch:10}];
-  XLSX.utils.book_append_sheet(wb, ws2, '전체(원본)');
+  const ws1 = XLSX.utils.aoa_to_sheet(origData);
+  ws1['!cols'] = [
+    {wch:5},{wch:15},{wch:40},{wch:14},{wch:8},{wch:8},
+    {wch:6},{wch:6},{wch:6},{wch:6},{wch:6},{wch:6},
+    {wch:7},{wch:25}
+  ];
+  XLSX.utils.book_append_sheet(wb, ws1, '전체(원본)');
 
   // =============================================
-  // 시트 3~8: 차량A~F
+  // 시트 2~9: Zone A ~ Zone H
   // =============================================
-  ['Zone1', 'Zone2', 'Zone3', 'Zone4', 'Zone5', 'Zone6'].forEach(zone => {
-    const vehicle = ZONE_VEHICLE[zone];
-    const vehicleLetter = vehicle.replace('차량', '');
-    const sheetName = `차량${vehicleLetter}`;
+  const zoneList = [
+    { zone: 'Zone1', letter: 'A' },
+    { zone: 'Zone2', letter: 'B' },
+    { zone: 'Zone3', letter: 'C' },
+    { zone: 'Zone4', letter: 'D' },
+    { zone: 'Zone5', letter: 'E' },
+    { zone: 'Zone6', letter: 'F' },
+    { zone: 'Zone7', letter: 'G' },
+    { zone: 'Zone8', letter: 'H' },
+  ];
+
+  zoneList.forEach(({ zone, letter }) => {
     const region = ZONE_REGIONS[zone] || '';
 
     const zoneOrders = orders
       .filter(o => o.shippingGroup === zone && o.shipStatus !== '취소' && !o.isService)
       .sort((a, b) => (a.sequence || 999) - (b.sequence || 999));
 
-    const titleRow = [`  차량 ${vehicleLetter}  |  ${region}  |  ${zoneOrders.length}개  |  배송 예정`];
-    const infoRow = ['출발: 36 Middural Rd, Dural  →  08:00 첫배송  →  차고지: 30 Ferntree Pl, Epping  │  실제이동시간+5분 정차'];
-    const header = ['순번', '도착시간', '이동시간', 'No.', '이름', '주소', '연락처', '가격', '수금액', '4KG', '4KG*2', '4KG*3', '총각', '총긱2', '혼합', '배송비', '비고'];
+    // 행1: 제목 (Zone A  |  지역명)
+    // 행2: 출발지
+    // 행3: 헤더
+    // 행4~: 데이터
+    // 행62: 단가 (H62~N62)
+    const header = ['순번', '도착시간', '이름', '주소', '연락처', '가격', '수금액', '4KG', '4KG*2', '4KG*3', '총각', '총긱2', '혼합', '배송비', '비고'];
 
-    const rows = [titleRow, infoRow, header];
+    const rows = [
+      [`Zone ${letter}  |  ${region}`, '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
+      [`  출발: ${DEPARTURE_ADDRESS}`, '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
+      header,
+    ];
 
-    zoneOrders.forEach((o, idx) => {
-      const c = customerMap[o.customerId] || {};
-      const cols = getItemColumns(o.itemName, o.qty);
-      const customerTotal = orders
-        .filter(x => x.customerId === o.customerId && !x.isService)
-        .reduce((s, x) => s + (priceMap[x.itemName] || 0) * x.qty, 0);
-      const needsShipping = !o.isPickup && customerTotal < SHIPPING_THRESHOLD;
-      const origNo = parseInt(o.customerId.replace('C', ''), 10) || (idx + 1);
+    // 데이터 행 (58개까지 채움 - 빈 행 포함)
+    const maxDataRows = 58;
+    for (let idx = 0; idx < maxDataRows; idx++) {
+      const o = zoneOrders[idx];
+      const rowNum = idx + 4; // 데이터는 4행부터
 
-      rows.push([
-        o.sequence || (idx + 1),
-        o.arrivalTime || '',
-        idx === 0 ? 'Dural→' : '+5분 이동',
-        origNo,
-        c.name || '',
-        c.address || '',
-        c.phone || '',
-        0,
-        '',
-        cols['4KG'], cols['4KG*2'], cols['4KG*3'],
-        cols['총각'], cols['총긱2'], cols['혼합'],
-        needsShipping ? SHIPPING_FEE : '',
-        c.memo || (o.deliveryMemo || ''),
-      ]);
-    });
+      if (o) {
+        const c = customerMap[o.customerId] || {};
+        const cols = getItemColumns(o.itemName, o.qty);
+        const customerTotal = orders
+          .filter(x => x.customerId === o.customerId && !x.isService)
+          .reduce((s, x) => s + (priceMap[x.itemName] || 0) * x.qty, 0);
+        const needsShipping = !o.isPickup && customerTotal < SHIPPING_THRESHOLD;
+
+        rows.push([
+          o.sequence || (idx + 1),
+          o.arrivalTime || '',
+          c.name || '',
+          c.address || '',
+          c.phone || '',
+          // 가격 수식 - 62행의 단가 참조
+          { f: `H${rowNum}*$H$62+I${rowNum}*$I$62+J${rowNum}*$J$62+K${rowNum}*$K$62+L${rowNum}*$L$62+M${rowNum}*$M$62` },
+          '', // 수금액
+          cols['4KG'], cols['4KG*2'], cols['4KG*3'],
+          cols['총각'], cols['총긱2'], cols['혼합'],
+          needsShipping ? SHIPPING_FEE : '',
+          c.memo || (o.deliveryMemo || ''),
+        ]);
+      } else {
+        // 빈 행 (배차 가능한 slot)
+        rows.push([
+          idx + 1, '', '', '', '',
+          { f: `H${rowNum}*$H$62+I${rowNum}*$I$62+J${rowNum}*$J$62+K${rowNum}*$K$62+L${rowNum}*$L$62+M${rowNum}*$M$62` },
+          '', '', '', '', '', '', '', '', ''
+        ]);
+      }
+    }
+
+    // 행 62: 단가 정보
+    rows.push(['', '', '', '', '', '', '', 70, 130, 180, 55, 100, 120, '', '']);
 
     const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols'] = [{wch:5},{wch:9},{wch:11},{wch:5},{wch:15},{wch:40},{wch:14},{wch:5},{wch:6},{wch:5},{wch:6},{wch:6},{wch:5},{wch:5},{wch:5},{wch:6},{wch:25}];
-    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    ws['!cols'] = [
+      {wch:5},{wch:9},{wch:15},{wch:40},{wch:14},{wch:8},{wch:8},
+      {wch:6},{wch:6},{wch:6},{wch:6},{wch:6},{wch:6},
+      {wch:7},{wch:25}
+    ];
+    XLSX.utils.book_append_sheet(wb, ws, `Zone ${letter}`);
   });
 
   // 파일 다운로드
