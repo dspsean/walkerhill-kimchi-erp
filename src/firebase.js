@@ -82,7 +82,15 @@ export function subscribeToCollection(collectionName, callback) {
 
   const unsubscribe = onSnapshot(
     collection(db, collectionName),
+    { includeMetadataChanges: true },  // 메타데이터 변경도 포함
     (snapshot) => {
+      // 로컬 캐시에서 나온 변경(내가 방금 쓴 것)은 무시
+      // 서버에서 확정된 데이터만 반영 (다른 기기의 변경 또는 내 변경의 최종 확정)
+      if (snapshot.metadata.hasPendingWrites) {
+        // 내가 방금 쓴 변경이 아직 서버에 반영 중 → 스킵
+        return;
+      }
+
       const data = snapshot.docs.map(d => d.data());
       callback(data);
     },
@@ -107,13 +115,22 @@ export async function saveDocument(collectionName, data) {
 }
 
 /**
- * 여러 문서 일괄 저장 (마이그레이션용) - debounced
+ * 여러 문서 일괄 저장 - debounced + deduplicated
  */
 const _saveBatchTimers = {};
+const _lastSavedData = {};
+
 export async function saveBatch(collectionName, dataArray) {
   if (!db || !dataArray || dataArray.length === 0) return;
 
-  // 같은 컬렉션에 대한 연속 호출은 debounce (300ms)
+  // 이전과 동일한 데이터면 스킵 (중복 저장 방지)
+  const dataHash = JSON.stringify(dataArray);
+  if (_lastSavedData[collectionName] === dataHash) {
+    return;
+  }
+  _lastSavedData[collectionName] = dataHash;
+
+  // debounce 500ms
   if (_saveBatchTimers[collectionName]) {
     clearTimeout(_saveBatchTimers[collectionName]);
   }
@@ -121,7 +138,6 @@ export async function saveBatch(collectionName, dataArray) {
   return new Promise((resolve) => {
     _saveBatchTimers[collectionName] = setTimeout(async () => {
       try {
-        // Firestore batch는 최대 500개씩
         const chunks = [];
         for (let i = 0; i < dataArray.length; i += 400) {
           chunks.push(dataArray.slice(i, i + 400));
@@ -142,7 +158,7 @@ export async function saveBatch(collectionName, dataArray) {
         console.error(`Error batch saving ${collectionName}:`, err);
         resolve();
       }
-    }, 300);
+    }, 500);
   });
 }
 
