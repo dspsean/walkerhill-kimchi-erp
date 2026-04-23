@@ -129,12 +129,20 @@ export async function saveBatch(tableName, rows) {
   return new Promise((resolve) => {
     _saveBatchTimers[tableName] = setTimeout(async () => {
       try {
+        // items 테이블의 경우 code를 id로 사용 (id가 없으면)
+        const normalizedRows = rows.map(row => {
+          if (!row.id && row.code) {
+            return { ...row, id: row.code };
+          }
+          return row;
+        });
+
         // 변경된 row만 필터
         const prevMap = _lastSavedRows[tableName] || {};
         const currentMap = {};
         const changedRows = [];
 
-        rows.forEach(row => {
+        normalizedRows.forEach(row => {
           if (!row.id) return;
           const rowJson = JSON.stringify(row);
           currentMap[row.id] = rowJson;
