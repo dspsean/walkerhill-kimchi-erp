@@ -499,6 +499,47 @@ function calcCustomerGrade(customerId, orders, items) {
 }
 
 // ============================================================
+// 🏢 B2B 거래처 관련 설정
+// ============================================================
+
+// 결제 조건
+const PAYMENT_TERMS = {
+  IMMEDIATE: '즉시결제',
+  MONTHLY: '월말정산',
+  NET_7: '7일 이내',
+  NET_14: '14일 이내',
+  NET_30: '30일 이내',
+};
+
+// B2B 주문에 추가되는 배송 상태
+const B2B_SHIP_STATUS = ['입고대기', '부분배송', '전량배송'];
+
+// 거래처별 할인율 적용 단가 계산
+function getB2BPrice(basePrice, discountRate) {
+  if (!discountRate || discountRate <= 0) return basePrice;
+  return Math.round(basePrice * (1 - discountRate / 100));
+}
+
+// 주문이 B2B인지 확인 (customer 기반)
+function isB2BOrder(order, customerMap) {
+  const c = customerMap[order.customerId];
+  return !!(c && c.isB2B);
+}
+
+// 거래처 미수금 계산
+function calcB2BReceivable(customerId, orders, items) {
+  const priceMap = {};
+  items.forEach(i => { priceMap[i.name] = i.price || 0; });
+  return orders
+    .filter(o => o.customerId === customerId && !o.isService && o.shipStatus !== '취소')
+    .reduce((sum, o) => {
+      const total = (priceMap[o.itemName] || 0) * o.qty;
+      const paid = o.cashReceived || 0;
+      return sum + Math.max(0, total - paid);
+    }, 0);
+}
+
+// ============================================================
 // 🗺️ 배송 Zone 설정 (엑셀 Zone A~H 기준)
 // ============================================================
 const SHIPPING_ZONES = ['Zone1', 'Zone2', 'Zone3', 'Zone4', 'Zone5', 'Zone6', 'Zone7', 'Zone8'];
@@ -1526,6 +1567,7 @@ function Dashboard({ customers, items, orders, setView }) {
     count: orders.filter(o => o.shipStatus === s).length
   }));
   const cancelCount = orders.filter(o => o.shipStatus === '취소').length;
+  const waitingStockCount = orders.filter(o => o.shipStatus === '입고대기').length;
 
   const recent = [...orders].slice(-5).reverse();
 
@@ -1755,6 +1797,40 @@ function Dashboard({ customers, items, orders, setView }) {
               <span className="text-xs font-bold text-red-800">💳 미결제 주문</span>
               <span className="text-sm font-bold text-red-800 tabular-nums">
                 {orders.filter(o => o.paymentStatus === '미결제' && o.shipStatus !== '취소' && !o.isService).length}건
+              </span>
+            </div>
+          )}
+
+          {/* 🏢 B2B 거래처 현황 */}
+          {customers.filter(c => c.isB2B).length > 0 && (
+            <div className="mt-4 p-3 bg-indigo-50 border border-indigo-200 rounded-lg">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold text-indigo-900 flex items-center gap-1">
+                  🏢 거래처 (B2B) 현황
+                </span>
+                <button onClick={() => setView('customers')} className="text-[10px] text-indigo-600 hover:underline">관리 →</button>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-[11px]">
+                <div className="bg-white rounded px-2 py-1.5">
+                  <div className="text-stone-500">거래처 수</div>
+                  <div className="font-bold text-indigo-900 text-sm tabular-nums">{customers.filter(c => c.isB2B).length}곳</div>
+                </div>
+                <div className="bg-white rounded px-2 py-1.5">
+                  <div className="text-stone-500">미수금 합계</div>
+                  <div className="font-bold text-red-800 text-sm tabular-nums">
+                    ${formatNum(customers.filter(c => c.isB2B).reduce((s, c) => s + calcB2BReceivable(c.id, orders, items), 0))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ⏳ 입고대기 주문 경보 */}
+          {orders.filter(o => o.shipStatus === '입고대기').length > 0 && (
+            <div className="mt-4 p-3 bg-purple-50 border border-purple-200 rounded-lg flex items-center justify-between">
+              <span className="text-xs font-bold text-purple-800">⏳ 입고대기 (선주문)</span>
+              <span className="text-sm font-bold text-purple-800 tabular-nums">
+                {orders.filter(o => o.shipStatus === '입고대기').length}건
               </span>
             </div>
           )}
@@ -2416,6 +2492,7 @@ function Customers({ customers, setCustomers, items, orders, showToast }) {
   const [search, setSearch] = useState('');
   const [gradeFilter, setGradeFilter] = useState('');
   const [agedCareFilter, setAgedCareFilter] = useState(false);
+  const [customerTypeFilter, setCustomerTypeFilter] = useState('all'); // 'all' | 'b2c' | 'b2b'
   const [sortKey, setSortKey] = useState('id');
   const [sortDir, setSortDir] = useState('asc');
   const [showForm, setShowForm] = useState(false);
@@ -2457,6 +2534,8 @@ function Customers({ customers, setCustomers, items, orders, showToast }) {
 
   const filtered = useMemo(() => {
     let result = [...customers];
+    if (customerTypeFilter === 'b2b') result = result.filter(c => c.isB2B);
+    else if (customerTypeFilter === 'b2c') result = result.filter(c => !c.isB2B);
     if (agedCareFilter) result = result.filter(c => c.agedCare);
     if (gradeFilter) {
       result = result.filter(c => {
@@ -2536,6 +2615,29 @@ function Customers({ customers, setCustomers, items, orders, showToast }) {
 
   return (
     <div className="space-y-4">
+      {/* 🏷 고객 유형 탭 */}
+      <div className="flex items-center gap-2 bg-white border border-stone-200 rounded-xl p-1">
+        {[
+          { id: 'all', label: '전체', icon: '👥', count: customers.length, activeClass: 'bg-stone-800 text-white' },
+          { id: 'b2c', label: '개인 고객', icon: '🏠', count: customers.filter(c => !c.isB2B).length, activeClass: 'bg-red-800 text-white' },
+          { id: 'b2b', label: '거래처 (B2B)', icon: '🏢', count: customers.filter(c => c.isB2B).length, activeClass: 'bg-indigo-700 text-white' },
+        ].map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setCustomerTypeFilter(tab.id)}
+            className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-bold transition-all ${
+              customerTypeFilter === tab.id ? tab.activeClass : 'text-stone-600 hover:bg-stone-50'
+            }`}
+          >
+            <span className="mr-1.5">{tab.icon}</span>
+            {tab.label}
+            <span className={`ml-2 text-[10px] font-semibold ${customerTypeFilter === tab.id ? 'opacity-90' : 'opacity-60'}`}>
+              ({tab.count})
+            </span>
+          </button>
+        ))}
+      </div>
+
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative flex-1 min-w-[240px] max-w-md">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
@@ -2601,7 +2703,17 @@ function Customers({ customers, setCustomers, items, orders, showToast }) {
                 return (
                   <tr key={c.id} className={`border-b border-stone-100 hover:bg-stone-50 ${c.agedCare ? 'bg-amber-50/30' : ''}`}>
                     <td className="px-4 py-3"><span className="font-mono text-xs font-semibold text-red-800">{c.id}</span></td>
-                    <td className="px-4 py-3 font-medium text-stone-800">{c.name}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-medium text-stone-800">{c.name}</span>
+                        {c.isB2B && (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-indigo-600 text-white font-bold">🏢 B2B</span>
+                        )}
+                        {c.b2bDiscount > 0 && (
+                          <span className="text-[9px] px-1 py-0.5 rounded bg-indigo-50 text-indigo-700 font-bold">-{c.b2bDiscount}%</span>
+                        )}
+                      </div>
+                    </td>
                     <td className="px-4 py-3 text-stone-600 text-xs tabular-nums">{c.phone}</td>
                     <td className="px-4 py-3 text-stone-600 text-xs max-w-[180px] truncate" title={c.address}>{c.address}</td>
                     <td className="px-4 py-3 text-stone-700 text-xs max-w-[220px]" title={custData.summary}>
@@ -2841,17 +2953,27 @@ function CustomerHistoryModal({ customer, items, orders, onClose }) {
 function CustomerFormModal({ editTarget, onSave, onClose }) {
   const [form, setForm] = useState(editTarget || {
     name: '', phone: '', agedCare: false, address: '', grade: '일반',
-    joinDate: new Date().toISOString().slice(0,10), memo: ''
+    joinDate: new Date().toISOString().slice(0,10), memo: '',
+    isB2B: false, b2bDiscount: 0, b2bPaymentTerms: '즉시결제', b2bContact: ''
   });
 
   return (
     <div className="fixed inset-0 bg-stone-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto scrollbar-slim" onClick={e => e.stopPropagation()}>
-        <div className="px-6 py-5 border-b border-stone-200 flex items-center justify-between">
-          <h2 className="font-serif-ko text-xl font-bold text-stone-800">
+        <div className="sticky top-0 bg-white z-10 px-6 py-4 border-b border-stone-200 flex items-center justify-between shadow-sm">
+          <h2 className="font-serif-ko text-lg font-bold text-stone-800">
             {editTarget ? '고객 수정' : '고객 추가'}
           </h2>
-          <button onClick={onClose} className="p-1.5 hover:bg-stone-100 rounded-lg"><X size={18} /></button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => form.name && onSave(form)}
+              disabled={!form.name}
+              className="px-4 py-2 bg-red-800 hover:bg-red-900 text-white rounded-lg text-sm font-bold shadow-sm active:scale-95 transition-all disabled:bg-stone-300 disabled:cursor-not-allowed"
+            >
+              💾 저장
+            </button>
+            <button onClick={onClose} className="p-1.5 hover:bg-stone-100 rounded-lg"><X size={18} /></button>
+          </div>
         </div>
         <div className="p-6 grid grid-cols-2 gap-4">
           {!editTarget && (
@@ -2859,13 +2981,89 @@ function CustomerFormModal({ editTarget, onSave, onClose }) {
               💡 고객ID는 저장 시 자동으로 생성됩니다 (C0001, C0002...) · 등급은 누적 구매액에 따라 자동 승급됩니다
             </div>
           )}
-          <Field label="성함 *" value={form.name} onChange={v => setForm({...form, name: v})} />
+
+          {/* 🏢 B2B 거래처 여부 - 최상단 */}
+          <div className="col-span-2">
+            <label className="flex items-center gap-3 p-3 bg-indigo-50 border-2 border-indigo-200 rounded-lg cursor-pointer hover:bg-indigo-100 transition-all">
+              <input
+                type="checkbox"
+                checked={!!form.isB2B}
+                onChange={e => setForm({...form, isB2B: e.target.checked})}
+                className="w-5 h-5 accent-indigo-700"
+              />
+              <div className="flex-1">
+                <div className="text-sm font-bold text-indigo-900">🏢 거래처 (B2B)</div>
+                <div className="text-[10px] text-indigo-700 mt-0.5">
+                  체크 시 도매가 / 분할배송 / 외상결제 / 선주문 기능 사용 가능
+                </div>
+              </div>
+            </label>
+          </div>
+
+          <Field label="성함 / 상호 *" value={form.name} onChange={v => setForm({...form, name: v})} />
           <Field label="연락처" value={form.phone} onChange={v => setForm({...form, phone: v})} />
           <div className="col-span-2">
             <label className="block text-xs font-semibold text-stone-600 mb-1.5">주소</label>
             <input value={form.address} onChange={e => setForm({...form, address: e.target.value})}
               className="w-full px-3 py-2 border border-stone-200 rounded-lg text-sm focus:outline-none focus:border-red-700 focus:ring-2 focus:ring-red-100" />
           </div>
+
+          {/* 🏢 B2B 전용 필드들 */}
+          {form.isB2B && (
+            <div className="col-span-2 p-4 bg-indigo-50/50 border border-indigo-200 rounded-xl space-y-3">
+              <div className="text-xs font-bold text-indigo-900 flex items-center gap-1">
+                🏢 거래처 전용 설정
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-indigo-700 mb-1.5">담당자</label>
+                  <input
+                    value={form.b2bContact || ''}
+                    onChange={e => setForm({...form, b2bContact: e.target.value})}
+                    placeholder="예: 김사장"
+                    className="w-full px-3 py-2 border border-indigo-200 rounded-lg text-sm focus:outline-none focus:border-indigo-700 focus:ring-2 focus:ring-indigo-100"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-indigo-700 mb-1.5">도매 할인율 (%)</label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      min="0"
+                      max="99"
+                      value={form.b2bDiscount ?? 0}
+                      onChange={e => setForm({...form, b2bDiscount: Number(e.target.value)})}
+                      className="w-full px-3 py-2 border border-indigo-200 rounded-lg text-sm focus:outline-none focus:border-indigo-700 focus:ring-2 focus:ring-indigo-100 pr-8"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-stone-400">%</span>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-indigo-700 mb-1.5">결제 조건</label>
+                <div className="grid grid-cols-5 gap-1.5">
+                  {Object.values(PAYMENT_TERMS).map(term => (
+                    <button
+                      key={term}
+                      type="button"
+                      onClick={() => setForm({...form, b2bPaymentTerms: term})}
+                      className={`px-2 py-1.5 rounded-lg text-[11px] font-semibold border transition-all ${
+                        form.b2bPaymentTerms === term
+                          ? 'bg-indigo-700 text-white border-indigo-700'
+                          : 'bg-white text-indigo-700 border-indigo-200 hover:bg-indigo-50'
+                      }`}
+                    >
+                      {term}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="text-[10px] text-indigo-700 bg-white rounded-lg p-2 border border-indigo-100">
+                💡 <strong>할인율 {form.b2bDiscount || 0}%</strong> 적용 예시: 배추김치 4KG ($70) → <strong>${getB2BPrice(70, form.b2bDiscount || 0)}</strong>
+              </div>
+            </div>
+          )}
+
           <Field label="가입일" type="date" value={form.joinDate} onChange={v => setForm({...form, joinDate: v})} />
           <div>
             <label className="block text-xs font-semibold text-stone-600 mb-1.5">등급 (자동 계산)</label>
@@ -2878,31 +3076,33 @@ function CustomerFormModal({ editTarget, onSave, onClose }) {
             <input value={form.memo} onChange={e => setForm({...form, memo: e.target.value})}
               className="w-full px-3 py-2 border border-stone-200 rounded-lg text-sm focus:outline-none focus:border-red-700 focus:ring-2 focus:ring-red-100" />
           </div>
-          <div className="col-span-2">
-            <label className="flex items-center gap-2 p-3 bg-amber-50 border-2 border-amber-200 rounded-lg cursor-pointer hover:bg-amber-100 transition-all">
-              <input
-                type="checkbox"
-                checked={!!form.agedCare}
-                onChange={e => setForm({...form, agedCare: e.target.checked})}
-                className="w-4 h-4 accent-amber-700"
-              />
-              <span className="text-sm font-semibold text-amber-900">
-                🏥 Aged Care 고객
-              </span>
-              <span className="text-xs text-amber-700 ml-1">
-                (체크 시 고객 목록에서 배지로 구분 표시됨)
-              </span>
-            </label>
-          </div>
+          {!form.isB2B && (
+            <div className="col-span-2">
+              <label className="flex items-center gap-2 p-3 bg-amber-50 border-2 border-amber-200 rounded-lg cursor-pointer hover:bg-amber-100 transition-all">
+                <input
+                  type="checkbox"
+                  checked={!!form.agedCare}
+                  onChange={e => setForm({...form, agedCare: e.target.checked})}
+                  className="w-4 h-4 accent-amber-700"
+                />
+                <span className="text-sm font-semibold text-amber-900">
+                  🏥 Aged Care 고객
+                </span>
+                <span className="text-xs text-amber-700 ml-1">
+                  (체크 시 고객 목록에서 배지로 구분 표시됨)
+                </span>
+              </label>
+            </div>
+          )}
         </div>
-        <div className="px-6 py-4 border-t border-stone-200 flex items-center justify-end gap-2">
+        <div className="sticky bottom-0 bg-white px-6 py-4 border-t border-stone-200 flex items-center justify-end gap-2 shadow-[0_-2px_8px_rgba(0,0,0,0.04)]">
           <button onClick={onClose} className="px-4 py-2 text-sm text-stone-600 hover:bg-stone-100 rounded-lg">취소</button>
           <button
             onClick={() => form.name && onSave(form)}
             disabled={!form.name}
-            className="px-5 py-2 bg-red-800 text-white rounded-lg text-sm font-semibold hover:bg-red-900 disabled:bg-stone-300"
+            className="px-5 py-2 bg-red-800 text-white rounded-lg text-sm font-semibold hover:bg-red-900 active:scale-95 transition-all disabled:bg-stone-300"
           >
-            {editTarget ? '수정' : '추가'}
+            💾 {editTarget ? '수정' : '추가'}
           </button>
         </div>
       </div>
@@ -4819,7 +5019,7 @@ function DriverOrderDetailModal({ order, customer, item, onSave, onClose }) {
           <div>
             <label className="block text-xs font-bold text-stone-600 mb-2">배송 상태</label>
             <div className="grid grid-cols-2 gap-2">
-              {['배송준비중','출고대기','배송중','배송완료','반송','취소'].map(s => (
+              {['입고대기','배송준비중','출고대기','배송중','배송완료','반송','취소'].map(s => (
                 <button
                   key={s}
                   type="button"
@@ -4828,6 +5028,7 @@ function DriverOrderDetailModal({ order, customer, item, onSave, onClose }) {
                     form.shipStatus === s
                       ? s === '배송완료' ? 'bg-emerald-600 text-white border-emerald-600'
                         : s === '배송중' ? 'bg-blue-600 text-white border-blue-600'
+                        : s === '입고대기' ? 'bg-purple-600 text-white border-purple-600'
                         : 'bg-stone-800 text-white border-stone-800'
                       : 'bg-white text-stone-600 border-stone-200'
                   }`}
