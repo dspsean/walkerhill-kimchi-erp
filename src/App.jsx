@@ -520,6 +520,33 @@ function getB2BPrice(basePrice, discountRate) {
   return Math.round(basePrice * (1 - discountRate / 100));
 }
 
+// 🎯 실제 판매 단가 계산 (B2C/B2B 자동 판단 + 상품별 오버라이드 우선)
+// 우선순위: ① 거래처별 상품 오버라이드 > ② 상품 기본 B2B가 > ③ 거래처 할인율 적용가 > ④ B2C 정가
+function getEffectivePrice(item, customer) {
+  if (!item) return 0;
+  const basePrice = item.price || 0;
+
+  // B2B 고객
+  if (customer?.isB2B) {
+    // ① 거래처별 상품 오버라이드
+    const override = customer.itemPriceOverrides?.[item.code];
+    if (override !== undefined && override !== null && override > 0) {
+      return override;
+    }
+    // ② 상품 기본 B2B 도매가
+    if (item.b2bPrice && item.b2bPrice > 0) {
+      return item.b2bPrice;
+    }
+    // ③ 거래처 전체 할인율
+    if (customer.b2bDiscount > 0) {
+      return getB2BPrice(basePrice, customer.b2bDiscount);
+    }
+  }
+
+  // ④ B2C 정가 (기본)
+  return basePrice;
+}
+
 // 주문이 B2B인지 확인 (customer 기반)
 function isB2BOrder(order, customerMap) {
   const c = customerMap[order.customerId];
@@ -1915,6 +1942,7 @@ function Orders({ customers, items, orders, setOrders, showToast }) {
   const [yearFilter, setYearFilter] = useState('');
   const [monthFilter, setMonthFilter] = useState('');
   const [zoneFilter, setZoneFilter] = useState('');
+  const [orderTypeFilter, setOrderTypeFilter] = useState('all'); // 'all' | 'b2c' | 'b2b' | 'waiting' | 'split'
   const [sortKey, setSortKey] = useState('id');
   const [sortDir, setSortDir] = useState('desc');
   const [showForm, setShowForm] = useState(false);
@@ -1972,6 +2000,11 @@ function Orders({ customers, items, orders, setOrders, showToast }) {
       });
     }
     if (zoneFilter) result = result.filter(o => o.shippingGroup === zoneFilter);
+    // 주문 유형 필터
+    if (orderTypeFilter === 'b2c') result = result.filter(o => !customerMap[o.customerId]?.isB2B);
+    else if (orderTypeFilter === 'b2b') result = result.filter(o => customerMap[o.customerId]?.isB2B);
+    else if (orderTypeFilter === 'waiting') result = result.filter(o => o.shipStatus === '입고대기');
+    else if (orderTypeFilter === 'split') result = result.filter(o => o.splitDeliveries?.length > 0);
     if (search) {
       const s = search.toLowerCase();
       result = result.filter(o => {
@@ -2006,9 +2039,9 @@ function Orders({ customers, items, orders, setOrders, showToast }) {
       return 0;
     });
     return result;
-  }, [orders, search, yearFilter, monthFilter, zoneFilter, sortKey, sortDir, customerMap, priceMap]);
+  }, [orders, search, yearFilter, monthFilter, zoneFilter, orderTypeFilter, sortKey, sortDir, customerMap, priceMap]);
 
-  useEffect(() => { setDisplayLimit(50); }, [search, yearFilter, monthFilter, zoneFilter]);
+  useEffect(() => { setDisplayLimit(50); }, [search, yearFilter, monthFilter, zoneFilter, orderTypeFilter]);
 
   const nextOrderId = () => {
     const nums = orders.map(o => parseInt(o.id.replace('ORD-',''), 10)).filter(n => !isNaN(n));
@@ -2018,7 +2051,7 @@ function Orders({ customers, items, orders, setOrders, showToast }) {
 
   const handleSave = (order) => {
     if (editTarget) {
-      setOrders(orders.map(o => o.id === editTarget.id ? { ...order, id: editTarget.id } : o));
+      setOrders(orders.map(o => o.id === editTarget.id ? { ...o, ...order, id: editTarget.id } : o));
       showToast('주문이 수정되었습니다');
     } else {
       setOrders([...orders, { id: nextOrderId(), shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: '', isService: false, isPickup: false, cashReceived: 0, ...order }]);
@@ -2026,6 +2059,15 @@ function Orders({ customers, items, orders, setOrders, showToast }) {
     }
     setShowForm(false);
     setEditTarget(null);
+  };
+
+  // ⏳ 입고대기 → 배송준비중 전환 (재고 입고 시)
+  const handleStockIn = (orderId) => {
+    const o = orders.find(x => x.id === orderId);
+    if (!o) return;
+    if (!confirm(`"${o.itemName}" ${o.qty}개를 입고 처리할까요?\n상태가 "배송준비중"으로 변경됩니다.`)) return;
+    setOrders(orders.map(x => x.id === orderId ? { ...x, shipStatus: '배송준비중' } : x));
+    showToast(`✅ 입고 완료! 배송준비중으로 전환되었습니다`);
   };
 
   const handleDelete = (id) => {
@@ -2053,6 +2095,31 @@ function Orders({ customers, items, orders, setOrders, showToast }) {
         >
           <Plus size={16} /> 새 주문 등록
         </button>
+      </div>
+
+      {/* 주문 유형 필터 탭 */}
+      <div className="bg-white rounded-xl border border-stone-200 p-1 flex items-center gap-1 flex-wrap">
+        {[
+          { id: 'all', label: '전체', icon: '📋', count: orders.length, activeClass: 'bg-stone-800 text-white' },
+          { id: 'b2c', label: '개인 (B2C)', icon: '🏠', count: orders.filter(o => !customerMap[o.customerId]?.isB2B).length, activeClass: 'bg-red-800 text-white' },
+          { id: 'b2b', label: '거래처 (B2B)', icon: '🏢', count: orders.filter(o => customerMap[o.customerId]?.isB2B).length, activeClass: 'bg-indigo-700 text-white' },
+          { id: 'waiting', label: '입고대기', icon: '⏳', count: orders.filter(o => o.shipStatus === '입고대기').length, activeClass: 'bg-purple-700 text-white' },
+          { id: 'split', label: '분할 배송', icon: '📦', count: orders.filter(o => o.splitDeliveries?.length > 0).length, activeClass: 'bg-teal-700 text-white' },
+        ].map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setOrderTypeFilter(tab.id)}
+            className={`flex-1 px-3 py-2 rounded-lg text-xs font-bold transition-all ${
+              orderTypeFilter === tab.id ? tab.activeClass : 'text-stone-600 hover:bg-stone-50'
+            }`}
+          >
+            <span className="mr-1">{tab.icon}</span>
+            {tab.label}
+            <span className={`ml-1.5 text-[10px] ${orderTypeFilter === tab.id ? 'opacity-90' : 'opacity-60'}`}>
+              ({tab.count})
+            </span>
+          </button>
+        ))}
       </div>
 
       {/* 기간 & Zone 필터 */}
@@ -2132,22 +2199,39 @@ function Orders({ customers, items, orders, setOrders, showToast }) {
             <tbody>
               {filtered.slice(0, displayLimit).map(o => {
                 const c = customerMap[o.customerId];
-                const total = (priceMap[o.itemName] || 0) * o.qty;
+                const basePrice = priceMap[o.itemName] || 0;
+                const isB2B_o = !!c?.isB2B;
+                const discount_o = c?.b2bDiscount || 0;
+                const unitPrice_o = isB2B_o ? getB2BPrice(basePrice, discount_o) : basePrice;
+                const total = unitPrice_o * o.qty;
                 // 서비스면 배송료/금액 없음
                 const isServ = !!o.isService;
+                const isWaitingStock = o.shipStatus === '입고대기';
                 const customerTotal = customerTotalMap[o.customerId] || 0;
-                const needsShipping = !isServ && !o.isPickup && customerTotal < SHIPPING_THRESHOLD;
+                const needsShipping = !isServ && !o.isPickup && !isB2B_o && customerTotal < SHIPPING_THRESHOLD;
                 const finalTotal = isServ ? 0 : total + (needsShipping ? SHIPPING_FEE : 0);
                 return (
-                  <tr key={o.id} className={`border-b border-stone-100 hover:bg-stone-50 ${isServ ? 'bg-amber-50/40' : c?.agedCare ? 'bg-amber-50/20' : ''}`}>
+                  <tr key={o.id} className={`border-b border-stone-100 hover:bg-stone-50 ${
+                    isServ ? 'bg-amber-50/40' :
+                    isWaitingStock ? 'bg-purple-50/40' :
+                    isB2B_o ? 'bg-indigo-50/30' :
+                    c?.agedCare ? 'bg-amber-50/20' : ''
+                  }`}>
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="font-mono text-xs font-semibold text-red-800">{o.id}</span>
                         {isServ && <span className="text-[9px] px-1 py-0.5 rounded bg-amber-500 text-white font-bold">🎁 서비스</span>}
                         {o.isPickup && <span className="text-[9px] px-1 py-0.5 rounded bg-sky-500 text-white font-bold">📍 픽업</span>}
+                        {isWaitingStock && <span className="text-[9px] px-1 py-0.5 rounded bg-purple-500 text-white font-bold">⏳ 입고대기</span>}
+                        {o.splitDeliveries?.length > 0 && <span className="text-[9px] px-1 py-0.5 rounded bg-indigo-500 text-white font-bold">📦 분할{o.splitDeliveries.length}회</span>}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-stone-600 text-xs">{o.date}</td>
+                    <td className="px-4 py-3 text-stone-600 text-xs">
+                      {o.date}
+                      {o.expectedStockDate && (
+                        <div className="text-[10px] text-purple-700 font-semibold mt-0.5">입고: {o.expectedStockDate}</div>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-center">
                       {o.shippingGroup ? (
                         <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${ZONE_COLORS[o.shippingGroup] || 'bg-stone-100 text-stone-600'}`}>
@@ -2156,14 +2240,20 @@ function Orders({ customers, items, orders, setOrders, showToast }) {
                       ) : <span className="text-stone-400 text-xs">-</span>}
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1 flex-wrap">
                         <span className="font-medium text-stone-800">{c?.name || '삭제된 고객'}</span>
+                        {isB2B_o && <span className="text-[9px] px-1 py-0.5 rounded bg-indigo-600 text-white font-bold">🏢 B2B</span>}
                         {c?.agedCare && <span className="text-[9px] px-1 py-0.5 rounded bg-amber-200 text-amber-900 font-bold">🏥</span>}
                       </div>
                       <div className="text-xs text-stone-400">{o.customerId}</div>
                     </td>
                     <td className="px-4 py-3 text-stone-700">{o.itemName}</td>
-                    <td className="px-4 py-3 text-right text-stone-700 tabular-nums">{o.qty}</td>
+                    <td className="px-4 py-3 text-right text-stone-700 tabular-nums">
+                      <div>{o.qty}</div>
+                      {isB2B_o && o.qty >= 10 && (
+                        <div className="text-[10px] text-indigo-700 font-bold">{Math.ceil(o.qty / 10)}박스</div>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-right tabular-nums">
                       {isServ ? (
                         <div>
@@ -2186,6 +2276,15 @@ function Orders({ customers, items, orders, setOrders, showToast }) {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-center gap-1">
+                        {isWaitingStock && (
+                          <button
+                            onClick={() => handleStockIn(o.id)}
+                            className="px-2 py-1 text-[10px] font-bold bg-purple-600 text-white rounded hover:bg-purple-700"
+                            title="입고 완료 처리"
+                          >
+                            📥 입고
+                          </button>
+                        )}
                         <button onClick={() => setMsgTarget(o)} className="p-1.5 text-stone-500 hover:bg-red-50 hover:text-red-700 rounded" title="카톡 메시지">
                           <Send size={14} />
                         </button>
@@ -2257,6 +2356,11 @@ function OrderFormModal({ customers, items, editTarget, onSave, onClose }) {
   const [qty, setQty] = useState(editTarget?.qty || 1);
   const [isService, setIsService] = useState(editTarget?.isService || false);
   const [isPickup, setIsPickup] = useState(editTarget?.isPickup || false);
+  // 🏢 B2B / 선주문 관련
+  const [isPreOrder, setIsPreOrder] = useState(editTarget?.shipStatus === '입고대기' || false);
+  const [expectedStockDate, setExpectedStockDate] = useState(editTarget?.expectedStockDate || '');
+  const [splitDeliveries, setSplitDeliveries] = useState(editTarget?.splitDeliveries || []);
+  const [showSplitUI, setShowSplitUI] = useState(!!editTarget?.splitDeliveries?.length);
 
   const matchedCustomers = useMemo(() => {
     if (!customerSearch) return customers.slice(0, 8);
@@ -2270,18 +2374,75 @@ function OrderFormModal({ customers, items, editTarget, onSave, onClose }) {
 
   const selectedCustomer = customers.find(c => c.id === customerId);
   const selectedItem = items.find(i => i.name === itemName);
-  const total = (selectedItem?.price || 0) * qty;
+  const isB2B = !!selectedCustomer?.isB2B;
+  const discountRate = selectedCustomer?.b2bDiscount || 0;
+  const basePrice = selectedItem?.price || 0;
+  // 🎯 실제 적용 단가 (오버라이드 > 기본 B2B가 > 할인율 순)
+  const unitPrice = selectedItem ? getEffectivePrice(selectedItem, selectedCustomer) : 0;
+  const total = unitPrice * qty;
+  const savedAmount = (basePrice - unitPrice) * qty;
+  // 가격이 어떻게 결정되었는지 추적 (UI 표시용)
+  const priceSource = selectedItem && selectedCustomer?.isB2B
+    ? (selectedCustomer.itemPriceOverrides?.[selectedItem.code] !== undefined ? 'override'
+      : selectedItem.b2bPrice > 0 ? 'itemB2B'
+      : discountRate > 0 ? 'discount'
+      : 'base')
+    : 'base';
 
-  const canSubmit = customerId && itemName && qty > 0;
+  // 박스 단위 표시 (대량 주문)
+  const isBulkOrder = isB2B && qty >= 10;
+
+  // 분할 배송 유효성 체크
+  const splitTotal = splitDeliveries.reduce((s, d) => s + (Number(d.qty) || 0), 0);
+  const splitValid = !showSplitUI || splitTotal === qty;
+
+  const canSubmit = customerId && itemName && qty > 0 && splitValid &&
+    (!isPreOrder || !!expectedStockDate);
+
+  // 분할 배송 추가/제거
+  const addSplit = () => {
+    setSplitDeliveries([...splitDeliveries, { date: '', qty: 0 }]);
+  };
+  const removeSplit = (idx) => {
+    setSplitDeliveries(splitDeliveries.filter((_, i) => i !== idx));
+  };
+  const updateSplit = (idx, key, value) => {
+    const next = [...splitDeliveries];
+    next[idx] = { ...next[idx], [key]: value };
+    setSplitDeliveries(next);
+  };
+
+  const handleSave = () => {
+    if (!canSubmit) return;
+    const data = { date, customerId, itemName, qty, isService, isPickup };
+    if (isPreOrder) {
+      data.shipStatus = '입고대기';
+      data.expectedStockDate = expectedStockDate;
+    }
+    if (showSplitUI && splitDeliveries.length > 0) {
+      data.splitDeliveries = splitDeliveries;
+    }
+    onSave(data);
+  };
 
   return (
     <div className="fixed inset-0 bg-stone-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto scrollbar-slim" onClick={e => e.stopPropagation()}>
-        <div className="px-6 py-5 border-b border-stone-200 flex items-center justify-between">
-          <h2 className="font-serif-ko text-xl font-bold text-stone-800">
+        <div className="sticky top-0 bg-white z-10 px-6 py-4 border-b border-stone-200 flex items-center justify-between shadow-sm">
+          <h2 className="font-serif-ko text-lg font-bold text-stone-800">
             {editTarget ? '주문 수정' : '새 주문 등록'}
+            {isB2B && <span className="ml-2 text-xs px-2 py-0.5 bg-indigo-600 text-white rounded-full font-bold">🏢 B2B</span>}
           </h2>
-          <button onClick={onClose} className="p-1.5 hover:bg-stone-100 rounded-lg"><X size={18} /></button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleSave}
+              disabled={!canSubmit}
+              className="px-4 py-2 bg-red-800 hover:bg-red-900 text-white rounded-lg text-sm font-bold shadow-sm active:scale-95 transition-all disabled:bg-stone-300 disabled:cursor-not-allowed"
+            >
+              💾 저장
+            </button>
+            <button onClick={onClose} className="p-1.5 hover:bg-stone-100 rounded-lg"><X size={18} /></button>
+          </div>
         </div>
 
         <div className="p-6 space-y-5">
@@ -2312,9 +2473,11 @@ function OrderFormModal({ customers, items, editTarget, onSave, onClose }) {
                   className={`w-full text-left px-3 py-2 hover:bg-stone-50 ${customerId === c.id ? 'bg-red-50' : ''}`}
                 >
                   <div className="flex items-center justify-between">
-                    <div>
+                    <div className="flex items-center gap-1.5">
                       <span className="font-medium text-sm text-stone-800">{c.name}</span>
-                      <span className={`ml-2 text-[10px] px-1.5 py-0.5 rounded ${gradeStyle(c.grade)}`}>{c.grade}</span>
+                      {c.isB2B && <span className="text-[9px] px-1.5 py-0.5 rounded bg-indigo-600 text-white font-bold">🏢 B2B</span>}
+                      {c.isB2B && c.b2bDiscount > 0 && <span className="text-[9px] px-1 py-0.5 rounded bg-indigo-50 text-indigo-700 font-bold">-{c.b2bDiscount}%</span>}
+                      {!c.isB2B && <span className={`ml-1 text-[10px] px-1.5 py-0.5 rounded ${gradeStyle(c.grade)}`}>{c.grade}</span>}
                     </div>
                     <span className="text-xs text-stone-500 font-mono">{c.id}</span>
                   </div>
@@ -2325,6 +2488,30 @@ function OrderFormModal({ customers, items, editTarget, onSave, onClose }) {
             </div>
           </div>
 
+          {/* 🏢 B2B 정보 표시 */}
+          {isB2B && selectedCustomer && (
+            <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-xl">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-bold text-indigo-900">🏢 거래처 정보</span>
+                <span className="text-[10px] text-indigo-700">{selectedCustomer.b2bPaymentTerms || '즉시결제'}</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-[11px]">
+                <div>
+                  <span className="text-stone-500">담당자</span>
+                  <div className="font-semibold text-stone-800">{selectedCustomer.b2bContact || '-'}</div>
+                </div>
+                <div>
+                  <span className="text-stone-500">할인율</span>
+                  <div className="font-bold text-indigo-700">{discountRate}%</div>
+                </div>
+                <div>
+                  <span className="text-stone-500">미수금</span>
+                  <div className="font-bold text-red-700">${formatNum(calcB2BReceivable(selectedCustomer.id, [], items))}</div>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-3 gap-4">
             <div className="col-span-2">
               <label className="block text-xs font-semibold text-stone-600 mb-1.5">품목</label>
@@ -2332,25 +2519,117 @@ function OrderFormModal({ customers, items, editTarget, onSave, onClose }) {
                 className="w-full px-3 py-2 border border-stone-200 rounded-lg text-sm focus:outline-none focus:border-red-700 focus:ring-2 focus:ring-red-100 bg-white">
                 <option value="">선택하세요</option>
                 {items.map(i => (
-                  <option key={i.code} value={i.name} disabled={i.availStock <= 0}>
+                  <option key={i.code} value={i.name} disabled={i.availStock <= 0 && !isB2B}>
                     {i.name} ({formatWon(i.price)}) {i.availStock <= 0 ? '- 품절' : i.availStock <= 20 ? `- 재고 ${i.availStock}개` : ''}
                   </option>
                 ))}
               </select>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-stone-600 mb-1.5">수량</label>
+              <label className="block text-xs font-semibold text-stone-600 mb-1.5">
+                수량 {isBulkOrder && <span className="ml-1 text-[10px] text-indigo-700 font-bold">({Math.ceil(qty / 10)}박스)</span>}
+              </label>
               <input type="number" min="1" value={qty} onChange={e => setQty(parseInt(e.target.value) || 1)}
                 className="w-full px-3 py-2 border border-stone-200 rounded-lg text-sm focus:outline-none focus:border-red-700 focus:ring-2 focus:ring-red-100" />
             </div>
           </div>
 
+          {/* 재고 부족 경고 + 선주문 옵션 */}
           {selectedItem && qty > selectedItem.availStock && (
-            <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-              <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
-              <div className="text-xs text-amber-800">
-                요청 수량({qty})이 가용재고({selectedItem.availStock})를 초과합니다. 그래도 주문을 등록할 수 있지만 재고 확인이 필요합니다.
+            <div className="p-3 bg-purple-50 border-2 border-purple-200 rounded-xl space-y-2">
+              <div className="flex items-start gap-2">
+                <AlertTriangle size={16} className="text-purple-600 shrink-0 mt-0.5" />
+                <div className="text-xs text-purple-900">
+                  <strong>재고 부족:</strong> 요청 수량 {qty}개 &gt; 가용재고 {selectedItem.availStock}개
+                  <br/>선주문으로 등록하면 입고 후 자동 처리됩니다.
+                </div>
               </div>
+              <label className="flex items-center gap-2 p-2 bg-white rounded-lg cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isPreOrder}
+                  onChange={e => setIsPreOrder(e.target.checked)}
+                  className="w-4 h-4 accent-purple-700"
+                />
+                <span className="text-xs font-bold text-purple-900">⏳ 선주문으로 등록 (입고 대기)</span>
+              </label>
+              {isPreOrder && (
+                <div>
+                  <label className="block text-[10px] font-semibold text-purple-700 mb-1">예상 입고일 *</label>
+                  <input
+                    type="date"
+                    value={expectedStockDate}
+                    onChange={e => setExpectedStockDate(e.target.value)}
+                    min={new Date().toISOString().slice(0, 10)}
+                    className="w-full px-3 py-2 border border-purple-200 rounded-lg text-sm focus:outline-none focus:border-purple-700 focus:ring-2 focus:ring-purple-100"
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 🏢 B2B 전용: 분할 배송 */}
+          {isB2B && qty >= 5 && (
+            <div className={`p-3 rounded-xl border-2 ${showSplitUI ? 'bg-indigo-50 border-indigo-300' : 'bg-stone-50 border-stone-200'}`}>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={showSplitUI}
+                  onChange={e => {
+                    setShowSplitUI(e.target.checked);
+                    if (e.target.checked && splitDeliveries.length === 0) {
+                      setSplitDeliveries([{ date: '', qty: Math.ceil(qty / 2) }, { date: '', qty: Math.floor(qty / 2) }]);
+                    }
+                  }}
+                  className="w-4 h-4 accent-indigo-700"
+                />
+                <div className="flex-1">
+                  <div className="text-sm font-bold text-indigo-900">📦 분할 배송</div>
+                  <div className="text-[10px] text-indigo-700">한 주문을 여러 날에 나눠 배송</div>
+                </div>
+              </label>
+
+              {showSplitUI && (
+                <div className="mt-3 space-y-2">
+                  {splitDeliveries.map((split, idx) => (
+                    <div key={idx} className="flex items-center gap-2 bg-white p-2 rounded-lg">
+                      <span className="text-xs font-bold text-indigo-700 w-8">{idx + 1}회</span>
+                      <input
+                        type="date"
+                        value={split.date}
+                        onChange={e => updateSplit(idx, 'date', e.target.value)}
+                        className="flex-1 px-2 py-1.5 border border-stone-200 rounded text-xs focus:outline-none focus:border-indigo-700"
+                      />
+                      <input
+                        type="number"
+                        min="1"
+                        max={qty}
+                        value={split.qty}
+                        onChange={e => updateSplit(idx, 'qty', parseInt(e.target.value) || 0)}
+                        className="w-20 px-2 py-1.5 border border-stone-200 rounded text-xs focus:outline-none focus:border-indigo-700"
+                      />
+                      <span className="text-[10px] text-stone-500">개</span>
+                      <button
+                        onClick={() => removeSplit(idx)}
+                        className="p-1 text-red-600 hover:bg-red-50 rounded"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ))}
+                  <div className="flex items-center justify-between">
+                    <button
+                      onClick={addSplit}
+                      className="text-xs text-indigo-700 hover:underline font-semibold"
+                    >
+                      + 배송일 추가
+                    </button>
+                    <div className={`text-xs font-bold ${splitTotal === qty ? 'text-emerald-700' : 'text-red-700'}`}>
+                      합계: {splitTotal} / {qty}개 {splitTotal === qty ? '✓' : '⚠️ 수량 일치 필요'}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -2385,15 +2664,39 @@ function OrderFormModal({ customers, items, editTarget, onSave, onClose }) {
             </div>
           </div>
 
-          <div className={`p-4 rounded-xl ${isService ? 'bg-amber-50 border-2 border-amber-200' : isPickup ? 'bg-sky-50 border-2 border-sky-200' : 'bg-stone-50'}`}>
+          {/* 합계 - B2B 도매가 표시 */}
+          <div className={`p-4 rounded-xl ${isService ? 'bg-amber-50 border-2 border-amber-200' : isB2B ? 'bg-indigo-50 border-2 border-indigo-200' : isPickup ? 'bg-sky-50 border-2 border-sky-200' : 'bg-stone-50'}`}>
+            {isB2B && !isService && discountRate > 0 && (
+              <div className="flex items-center justify-between text-xs mb-2 pb-2 border-b border-indigo-200">
+                <span className="text-stone-600">정가 {formatWon(basePrice)} × {qty}</span>
+                <span className="text-stone-400 line-through">{formatWon(basePrice * qty)}</span>
+              </div>
+            )}
             <div className="flex items-center justify-between text-sm">
-              <span className={isService ? 'text-amber-900 font-semibold' : isPickup ? 'text-sky-900 font-semibold' : 'text-stone-600'}>
-                {isService ? '🎁 서비스 (무료)' : isPickup ? '📍 픽업 (배송료 없음)' : '합계'}
+              <span className={isService ? 'text-amber-900 font-semibold' : isB2B ? 'text-indigo-900 font-semibold' : isPickup ? 'text-sky-900 font-semibold' : 'text-stone-600'}>
+                {isService ? '🎁 서비스 (무료)' : isB2B ? (
+                  <span className="flex items-center gap-1.5">
+                    🏢 B2B 적용가
+                    {priceSource === 'override' && <span className="text-[9px] px-1.5 py-0.5 rounded bg-indigo-700 text-white font-bold">🎯 개별가</span>}
+                    {priceSource === 'itemB2B' && <span className="text-[9px] px-1.5 py-0.5 rounded bg-indigo-500 text-white font-bold">📦 상품B2B</span>}
+                    {priceSource === 'discount' && <span className="text-[9px] px-1.5 py-0.5 rounded bg-indigo-400 text-white font-bold">-{discountRate}%</span>}
+                  </span>
+                ) : isPickup ? '📍 픽업 (배송료 없음)' : '합계'}
               </span>
-              <span className={`text-2xl font-bold tabular-nums ${isService ? 'text-amber-700 line-through' : isPickup ? 'text-sky-800' : 'text-red-800'}`}>
+              <span className={`text-2xl font-bold tabular-nums ${isService ? 'text-amber-700 line-through' : isB2B ? 'text-indigo-700' : isPickup ? 'text-sky-800' : 'text-red-800'}`}>
                 {formatWon(total)}
               </span>
             </div>
+            {isB2B && savedAmount > 0 && !isService && (
+              <div className="text-[10px] text-indigo-700 text-right mt-1">
+                💰 절약 금액: ${formatNum(savedAmount)}
+              </div>
+            )}
+            {isBulkOrder && (
+              <div className="text-[10px] text-indigo-700 text-right mt-0.5">
+                📦 대량주문: {qty}개 ({Math.ceil(qty / 10)}박스 기준)
+              </div>
+            )}
             {isService && (
               <div className="text-[10px] text-amber-700 text-right mt-1">
                 실제 청구액: $0 · 매출 제외
@@ -2407,14 +2710,14 @@ function OrderFormModal({ customers, items, editTarget, onSave, onClose }) {
           </div>
         </div>
 
-        <div className="px-6 py-4 border-t border-stone-200 flex items-center justify-end gap-2">
+        <div className="sticky bottom-0 bg-white px-6 py-4 border-t border-stone-200 flex items-center justify-end gap-2 shadow-[0_-2px_8px_rgba(0,0,0,0.04)]">
           <button onClick={onClose} className="px-4 py-2 text-sm text-stone-600 hover:bg-stone-100 rounded-lg">취소</button>
           <button
-            onClick={() => canSubmit && onSave({ date, customerId, itemName, qty, isService, isPickup })}
+            onClick={handleSave}
             disabled={!canSubmit}
-            className="px-5 py-2 bg-red-800 text-white rounded-lg text-sm font-semibold hover:bg-red-900 disabled:bg-stone-300 disabled:cursor-not-allowed"
+            className="px-5 py-2 bg-red-800 text-white rounded-lg text-sm font-semibold hover:bg-red-900 active:scale-95 transition-all disabled:bg-stone-300 disabled:cursor-not-allowed"
           >
-            {editTarget ? '수정' : '등록'}
+            💾 {editTarget ? '수정' : '등록'}
           </button>
         </div>
       </div>
@@ -2791,6 +3094,7 @@ function Customers({ customers, setCustomers, items, orders, showToast }) {
       {showForm && (
         <CustomerFormModal
           editTarget={editTarget}
+          items={items}
           onSave={handleSave}
           onClose={() => { setShowForm(false); setEditTarget(null); }}
         />
@@ -2950,12 +3254,24 @@ function CustomerHistoryModal({ customer, items, orders, onClose }) {
   );
 }
 
-function CustomerFormModal({ editTarget, onSave, onClose }) {
+function CustomerFormModal({ editTarget, items, onSave, onClose }) {
   const [form, setForm] = useState(editTarget || {
     name: '', phone: '', agedCare: false, address: '', grade: '일반',
     joinDate: new Date().toISOString().slice(0,10), memo: '',
-    isB2B: false, b2bDiscount: 0, b2bPaymentTerms: '즉시결제', b2bContact: ''
+    isB2B: false, b2bDiscount: 0, b2bPaymentTerms: '즉시결제', b2bContact: '',
+    itemPriceOverrides: {}  // { itemCode: customPrice }
   });
+
+  // 상품별 가격 오버라이드 업데이트
+  const updateItemOverride = (itemCode, value) => {
+    const overrides = { ...(form.itemPriceOverrides || {}) };
+    if (value === '' || value === null || value === 0) {
+      delete overrides[itemCode];  // 빈 값이면 삭제 (기본가 사용)
+    } else {
+      overrides[itemCode] = Number(value);
+    }
+    setForm({ ...form, itemPriceOverrides: overrides });
+  };
 
   return (
     <div className="fixed inset-0 bg-stone-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -3061,6 +3377,87 @@ function CustomerFormModal({ editTarget, onSave, onClose }) {
               <div className="text-[10px] text-indigo-700 bg-white rounded-lg p-2 border border-indigo-100">
                 💡 <strong>할인율 {form.b2bDiscount || 0}%</strong> 적용 예시: 배추김치 4KG ($70) → <strong>${getB2BPrice(70, form.b2bDiscount || 0)}</strong>
               </div>
+
+              {/* 🎯 상품별 개별 가격 오버라이드 */}
+              {items && items.length > 0 && (
+                <div className="pt-3 border-t border-indigo-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <div className="text-xs font-bold text-indigo-900">🎯 상품별 개별 가격 (선택사항)</div>
+                      <div className="text-[10px] text-indigo-600 mt-0.5">설정하면 기본 할인율보다 우선 적용됩니다</div>
+                    </div>
+                    {Object.keys(form.itemPriceOverrides || {}).length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setForm({...form, itemPriceOverrides: {}})}
+                        className="text-[10px] text-red-600 hover:underline"
+                      >
+                        전체 초기화
+                      </button>
+                    )}
+                  </div>
+                  <div className="space-y-1.5 max-h-64 overflow-y-auto">
+                    {items.map(item => {
+                      const override = form.itemPriceOverrides?.[item.code];
+                      const defaultB2BPrice = item.b2bPrice > 0 ? item.b2bPrice : getB2BPrice(item.price, form.b2bDiscount || 0);
+                      const effectivePrice = override !== undefined ? override : defaultB2BPrice;
+                      const savingVsB2C = item.price > 0 ? ((1 - effectivePrice / item.price) * 100).toFixed(0) : 0;
+
+                      return (
+                        <div key={item.code} className="flex items-center gap-2 p-2 bg-white rounded-lg border border-indigo-100">
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs font-semibold text-stone-800 truncate">{item.name}</div>
+                            <div className="text-[10px] text-stone-500 flex items-center gap-1.5">
+                              <span>정가: ${item.price}</span>
+                              <span className="text-indigo-400">|</span>
+                              <span className="text-indigo-700">기본도매가: ${defaultB2BPrice}</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] text-stone-500">$</span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={override ?? ''}
+                              placeholder={String(defaultB2BPrice)}
+                              onChange={e => updateItemOverride(item.code, e.target.value)}
+                              className={`w-20 px-2 py-1 border rounded text-xs text-right tabular-nums focus:outline-none focus:ring-1 ${
+                                override !== undefined
+                                  ? 'border-indigo-500 bg-indigo-50 font-bold text-indigo-700'
+                                  : 'border-stone-200 focus:border-indigo-500 focus:ring-indigo-100'
+                              }`}
+                            />
+                            {override !== undefined && (
+                              <span className={`text-[10px] font-bold ${savingVsB2C >= 20 ? 'text-emerald-700' : savingVsB2C >= 10 ? 'text-amber-700' : 'text-red-700'} w-8`}>
+                                -{savingVsB2C}%
+                              </span>
+                            )}
+                            {override !== undefined && (
+                              <button
+                                type="button"
+                                onClick={() => updateItemOverride(item.code, '')}
+                                className="p-0.5 text-red-600 hover:bg-red-50 rounded"
+                                title="기본값으로"
+                              >
+                                <X size={12} />
+                              </button>
+                            )}
+                            {override === undefined && (
+                              <span className="w-10 text-[9px] text-stone-400 text-center">기본</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {Object.keys(form.itemPriceOverrides || {}).length > 0 && (
+                    <div className="mt-2 text-[10px] text-indigo-700 bg-white rounded px-2 py-1.5 border border-indigo-100">
+                      ✓ <strong>{Object.keys(form.itemPriceOverrides).length}개 상품</strong>에 개별 가격 적용 중
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -3140,6 +3537,8 @@ function Field({ label, value, onChange, type = 'text' }) {
 function Items({ items, setItems, showToast }) {
   const [showForm, setShowForm] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
+  const [stockInTarget, setStockInTarget] = useState(null); // 📥 입고 모달 대상
+  const [historyTarget, setHistoryTarget] = useState(null); // 📜 입고 이력 대상
 
   const baechu = items.find(i => i.code === 'P001');
   const chonggak = items.find(i => i.code === 'P002');
@@ -3147,6 +3546,43 @@ function Items({ items, setItems, showToast }) {
   const handleSaveStock = (code, newStock) => {
     setItems(items.map(i => i.code === code ? { ...i, realStock: newStock } : i));
     showToast('재고가 업데이트되었습니다');
+  };
+
+  // 📥 입고 처리 (평균 원가 자동 재계산)
+  const handleStockIn = (code, stockInData) => {
+    // stockInData: { qty, cost, date, memo, supplier }
+    setItems(items.map(i => {
+      if (i.code !== code) return i;
+
+      const currentStock = i.realStock || 0;
+      const currentCost = i.cost || 0;
+      const newQty = stockInData.qty;
+      const newCost = stockInData.cost;
+
+      // 평균 원가 계산 (가중 평균)
+      const totalValue = currentStock * currentCost + newQty * newCost;
+      const totalQty = currentStock + newQty;
+      const avgCost = totalQty > 0 ? Math.round((totalValue / totalQty) * 100) / 100 : newCost;
+
+      const newHistoryEntry = {
+        id: `SI-${Date.now()}`,
+        date: stockInData.date,
+        qty: newQty,
+        cost: newCost,
+        supplier: stockInData.supplier || '',
+        memo: stockInData.memo || '',
+        prevStock: currentStock,
+        newStock: totalQty,
+      };
+
+      return {
+        ...i,
+        realStock: totalQty,
+        cost: avgCost,
+        stockHistory: [...(i.stockHistory || []), newHistoryEntry],
+      };
+    }));
+    showToast(`✅ 입고 완료: ${stockInData.qty}개 · 평균원가 재계산됨`);
   };
 
   const nextCode = () => {
@@ -3233,8 +3669,10 @@ function Items({ items, setItems, showToast }) {
             <tr>
               <th className="text-left px-4 py-3 font-semibold text-stone-600 text-xs">품목코드</th>
               <th className="text-left px-4 py-3 font-semibold text-stone-600 text-xs">품목명</th>
-              <th className="text-left px-4 py-3 font-semibold text-stone-600 text-xs">구성</th>
-              <th className="text-right px-4 py-3 font-semibold text-stone-600 text-xs">단가</th>
+              <th className="text-right px-4 py-3 font-semibold text-stone-600 text-xs">💰 원가</th>
+              <th className="text-right px-4 py-3 font-semibold text-stone-600 text-xs">🏠 B2C 판매가</th>
+              <th className="text-right px-4 py-3 font-semibold text-stone-600 text-xs">🏢 B2B 도매가</th>
+              <th className="text-center px-4 py-3 font-semibold text-stone-600 text-xs">마진율</th>
               <th className="text-right px-4 py-3 font-semibold text-stone-600 text-xs">실재고</th>
               <th className="text-right px-4 py-3 font-semibold text-stone-600 text-xs">가용재고</th>
               <th className="text-center px-4 py-3 font-semibold text-stone-600 text-xs">상태</th>
@@ -3244,15 +3682,37 @@ function Items({ items, setItems, showToast }) {
           <tbody>
             {items.map(it => {
               const st = stockStatus(it.availStock);
+              const cost = it.cost || 0;
+              const margin = (it.price || 0) - cost;
+              const marginRate = it.price > 0 ? ((margin / it.price) * 100).toFixed(0) : 0;
               return (
                 <tr key={it.code} className="border-b border-stone-100 hover:bg-stone-50">
                   <td className="px-4 py-3"><span className="font-mono text-xs font-semibold text-red-800">{it.code}</span></td>
                   <td className="px-4 py-3 font-medium text-stone-800">
-                    {it.name}
-                    {it.isSet && <span className="ml-2 text-[10px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded">세트</span>}
+                    <div>{it.name}</div>
+                    <div className="text-[10px] text-stone-400">{it.spec}</div>
+                    {it.isSet && <span className="text-[10px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded">세트</span>}
                   </td>
-                  <td className="px-4 py-3 text-stone-600 text-xs">{it.spec}</td>
-                  <td className="px-4 py-3 text-right font-semibold text-stone-800 tabular-nums">{formatWon(it.price)}</td>
+                  <td className="px-4 py-3 text-right text-stone-600 tabular-nums text-xs">
+                    {cost > 0 ? `$${cost.toFixed(2)}` : <span className="text-stone-300">미설정</span>}
+                  </td>
+                  <td className="px-4 py-3 text-right font-semibold text-red-800 tabular-nums">
+                    {formatWon(it.price)}
+                  </td>
+                  <td className="px-4 py-3 text-right font-semibold text-indigo-700 tabular-nums text-xs">
+                    {it.b2bPrice > 0 ? `$${it.b2bPrice}` : <span className="text-stone-300">미설정</span>}
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    {cost > 0 ? (
+                      <span className={`text-xs px-2 py-0.5 rounded font-bold ${
+                        marginRate >= 30 ? 'bg-emerald-100 text-emerald-700' :
+                        marginRate >= 15 ? 'bg-amber-100 text-amber-700' :
+                        'bg-red-100 text-red-700'
+                      }`}>
+                        {marginRate}%
+                      </span>
+                    ) : <span className="text-stone-300 text-xs">-</span>}
+                  </td>
                   <td className="px-4 py-3 text-right text-stone-600 tabular-nums">
                     {it.isSet ? <span className="text-stone-400">—</span> : formatNum(it.realStock)}
                   </td>
@@ -3265,6 +3725,24 @@ function Items({ items, setItems, showToast }) {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-center gap-1">
+                      {!it.isSet && (
+                        <button
+                          onClick={() => setStockInTarget(it)}
+                          className="px-2 py-1 text-[10px] font-bold bg-emerald-600 text-white rounded hover:bg-emerald-700"
+                          title="입고 등록"
+                        >
+                          📥 입고
+                        </button>
+                      )}
+                      {it.stockHistory?.length > 0 && (
+                        <button
+                          onClick={() => setHistoryTarget(it)}
+                          className="p-1.5 text-stone-500 hover:bg-stone-100 hover:text-stone-800 rounded"
+                          title={`입고 이력 ${it.stockHistory.length}건`}
+                        >
+                          <History size={14} />
+                        </button>
+                      )}
                       <button onClick={() => { setEditTarget(it); setShowForm(true); }} className="p-1.5 text-stone-500 hover:bg-stone-100 hover:text-stone-800 rounded">
                         <Edit2 size={14} />
                       </button>
@@ -3280,6 +3758,228 @@ function Items({ items, setItems, showToast }) {
       {showForm && (
         <ItemFormModal editTarget={editTarget} onSave={handleSave} onClose={() => { setShowForm(false); setEditTarget(null); }} />
       )}
+      {stockInTarget && (
+        <StockInModal
+          item={stockInTarget}
+          onSave={(data) => { handleStockIn(stockInTarget.code, data); setStockInTarget(null); }}
+          onClose={() => setStockInTarget(null)}
+        />
+      )}
+      {historyTarget && (
+        <StockHistoryModal
+          item={historyTarget}
+          onClose={() => setHistoryTarget(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// 📥 입고 등록 모달
+// ============================================================
+function StockInModal({ item, onSave, onClose }) {
+  const [qty, setQty] = useState(0);
+  const [cost, setCost] = useState(item.cost || 0);
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [supplier, setSupplier] = useState('');
+  const [memo, setMemo] = useState('');
+
+  const canSubmit = qty > 0 && cost > 0;
+
+  // 평균 원가 예상 계산
+  const currentStock = item.realStock || 0;
+  const currentCost = item.cost || 0;
+  const totalValue = currentStock * currentCost + qty * cost;
+  const totalQty = currentStock + qty;
+  const newAvgCost = totalQty > 0 ? (totalValue / totalQty).toFixed(2) : 0;
+  const totalCostOfStockIn = qty * cost;
+
+  return (
+    <div className="fixed inset-0 bg-stone-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
+        <div className="sticky top-0 bg-white z-10 px-6 py-4 border-b border-stone-200 flex items-center justify-between shadow-sm">
+          <div>
+            <h2 className="font-serif-ko text-lg font-bold text-stone-800">📥 입고 등록</h2>
+            <div className="text-xs text-stone-500 mt-0.5">{item.code} · {item.name}</div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => canSubmit && onSave({ qty, cost, date, supplier, memo })}
+              disabled={!canSubmit}
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-bold shadow-sm active:scale-95 transition-all disabled:bg-stone-300 disabled:cursor-not-allowed"
+            >
+              💾 입고 완료
+            </button>
+            <button onClick={onClose} className="p-1.5 hover:bg-stone-100 rounded-lg"><X size={18} /></button>
+          </div>
+        </div>
+
+        <div className="p-6 space-y-4">
+          {/* 현재 재고 정보 */}
+          <div className="p-3 bg-stone-50 border border-stone-200 rounded-lg grid grid-cols-2 gap-3 text-xs">
+            <div>
+              <div className="text-stone-500">현재 재고</div>
+              <div className="font-bold text-stone-800 text-lg tabular-nums">{currentStock}개</div>
+            </div>
+            <div>
+              <div className="text-stone-500">현재 평균 원가</div>
+              <div className="font-bold text-stone-800 text-lg tabular-nums">${currentCost.toFixed(2)}</div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-stone-600 mb-1.5">입고 수량 *</label>
+              <input
+                type="number"
+                min="1"
+                value={qty}
+                onChange={e => setQty(parseInt(e.target.value) || 0)}
+                className="w-full px-3 py-2 border-2 border-emerald-300 rounded-lg text-lg font-bold focus:outline-none focus:border-emerald-700 focus:ring-2 focus:ring-emerald-100 bg-white tabular-nums"
+                placeholder="0"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-stone-600 mb-1.5">입고 단가 (AUD) *</label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-stone-400">$</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={cost}
+                  onChange={e => setCost(parseFloat(e.target.value) || 0)}
+                  className="w-full pl-7 pr-3 py-2 border-2 border-emerald-300 rounded-lg text-lg font-bold focus:outline-none focus:border-emerald-700 focus:ring-2 focus:ring-emerald-100 bg-white tabular-nums"
+                  placeholder="0.00"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* 입고 후 예상 */}
+          {qty > 0 && cost > 0 && (
+            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg space-y-2">
+              <div className="text-xs font-bold text-emerald-900">📊 입고 후 예상</div>
+              <div className="grid grid-cols-3 gap-2 text-xs">
+                <div>
+                  <div className="text-emerald-700">총 입고액</div>
+                  <div className="font-bold text-emerald-900 tabular-nums">${totalCostOfStockIn.toFixed(2)}</div>
+                </div>
+                <div>
+                  <div className="text-emerald-700">새 재고</div>
+                  <div className="font-bold text-emerald-900 tabular-nums">{totalQty}개</div>
+                </div>
+                <div>
+                  <div className="text-emerald-700">새 평균 원가</div>
+                  <div className="font-bold text-emerald-900 tabular-nums">${newAvgCost}</div>
+                </div>
+              </div>
+              {item.price > 0 && (
+                <div className="pt-2 border-t border-emerald-200 text-[10px] text-emerald-700">
+                  예상 마진율 (B2C): {(((item.price - parseFloat(newAvgCost)) / item.price) * 100).toFixed(1)}%
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-stone-600 mb-1.5">입고일</label>
+              <input type="date" value={date} onChange={e => setDate(e.target.value)}
+                className="w-full px-3 py-2 border border-stone-200 rounded-lg text-sm focus:outline-none focus:border-emerald-700 focus:ring-2 focus:ring-emerald-100" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-stone-600 mb-1.5">공급처</label>
+              <input
+                value={supplier}
+                onChange={e => setSupplier(e.target.value)}
+                placeholder="예: 한국본사"
+                className="w-full px-3 py-2 border border-stone-200 rounded-lg text-sm focus:outline-none focus:border-emerald-700 focus:ring-2 focus:ring-emerald-100"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-stone-600 mb-1.5">메모</label>
+            <input
+              value={memo}
+              onChange={e => setMemo(e.target.value)}
+              placeholder="예: 4/25 Container 입고분"
+              className="w-full px-3 py-2 border border-stone-200 rounded-lg text-sm focus:outline-none focus:border-emerald-700 focus:ring-2 focus:ring-emerald-100"
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// 📜 입고 이력 모달
+// ============================================================
+function StockHistoryModal({ item, onClose }) {
+  const history = (item.stockHistory || []).slice().reverse(); // 최신순
+  const totalValue = history.reduce((s, h) => s + (h.qty * h.cost), 0);
+  const totalQty = history.reduce((s, h) => s + h.qty, 0);
+
+  return (
+    <div className="fixed inset-0 bg-stone-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="sticky top-0 bg-white z-10 px-6 py-4 border-b border-stone-200 flex items-center justify-between shadow-sm">
+          <div>
+            <h2 className="font-serif-ko text-lg font-bold text-stone-800">📜 입고 이력</h2>
+            <div className="text-xs text-stone-500 mt-0.5">{item.code} · {item.name}</div>
+          </div>
+          <button onClick={onClose} className="p-1.5 hover:bg-stone-100 rounded-lg"><X size={18} /></button>
+        </div>
+
+        <div className="p-6 space-y-4">
+          {/* 요약 */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+              <div className="text-[10px] text-emerald-700">총 입고 건수</div>
+              <div className="font-bold text-emerald-900 text-xl tabular-nums">{history.length}회</div>
+            </div>
+            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+              <div className="text-[10px] text-emerald-700">총 입고 수량</div>
+              <div className="font-bold text-emerald-900 text-xl tabular-nums">{formatNum(totalQty)}개</div>
+            </div>
+            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+              <div className="text-[10px] text-emerald-700">총 입고액</div>
+              <div className="font-bold text-emerald-900 text-xl tabular-nums">${formatNum(totalValue.toFixed(2))}</div>
+            </div>
+          </div>
+
+          {/* 이력 목록 */}
+          <div className="space-y-2">
+            {history.map((h, idx) => (
+              <div key={h.id || idx} className="p-3 bg-white border border-stone-200 rounded-lg hover:bg-stone-50">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-mono text-stone-500">{h.date}</span>
+                      {h.supplier && <span className="text-[10px] px-1.5 py-0.5 bg-indigo-50 text-indigo-700 rounded font-bold">{h.supplier}</span>}
+                    </div>
+                    {h.memo && <div className="text-xs text-stone-600 mt-1">{h.memo}</div>}
+                    <div className="text-[10px] text-stone-400 mt-1">
+                      재고: {h.prevStock}개 → {h.newStock}개
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-sm font-bold text-emerald-700 tabular-nums">+{h.qty}개</div>
+                    <div className="text-xs text-stone-600 tabular-nums">단가 ${h.cost.toFixed(2)}</div>
+                    <div className="text-[10px] text-stone-400 tabular-nums">계 ${(h.qty * h.cost).toFixed(2)}</div>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {history.length === 0 && (
+              <div className="text-center py-8 text-sm text-stone-400">입고 이력이 없습니다</div>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -3334,47 +4034,159 @@ function StockCard({ item, status, onUpdate }) {
 
 function ItemFormModal({ editTarget, onSave, onClose }) {
   const [form, setForm] = useState(editTarget || {
-    name: '', spec: '', price: 0, realStock: 0, baechu: 0, chonggak: 0, memo: '', isSet: false
+    name: '', spec: '', price: 0, realStock: 0, baechu: 0, chonggak: 0, memo: '', isSet: false,
+    cost: 0, costCurrency: 'AUD', b2bPrice: 0
   });
+
+  // 자동 계산
+  const marginAmount = (form.price || 0) - (form.cost || 0);
+  const marginRate = form.price > 0 ? ((marginAmount / form.price) * 100).toFixed(1) : 0;
+  const b2bMarginAmount = (form.b2bPrice || 0) - (form.cost || 0);
+  const b2bMarginRate = form.b2bPrice > 0 ? ((b2bMarginAmount / form.b2bPrice) * 100).toFixed(1) : 0;
 
   return (
     <div className="fixed inset-0 bg-stone-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl" onClick={e => e.stopPropagation()}>
-        <div className="px-6 py-5 border-b border-stone-200 flex items-center justify-between">
-          <h2 className="font-serif-ko text-xl font-bold text-stone-800">{editTarget ? '품목 수정' : '품목 추가'}</h2>
-          <button onClick={onClose} className="p-1.5 hover:bg-stone-100 rounded-lg"><X size={18} /></button>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto scrollbar-slim" onClick={e => e.stopPropagation()}>
+        <div className="sticky top-0 bg-white z-10 px-6 py-4 border-b border-stone-200 flex items-center justify-between shadow-sm">
+          <h2 className="font-serif-ko text-lg font-bold text-stone-800">{editTarget ? '품목 수정' : '품목 추가'}</h2>
+          <div className="flex items-center gap-2">
+            <button onClick={() => form.name && onSave(form)} disabled={!form.name}
+              className="px-4 py-2 bg-red-800 hover:bg-red-900 text-white rounded-lg text-sm font-bold shadow-sm active:scale-95 transition-all disabled:bg-stone-300 disabled:cursor-not-allowed">
+              💾 저장
+            </button>
+            <button onClick={onClose} className="p-1.5 hover:bg-stone-100 rounded-lg"><X size={18} /></button>
+          </div>
         </div>
+
         <div className="p-6 space-y-4">
           {!editTarget && (
             <div className="p-3 bg-red-50 border border-red-100 rounded-lg text-xs text-red-800">
               💡 품목코드는 저장 시 자동 생성됩니다 (P001, P002...)
             </div>
           )}
+
           <div className="flex items-center gap-2">
             <input type="checkbox" id="isSet" checked={form.isSet} onChange={e => setForm({...form, isSet: e.target.checked, realStock: e.target.checked ? null : 0})} />
             <label htmlFor="isSet" className="text-sm text-stone-700">세트 상품 (구성품에서 자동 재고 계산)</label>
           </div>
+
           <div className="grid grid-cols-2 gap-4">
             <Field label="품목명 *" value={form.name} onChange={v => setForm({...form, name: v})} />
-            <Field label="단가 ($)" type="number" value={form.price} onChange={v => setForm({...form, price: parseInt(v)||0})} />
+            <div>
+              <label className="block text-xs font-semibold text-stone-600 mb-1.5">구성/용량</label>
+              <input value={form.spec} onChange={e => setForm({...form, spec: e.target.value})}
+                className="w-full px-3 py-2 border border-stone-200 rounded-lg text-sm focus:outline-none focus:border-red-700 focus:ring-2 focus:ring-red-100" />
+            </div>
           </div>
-          <div>
-            <label className="block text-xs font-semibold text-stone-600 mb-1.5">구성/용량</label>
-            <input value={form.spec} onChange={e => setForm({...form, spec: e.target.value})}
-              className="w-full px-3 py-2 border border-stone-200 rounded-lg text-sm focus:outline-none focus:border-red-700 focus:ring-2 focus:ring-red-100" />
+
+          {/* 💰 가격 정보 섹션 */}
+          <div className="bg-gradient-to-br from-stone-50 to-amber-50/30 border-2 border-stone-200 rounded-xl p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-stone-800 flex items-center gap-1.5">
+                💰 가격 정보
+              </h3>
+              <span className="text-[10px] text-stone-500">모두 AUD 기준</span>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3">
+              {/* 수입 원가 */}
+              <div>
+                <label className="block text-[11px] font-semibold text-stone-600 mb-1">
+                  📥 수입 원가
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-stone-400">$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={form.cost || 0}
+                    onChange={e => setForm({...form, cost: parseFloat(e.target.value) || 0})}
+                    className="w-full pl-6 pr-3 py-2 border border-stone-200 rounded-lg text-sm focus:outline-none focus:border-red-700 focus:ring-2 focus:ring-red-100 bg-white tabular-nums"
+                  />
+                </div>
+                <div className="text-[10px] text-stone-400 mt-1">실 구매 단가</div>
+              </div>
+
+              {/* B2C 판매가 */}
+              <div>
+                <label className="block text-[11px] font-semibold text-red-800 mb-1">
+                  🏠 B2C 판매가 *
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-stone-400">$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={form.price || 0}
+                    onChange={e => setForm({...form, price: parseFloat(e.target.value) || 0})}
+                    className="w-full pl-6 pr-3 py-2 border-2 border-red-200 rounded-lg text-sm focus:outline-none focus:border-red-700 focus:ring-2 focus:ring-red-100 bg-white tabular-nums font-bold"
+                  />
+                </div>
+                <div className={`text-[10px] mt-1 ${marginRate >= 30 ? 'text-emerald-700' : marginRate >= 15 ? 'text-amber-700' : 'text-red-700'}`}>
+                  마진: ${marginAmount.toFixed(2)} ({marginRate}%)
+                </div>
+              </div>
+
+              {/* B2B 도매가 */}
+              <div>
+                <label className="block text-[11px] font-semibold text-indigo-700 mb-1">
+                  🏢 B2B 도매가
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-stone-400">$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={form.b2bPrice || 0}
+                    onChange={e => setForm({...form, b2bPrice: parseFloat(e.target.value) || 0})}
+                    className="w-full pl-6 pr-3 py-2 border-2 border-indigo-200 rounded-lg text-sm focus:outline-none focus:border-indigo-700 focus:ring-2 focus:ring-indigo-100 bg-white tabular-nums font-bold"
+                  />
+                </div>
+                <div className={`text-[10px] mt-1 ${b2bMarginRate >= 20 ? 'text-emerald-700' : b2bMarginRate >= 10 ? 'text-amber-700' : 'text-red-700'}`}>
+                  {form.b2bPrice > 0 ? `마진: $${b2bMarginAmount.toFixed(2)} (${b2bMarginRate}%)` : '미설정 (기본값=판매가)'}
+                </div>
+              </div>
+            </div>
+
+            {/* 가격 비교 요약 */}
+            {(form.cost > 0 || form.price > 0) && (
+              <div className="flex items-center gap-2 text-[10px] pt-2 border-t border-stone-200">
+                <span className="text-stone-500">원가 ${form.cost}</span>
+                <span className="text-stone-400">→</span>
+                <span className="text-red-700 font-bold">B2C ${form.price}</span>
+                {form.b2bPrice > 0 && (
+                  <>
+                    <span className="text-stone-400">|</span>
+                    <span className="text-indigo-700 font-bold">B2B ${form.b2bPrice}</span>
+                    {form.b2bPrice < form.price && (
+                      <span className="text-[9px] text-indigo-500">
+                        (B2C 대비 {((1 - form.b2bPrice / form.price) * 100).toFixed(0)}%↓)
+                      </span>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
           </div>
+
+          {/* 재고 및 구성 */}
           <div className="grid grid-cols-3 gap-4">
             {!form.isSet && <Field label="실재고" type="number" value={form.realStock || 0} onChange={v => setForm({...form, realStock: parseInt(v)||0})} />}
             <Field label="배추김치 구성수량" type="number" value={form.baechu} onChange={v => setForm({...form, baechu: parseInt(v)||0})} />
             <Field label="총각김치 구성수량" type="number" value={form.chonggak} onChange={v => setForm({...form, chonggak: parseInt(v)||0})} />
           </div>
+
           <Field label="비고" value={form.memo} onChange={v => setForm({...form, memo: v})} />
         </div>
-        <div className="px-6 py-4 border-t border-stone-200 flex items-center justify-end gap-2">
+
+        <div className="sticky bottom-0 bg-white px-6 py-4 border-t border-stone-200 flex items-center justify-end gap-2 shadow-[0_-2px_8px_rgba(0,0,0,0.04)]">
           <button onClick={onClose} className="px-4 py-2 text-sm text-stone-600 hover:bg-stone-100 rounded-lg">취소</button>
           <button onClick={() => form.name && onSave(form)} disabled={!form.name}
-            className="px-5 py-2 bg-red-800 text-white rounded-lg text-sm font-semibold hover:bg-red-900 disabled:bg-stone-300">
-            {editTarget ? '수정' : '추가'}
+            className="px-5 py-2 bg-red-800 text-white rounded-lg text-sm font-semibold hover:bg-red-900 active:scale-95 transition-all disabled:bg-stone-300">
+            💾 {editTarget ? '수정' : '추가'}
           </button>
         </div>
       </div>
