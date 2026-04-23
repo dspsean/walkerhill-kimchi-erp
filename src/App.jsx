@@ -964,10 +964,10 @@ export default function App() {
   const [userRole, setUserRole] = useState(null); // 'admin' | 'driver'
   const [currentDriver, setCurrentDriver] = useState(null);
   const [view, setView] = useState('dashboard');
-  const [customers, setCustomers] = useState(INITIAL_CUSTOMERS);
-  const [items, setItems] = useState(INITIAL_ITEMS);
-  const [orders, setOrders] = useState(INITIAL_ORDERS);
-  const [drivers, setDrivers] = useState(INITIAL_DRIVERS);
+  const [customers, _setCustomersInternal] = useState(INITIAL_CUSTOMERS);
+  const [items, _setItemsInternal] = useState(INITIAL_ITEMS);
+  const [orders, _setOrdersInternal] = useState(INITIAL_ORDERS);
+  const [drivers, _setDriversInternal] = useState(INITIAL_DRIVERS);
   const [loaded, setLoaded] = useState(false);
   const [toast, setToast] = useState(null);
   const [resetConfirm, setResetConfirm] = useState(false);
@@ -986,8 +986,10 @@ export default function App() {
   }, []);
 
   // 🔥 Firebase 연결 상태
-  const [syncStatus, setSyncStatus] = useState(isFirebaseConfigured ? 'connecting' : 'local'); // 'connecting' | 'synced' | 'local' | 'error'
+  const [syncStatus, setSyncStatus] = useState(isFirebaseConfigured ? 'connecting' : 'local');
   const initialSyncDoneRef = useRef(false);
+  // Firebase에서 받은 데이터로 업데이트 중인지 여부 (무한루프 방지)
+  const isReceivingFromFirebaseRef = useRef(false);
 
   // ⚡ 데이터 로드 - Firebase 연결된 경우 실시간 구독, 아니면 localStorage
   useEffect(() => {
@@ -1007,13 +1009,16 @@ export default function App() {
             loadData(STORAGE_KEYS.orders, INITIAL_ORDERS),
             loadData(DRIVERS_KEY, INITIAL_DRIVERS),
           ]);
-          setCustomers(localC); setItems(localI); setOrders(localO); setDrivers(localD);
+          _setCustomersInternal(localC);
+          _setItemsInternal(localI);
+          _setOrdersInternal(localO);
+          _setDriversInternal(localD);
           setLoaded(true);
 
-          // Firestore 실시간 구독
+          // Firestore 실시간 구독 - 다른 기기의 변경사항 수신
           unsubCustomers = subscribeToCollection(COLLECTIONS.customers, (data) => {
             if (data.length === 0 && !initialSyncDoneRef.current) {
-              // Firestore 비어있음 → 초기 마이그레이션
+              // Firestore 비어있음 → 초기 마이그레이션 (최초 1회만)
               console.log('🔄 초기 데이터 마이그레이션 중...');
               saveBatch(COLLECTIONS.customers, localC);
               saveBatch(COLLECTIONS.items, localI);
@@ -1021,22 +1026,41 @@ export default function App() {
               saveBatch(COLLECTIONS.drivers, localD);
               initialSyncDoneRef.current = true;
             } else if (data.length > 0) {
-              setCustomers(data);
+              // 다른 기기의 업데이트 반영 (자신이 방금 쓴 것도 포함됨)
+              isReceivingFromFirebaseRef.current = true;
+              _setCustomersInternal(data);
+              saveData(STORAGE_KEYS.customers, data);
+              setTimeout(() => { isReceivingFromFirebaseRef.current = false; }, 100);
               initialSyncDoneRef.current = true;
             }
             setSyncStatus('synced');
           });
 
           unsubItems = subscribeToCollection(COLLECTIONS.items, (data) => {
-            if (data.length > 0) setItems(data);
+            if (data.length > 0) {
+              isReceivingFromFirebaseRef.current = true;
+              _setItemsInternal(data);
+              saveData(STORAGE_KEYS.items, data);
+              setTimeout(() => { isReceivingFromFirebaseRef.current = false; }, 100);
+            }
           });
 
           unsubOrders = subscribeToCollection(COLLECTIONS.orders, (data) => {
-            if (data.length > 0) setOrders(data);
+            if (data.length > 0) {
+              isReceivingFromFirebaseRef.current = true;
+              _setOrdersInternal(data);
+              saveData(STORAGE_KEYS.orders, data);
+              setTimeout(() => { isReceivingFromFirebaseRef.current = false; }, 100);
+            }
           });
 
           unsubDrivers = subscribeToCollection(COLLECTIONS.drivers, (data) => {
-            if (data.length > 0) setDrivers(data);
+            if (data.length > 0) {
+              isReceivingFromFirebaseRef.current = true;
+              _setDriversInternal(data);
+              saveData(DRIVERS_KEY, data);
+              setTimeout(() => { isReceivingFromFirebaseRef.current = false; }, 100);
+            }
           });
         } catch (err) {
           console.error('Firebase 연결 실패, 로컬 모드로 전환:', err);
@@ -1052,7 +1076,11 @@ export default function App() {
           loadData(STORAGE_KEYS.orders, INITIAL_ORDERS),
           loadData(DRIVERS_KEY, INITIAL_DRIVERS),
         ]);
-        setCustomers(c); setItems(i); setOrders(o); setDrivers(d); setLoaded(true);
+        _setCustomersInternal(c);
+        _setItemsInternal(i);
+        _setOrdersInternal(o);
+        _setDriversInternal(d);
+        setLoaded(true);
       })();
     }
 
@@ -1065,38 +1093,47 @@ export default function App() {
     };
   }, []);
 
-  // 💾 데이터 변경 시 저장 (localStorage + Firestore)
-  useEffect(() => {
-    if (!loaded) return;
-    saveData(STORAGE_KEYS.customers, customers);
+  // 🔧 공개 setter들 - 자동으로 localStorage + Firebase 저장
+  // (Firebase에서 받은 업데이트 시에는 저장 스킵하여 무한루프 방지)
+  const setCustomers = (newValue) => {
+    const resolved = typeof newValue === 'function' ? newValue(customers) : newValue;
+    _setCustomersInternal(resolved);
+    if (isReceivingFromFirebaseRef.current) return;
+    saveData(STORAGE_KEYS.customers, resolved);
     if (isFirebaseConfigured && initialSyncDoneRef.current) {
-      saveBatch(COLLECTIONS.customers, customers);
+      saveBatch(COLLECTIONS.customers, resolved);
     }
-  }, [customers, loaded]);
+  };
 
-  useEffect(() => {
-    if (!loaded) return;
-    saveData(STORAGE_KEYS.items, items);
+  const setItems = (newValue) => {
+    const resolved = typeof newValue === 'function' ? newValue(items) : newValue;
+    _setItemsInternal(resolved);
+    if (isReceivingFromFirebaseRef.current) return;
+    saveData(STORAGE_KEYS.items, resolved);
     if (isFirebaseConfigured && initialSyncDoneRef.current) {
-      saveBatch(COLLECTIONS.items, items);
+      saveBatch(COLLECTIONS.items, resolved);
     }
-  }, [items, loaded]);
+  };
 
-  useEffect(() => {
-    if (!loaded) return;
-    saveData(STORAGE_KEYS.orders, orders);
+  const setOrders = (newValue) => {
+    const resolved = typeof newValue === 'function' ? newValue(orders) : newValue;
+    _setOrdersInternal(resolved);
+    if (isReceivingFromFirebaseRef.current) return;
+    saveData(STORAGE_KEYS.orders, resolved);
     if (isFirebaseConfigured && initialSyncDoneRef.current) {
-      saveBatch(COLLECTIONS.orders, orders);
+      saveBatch(COLLECTIONS.orders, resolved);
     }
-  }, [orders, loaded]);
+  };
 
-  useEffect(() => {
-    if (!loaded) return;
-    saveData(DRIVERS_KEY, drivers);
+  const setDrivers = (newValue) => {
+    const resolved = typeof newValue === 'function' ? newValue(drivers) : newValue;
+    _setDriversInternal(resolved);
+    if (isReceivingFromFirebaseRef.current) return;
+    saveData(DRIVERS_KEY, resolved);
     if (isFirebaseConfigured && initialSyncDoneRef.current) {
-      saveBatch(COLLECTIONS.drivers, drivers);
+      saveBatch(COLLECTIONS.drivers, resolved);
     }
-  }, [drivers, loaded]);
+  };
 
   const itemsWithStock = useMemo(() => calcAvailStock(items, orders), [items, orders]);
 
@@ -1371,9 +1408,9 @@ function Dashboard({ customers, items, orders, setView }) {
     const priceMap = {};
     items.forEach(i => { priceMap[i.name] = i.price || 0; });
 
-    // 실매출 = 서비스 제외
-    const paidOrders = orders.filter(o => !o.isService);
-    const serviceOrders = orders.filter(o => o.isService);
+    // 실매출 = 서비스 제외 + 취소 제외
+    const paidOrders = orders.filter(o => !o.isService && o.shipStatus !== '취소');
+    const serviceOrders = orders.filter(o => o.isService && o.shipStatus !== '취소');
 
     const totalSales = paidOrders.reduce((s, o) => s + (priceMap[o.itemName] || 0) * o.qty, 0);
     const serviceSales = serviceOrders.reduce((s, o) => s + (priceMap[o.itemName] || 0) * o.qty, 0);
@@ -1406,6 +1443,8 @@ function Dashboard({ customers, items, orders, setView }) {
     const pickupCount = paidOrders.filter(o => o.isPickup).length;
 
     const deliveredCount = orders.filter(o => o.shipStatus === '배송완료').length;
+    // 취소를 제외한 실제 배송 대상 주문 기준으로 완료율 계산
+    const activeOrders = orders.filter(o => o.shipStatus !== '취소').length;
     // 자동등급 계산
     const customerGrades = {};
     customers.forEach(c => {
@@ -1419,7 +1458,7 @@ function Dashboard({ customers, items, orders, setView }) {
       totalSales,
       avgOrder: paidOrders.length > 0 ? Math.round(totalSales / paidOrders.length) : 0,
       vipCount,
-      deliveryRate: orders.length > 0 ? (deliveredCount / orders.length) * 100 : 0,
+      deliveryRate: activeOrders > 0 ? (deliveredCount / activeOrders) * 100 : 0,
       lowStock: items.filter(i => i.availStock <= 20).length,
       // 신규 통계
       serviceCount: serviceOrders.length,
@@ -1447,10 +1486,11 @@ function Dashboard({ customers, items, orders, setView }) {
     count: Object.values(stats.customerGrades).filter(cg => cg === g).length
   }));
 
-  const shipStats = ['배송준비중','출고대기','배송중','배송완료','취소'].map(s => ({
+  const shipStats = ['배송준비중','출고대기','배송중','배송완료'].map(s => ({
     status: s,
     count: orders.filter(o => o.shipStatus === s).length
   }));
+  const cancelCount = orders.filter(o => o.shipStatus === '취소').length;
 
   const recent = [...orders].slice(-5).reverse();
 
@@ -1618,10 +1658,19 @@ function Dashboard({ customers, items, orders, setView }) {
         </div>
 
         <div className="bg-white rounded-2xl border border-stone-200 p-6">
-          <h2 className="font-serif-ko text-lg font-bold text-stone-800 mb-5">배송 상태</h2>
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="font-serif-ko text-lg font-bold text-stone-800">배송 상태</h2>
+            {cancelCount > 0 && (
+              <span className="text-[10px] text-stone-400">
+                취소 {cancelCount}건 제외
+              </span>
+            )}
+          </div>
           <div className="space-y-2.5">
             {shipStats.map(s => {
-              const pct = orders.length > 0 ? (s.count / orders.length) * 100 : 0;
+              // 취소 제외한 활성 주문 대비 %
+              const activeTotal = orders.filter(o => o.shipStatus !== '취소').length;
+              const pct = activeTotal > 0 ? (s.count / activeTotal) * 100 : 0;
               return (
                 <div key={s.status} className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-stone-50">
                   <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${shipStatusStyle(s.status)}`}>
@@ -1634,20 +1683,30 @@ function Dashboard({ customers, items, orders, setView }) {
                 </div>
               );
             })}
+            {cancelCount > 0 && (
+              <div className="flex items-center justify-between py-1.5 px-3 rounded-lg opacity-50">
+                <span className="inline-flex items-center gap-1 text-[10px] text-stone-400">
+                  <span>🗑️</span>
+                  <span>취소된 주문</span>
+                </span>
+                <span className="text-[10px] text-stone-400 tabular-nums">{cancelCount}건</span>
+              </div>
+            )}
           </div>
 
           {/* Zone별 배송 현황 */}
           <div className="mt-5 pt-4 border-t border-stone-100">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-bold text-stone-700">🗺️ Zone별 배송 현황</h3>
+              <h3 className="text-sm font-bold text-stone-700">🚚 차량별 배송 현황</h3>
               <button onClick={() => setView('shipping')} className="text-[10px] text-stone-400 hover:text-stone-700">관리 →</button>
             </div>
             <div className="grid grid-cols-3 gap-1.5">
               {SHIPPING_ZONES.map(z => {
-                const cnt = orders.filter(o => o.shippingGroup === z).length;
+                // 취소 제외한 활성 주문만 카운트
+                const cnt = orders.filter(o => o.shippingGroup === z && o.shipStatus !== '취소').length;
                 return (
                   <div key={z} className={`px-2 py-2 rounded-lg text-center ${ZONE_COLORS[z]}`}>
-                    <div className="text-[10px] font-bold opacity-80">{z.replace('Zone', 'Z')}</div>
+                    <div className="text-[10px] font-bold opacity-80">{ZONE_VEHICLE[z]} · {z.replace('Zone', 'Z')}</div>
                     <div className="text-sm font-bold tabular-nums">{cnt}</div>
                   </div>
                 );
@@ -1656,11 +1715,11 @@ function Dashboard({ customers, items, orders, setView }) {
           </div>
 
           {/* 미납 경보 */}
-          {orders.filter(o => o.paymentStatus === '미결제').length > 0 && (
+          {orders.filter(o => o.paymentStatus === '미결제' && o.shipStatus !== '취소' && !o.isService).length > 0 && (
             <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center justify-between">
               <span className="text-xs font-bold text-red-800">💳 미결제 주문</span>
               <span className="text-sm font-bold text-red-800 tabular-nums">
-                {orders.filter(o => o.paymentStatus === '미결제').length}건
+                {orders.filter(o => o.paymentStatus === '미결제' && o.shipStatus !== '취소' && !o.isService).length}건
               </span>
             </div>
           )}
