@@ -1015,7 +1015,20 @@ export default function App() {
           _setDriversInternal(localD);
           setLoaded(true);
 
-          // Firestore 실시간 구독 - 다른 기기의 변경사항 수신
+          // Firestore 실시간 구독 - 다른 기기의 변경사항만 반영
+          // 내용이 실제로 다를 때만 setState 호출 (무한루프 방지)
+          const arraysEqual = (a, b) => {
+            if (a === b) return true;
+            if (a.length !== b.length) return false;
+            // ID로 맵핑 후 JSON 비교
+            const aMap = {};
+            a.forEach(x => { if (x.id) aMap[x.id] = JSON.stringify(x); });
+            for (const x of b) {
+              if (!x.id || aMap[x.id] !== JSON.stringify(x)) return false;
+            }
+            return true;
+          };
+
           unsubCustomers = subscribeToCollection(COLLECTIONS.customers, (data) => {
             if (data.length === 0 && !initialSyncDoneRef.current) {
               // Firestore 비어있음 → 초기 마이그레이션 (최초 1회만)
@@ -1026,11 +1039,12 @@ export default function App() {
               saveBatch(COLLECTIONS.drivers, localD);
               initialSyncDoneRef.current = true;
             } else if (data.length > 0) {
-              // 다른 기기의 업데이트 반영 (자신이 방금 쓴 것도 포함됨)
-              isReceivingFromFirebaseRef.current = true;
-              _setCustomersInternal(data);
-              saveData(STORAGE_KEYS.customers, data);
-              setTimeout(() => { isReceivingFromFirebaseRef.current = false; }, 100);
+              // 🔑 핵심: 현재 state와 내용이 실제로 다를 때만 업데이트
+              _setCustomersInternal(current => {
+                if (arraysEqual(current, data)) return current; // 같으면 참조 그대로 유지
+                saveData(STORAGE_KEYS.customers, data);
+                return data;
+              });
               initialSyncDoneRef.current = true;
             }
             setSyncStatus('synced');
@@ -1038,28 +1052,31 @@ export default function App() {
 
           unsubItems = subscribeToCollection(COLLECTIONS.items, (data) => {
             if (data.length > 0) {
-              isReceivingFromFirebaseRef.current = true;
-              _setItemsInternal(data);
-              saveData(STORAGE_KEYS.items, data);
-              setTimeout(() => { isReceivingFromFirebaseRef.current = false; }, 100);
+              _setItemsInternal(current => {
+                if (arraysEqual(current, data)) return current;
+                saveData(STORAGE_KEYS.items, data);
+                return data;
+              });
             }
           });
 
           unsubOrders = subscribeToCollection(COLLECTIONS.orders, (data) => {
             if (data.length > 0) {
-              isReceivingFromFirebaseRef.current = true;
-              _setOrdersInternal(data);
-              saveData(STORAGE_KEYS.orders, data);
-              setTimeout(() => { isReceivingFromFirebaseRef.current = false; }, 100);
+              _setOrdersInternal(current => {
+                if (arraysEqual(current, data)) return current;
+                saveData(STORAGE_KEYS.orders, data);
+                return data;
+              });
             }
           });
 
           unsubDrivers = subscribeToCollection(COLLECTIONS.drivers, (data) => {
             if (data.length > 0) {
-              isReceivingFromFirebaseRef.current = true;
-              _setDriversInternal(data);
-              saveData(DRIVERS_KEY, data);
-              setTimeout(() => { isReceivingFromFirebaseRef.current = false; }, 100);
+              _setDriversInternal(current => {
+                if (arraysEqual(current, data)) return current;
+                saveData(DRIVERS_KEY, data);
+                return data;
+              });
             }
           });
         } catch (err) {
@@ -1093,12 +1110,11 @@ export default function App() {
     };
   }, []);
 
-  // 🔧 공개 setter들 - 자동으로 localStorage + Firebase 저장
-  // (Firebase에서 받은 업데이트 시에는 저장 스킵하여 무한루프 방지)
+  // 🔧 공개 setter들 - 로컬 저장 + Firebase 저장
+  // (Firestore onSnapshot은 내용 비교로 무한루프 방지)
   const setCustomers = (newValue) => {
     const resolved = typeof newValue === 'function' ? newValue(customers) : newValue;
     _setCustomersInternal(resolved);
-    if (isReceivingFromFirebaseRef.current) return;
     saveData(STORAGE_KEYS.customers, resolved);
     if (isFirebaseConfigured && initialSyncDoneRef.current) {
       saveBatch(COLLECTIONS.customers, resolved);
@@ -1108,7 +1124,6 @@ export default function App() {
   const setItems = (newValue) => {
     const resolved = typeof newValue === 'function' ? newValue(items) : newValue;
     _setItemsInternal(resolved);
-    if (isReceivingFromFirebaseRef.current) return;
     saveData(STORAGE_KEYS.items, resolved);
     if (isFirebaseConfigured && initialSyncDoneRef.current) {
       saveBatch(COLLECTIONS.items, resolved);
@@ -1118,7 +1133,6 @@ export default function App() {
   const setOrders = (newValue) => {
     const resolved = typeof newValue === 'function' ? newValue(orders) : newValue;
     _setOrdersInternal(resolved);
-    if (isReceivingFromFirebaseRef.current) return;
     saveData(STORAGE_KEYS.orders, resolved);
     if (isFirebaseConfigured && initialSyncDoneRef.current) {
       saveBatch(COLLECTIONS.orders, resolved);
@@ -1128,7 +1142,6 @@ export default function App() {
   const setDrivers = (newValue) => {
     const resolved = typeof newValue === 'function' ? newValue(drivers) : newValue;
     _setDriversInternal(resolved);
-    if (isReceivingFromFirebaseRef.current) return;
     saveData(DRIVERS_KEY, resolved);
     if (isFirebaseConfigured && initialSyncDoneRef.current) {
       saveBatch(COLLECTIONS.drivers, resolved);
