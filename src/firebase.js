@@ -107,31 +107,43 @@ export async function saveDocument(collectionName, data) {
 }
 
 /**
- * 여러 문서 일괄 저장 (마이그레이션용)
+ * 여러 문서 일괄 저장 (마이그레이션용) - debounced
  */
+const _saveBatchTimers = {};
 export async function saveBatch(collectionName, dataArray) {
   if (!db || !dataArray || dataArray.length === 0) return;
 
-  try {
-    // Firestore batch는 최대 500개씩
-    const chunks = [];
-    for (let i = 0; i < dataArray.length; i += 400) {
-      chunks.push(dataArray.slice(i, i + 400));
-    }
-
-    for (const chunk of chunks) {
-      const batch = writeBatch(db);
-      chunk.forEach(data => {
-        if (data.id) {
-          batch.set(doc(db, collectionName, data.id), data);
-        }
-      });
-      await batch.commit();
-    }
-    console.log(`✓ ${collectionName} ${dataArray.length}건 업로드 완료`);
-  } catch (err) {
-    console.error(`Error batch saving ${collectionName}:`, err);
+  // 같은 컬렉션에 대한 연속 호출은 debounce (300ms)
+  if (_saveBatchTimers[collectionName]) {
+    clearTimeout(_saveBatchTimers[collectionName]);
   }
+
+  return new Promise((resolve) => {
+    _saveBatchTimers[collectionName] = setTimeout(async () => {
+      try {
+        // Firestore batch는 최대 500개씩
+        const chunks = [];
+        for (let i = 0; i < dataArray.length; i += 400) {
+          chunks.push(dataArray.slice(i, i + 400));
+        }
+
+        for (const chunk of chunks) {
+          const batch = writeBatch(db);
+          chunk.forEach(data => {
+            if (data.id) {
+              batch.set(doc(db, collectionName, data.id), data);
+            }
+          });
+          await batch.commit();
+        }
+        console.log(`✓ ${collectionName} ${dataArray.length}건 업로드 완료`);
+        resolve();
+      } catch (err) {
+        console.error(`Error batch saving ${collectionName}:`, err);
+        resolve();
+      }
+    }, 300);
+  });
 }
 
 /**
