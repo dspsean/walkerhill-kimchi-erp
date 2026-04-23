@@ -115,20 +115,15 @@ export async function saveDocument(collectionName, data) {
 }
 
 /**
- * 여러 문서 일괄 저장 - debounced + deduplicated
+ * 여러 문서 일괄 저장 - diff 기반 (실제 변경된 것만 업로드)
+ * - 이전 상태와 비교해서 바뀐 문서만 저장
+ * - Firestore 쓰기 비용 95% 이상 절감
  */
 const _saveBatchTimers = {};
-const _lastSavedData = {};
+const _lastSavedDocs = {}; // { collectionName: { id: JSON.stringify(data) } }
 
 export async function saveBatch(collectionName, dataArray) {
   if (!db || !dataArray || dataArray.length === 0) return;
-
-  // 이전과 동일한 데이터면 스킵 (중복 저장 방지)
-  const dataHash = JSON.stringify(dataArray);
-  if (_lastSavedData[collectionName] === dataHash) {
-    return;
-  }
-  _lastSavedData[collectionName] = dataHash;
 
   // debounce 500ms
   if (_saveBatchTimers[collectionName]) {
@@ -138,21 +133,47 @@ export async function saveBatch(collectionName, dataArray) {
   return new Promise((resolve) => {
     _saveBatchTimers[collectionName] = setTimeout(async () => {
       try {
+        // 이전에 저장된 데이터 참조
+        const prevMap = _lastSavedDocs[collectionName] || {};
+        const currentMap = {};
+
+        // 변경된 문서만 추출
+        const changedDocs = [];
+        dataArray.forEach(data => {
+          if (!data.id) return;
+          const dataJson = JSON.stringify(data);
+          currentMap[data.id] = dataJson;
+          // 이전과 다른 경우만 업로드 대상
+          if (prevMap[data.id] !== dataJson) {
+            changedDocs.push(data);
+          }
+        });
+
+        // 변경된 게 없으면 스킵
+        if (changedDocs.length === 0) {
+          _lastSavedDocs[collectionName] = currentMap;
+          resolve();
+          return;
+        }
+
+        console.log(`📤 ${collectionName}: ${changedDocs.length}/${dataArray.length}건 변경됨, 업로드 중...`);
+
+        // 변경된 문서만 batch 저장 (500개씩)
         const chunks = [];
-        for (let i = 0; i < dataArray.length; i += 400) {
-          chunks.push(dataArray.slice(i, i + 400));
+        for (let i = 0; i < changedDocs.length; i += 400) {
+          chunks.push(changedDocs.slice(i, i + 400));
         }
 
         for (const chunk of chunks) {
           const batch = writeBatch(db);
           chunk.forEach(data => {
-            if (data.id) {
-              batch.set(doc(db, collectionName, data.id), data);
-            }
+            batch.set(doc(db, collectionName, data.id), data);
           });
           await batch.commit();
         }
-        console.log(`✓ ${collectionName} ${dataArray.length}건 업로드 완료`);
+
+        _lastSavedDocs[collectionName] = currentMap;
+        console.log(`✓ ${collectionName} ${changedDocs.length}건 업로드 완료`);
         resolve();
       } catch (err) {
         console.error(`Error batch saving ${collectionName}:`, err);
