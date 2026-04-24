@@ -742,6 +742,98 @@ function exportToExcel(customers, items, orders) {
   return filename;
 }
 
+// ============================================================
+// 📥 엑셀 백업 복원 - exportToExcel 양식을 역으로 파싱
+// ============================================================
+function importFromBackupExcel(wb) {
+  const result = {
+    customers: [],
+    items: [],
+    orders: [],
+    valid: false,
+    errors: [],
+  };
+
+  try {
+    // 1. 고객정보 시트 파싱
+    if (wb.Sheets['고객정보']) {
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets['고객정보']);
+      result.customers = rows.map(row => ({
+        id: String(row['고객ID'] || ''),
+        name: String(row['성함'] || ''),
+        phone: String(row['연락처'] || ''),
+        agedCare: row['Aged Care'] === '✓' || row['Aged Care'] === true,
+        address: String(row['주소'] || ''),
+        grade: String(row['등급(자동)'] || '일반'),
+        joinDate: String(row['가입일'] || new Date().toISOString().slice(0, 10)),
+        memo: String(row['메모'] || ''),
+      })).filter(c => c.id && c.name);
+    } else {
+      result.errors.push('고객정보 시트를 찾을 수 없습니다');
+    }
+
+    // 2. 품목재고 시트 파싱
+    if (wb.Sheets['품목재고']) {
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets['품목재고']);
+      result.items = rows.map(row => {
+        const isSet = row['세트여부'] === 'Y' || row['세트여부'] === true;
+        return {
+          code: String(row['품목코드'] || ''),
+          name: String(row['품목명'] || ''),
+          spec: String(row['구성'] || ''),
+          price: Number(row['단가($)']) || 0,
+          realStock: isSet ? null : (Number(row['실재고']) || 0),
+          baechu: Number(row['배추구성수량']) || 0,
+          chonggak: Number(row['총각구성수량']) || 0,
+          memo: String(row['비고'] || ''),
+          isSet,
+        };
+      }).filter(i => i.code && i.name);
+    } else {
+      result.errors.push('품목재고 시트를 찾을 수 없습니다');
+    }
+
+    // 3. 주문관리 시트 파싱 (가장 복잡)
+    if (wb.Sheets['주문관리']) {
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets['주문관리']);
+      result.orders = rows.map(row => {
+        const isService = String(row['서비스'] || '').includes('서비스') || String(row['서비스'] || '').includes('🎁');
+        const isPickup = String(row['픽업'] || '').includes('픽업') || String(row['픽업'] || '').includes('📍');
+        const zone = String(row['Zone'] || '');
+        return {
+          id: String(row['주문번호'] || ''),
+          date: String(row['주문일'] || ''),
+          customerId: String(row['고객ID'] || ''),
+          itemName: String(row['주문내역'] || ''),
+          qty: Number(row['수량']) || 1,
+          shipStatus: String(row['배송상태'] || '배송준비중'),
+          deliveryMethod: String(row['배송방법'] || ''),
+          paymentType: String(row['결제방식'] || ''),
+          paymentStatus: String(row['결제상태'] || '미결제'),
+          deliveryMemo: String(row['배송메모'] || ''),
+          shipDate: String(row['출고일'] || ''),
+          arriveDate: '',
+          shippingGroup: zone === '픽업' ? '' : zone,
+          isService,
+          isPickup,
+          cashReceived: 0,
+        };
+      }).filter(o => o.id && o.customerId);
+    } else {
+      result.errors.push('주문관리 시트를 찾을 수 없습니다');
+    }
+
+    // 유효성: 최소 하나의 시트가 성공적으로 파싱되어야 함
+    result.valid = result.customers.length > 0 || result.items.length > 0 || result.orders.length > 0;
+
+  } catch (e) {
+    console.error('Backup parse error:', e);
+    result.errors.push(e.message || '알 수 없는 오류가 발생했습니다');
+  }
+
+  return result;
+}
+
 function calcAvailStock(items, orders) {
   const totalBaechu = orders.reduce((s, o) => {
     const it = items.find(i => i.name === o.itemName);
@@ -1277,7 +1369,6 @@ export default function App() {
   const [drivers, _setDriversInternal] = useState(INITIAL_DRIVERS);
   const [loaded, setLoaded] = useState(false);
   const [toast, setToast] = useState(null);
-  const [resetConfirm, setResetConfirm] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
 
   // 로그인 체크 (앱 시작 시)
@@ -1598,7 +1689,15 @@ export default function App() {
             <span>엑셀 백업 다운로드</span>
           </button>
 
-          {/* 📤 엑셀 업로드 버튼 */}
+          {/* 📥 엑셀 백업 복원 버튼 */}
+          <BackupRestoreButton
+            setCustomers={setCustomers}
+            setItems={setItems}
+            setOrders={setOrders}
+            showToast={showToast}
+          />
+
+          {/* 📤 배차 엑셀 업로드 버튼 */}
           <ExcelUploadButton
             customers={customers}
             items={items}
@@ -1608,52 +1707,6 @@ export default function App() {
             showToast={showToast}
           />
 
-          <button
-            onClick={async () => {
-              if (!resetConfirm) {
-                // 첫 클릭: 확인 모드로 전환
-                setResetConfirm(true);
-                setTimeout(() => setResetConfirm(false), 4000);
-                return;
-              }
-              // 두 번째 클릭: 실제 실행
-              setResetConfirm(false);
-              try {
-                await deleteData(STORAGE_KEYS.customers);
-                await deleteData(STORAGE_KEYS.items);
-                await deleteData(STORAGE_KEYS.orders);
-                // 옛 버전 키도 모두 삭제
-                await deleteData('wh:customers');
-                await deleteData('wh:items');
-                await deleteData('wh:orders');
-                await deleteData('wh:v2:customers');
-                await deleteData('wh:v2:items');
-                await deleteData('wh:v2:orders');
-                await deleteData('wh:v3:customers');
-                await deleteData('wh:v3:items');
-                await deleteData('wh:v3:orders');
-                await deleteData('wh:v4:customers');
-                await deleteData('wh:v4:items');
-                await deleteData('wh:v4:orders');
-                await deleteData('wh:v5:customers');
-                await deleteData('wh:v5:items');
-                await deleteData('wh:v5:orders');
-                await deleteData('wh:v5:drivers');
-              } catch (e) { console.error(e); }
-              setCustomers(INITIAL_CUSTOMERS);
-              setItems(INITIAL_ITEMS);
-              setOrders(INITIAL_ORDERS);
-              showToast('초기 데이터로 리셋되었습니다 ✓');
-            }}
-            className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
-              resetConfirm
-                ? 'bg-red-600 hover:bg-red-700 text-white animate-pulse'
-                : 'bg-stone-100 hover:bg-stone-200 text-stone-600'
-            }`}
-          >
-            <RotateCcw size={13} />
-            <span>{resetConfirm ? '한번 더 클릭 → 정말 초기화!' : '데이터 초기화'}</span>
-          </button>
           <button
             onClick={() => setShowChangePassword(true)}
             className="w-full flex items-center gap-2 px-3 py-2 bg-stone-50 hover:bg-indigo-50 hover:text-indigo-700 text-stone-500 rounded-lg text-xs font-medium transition-all border border-stone-100"
@@ -6180,6 +6233,223 @@ function DriverOrderDetailModal({ order, customer, item, onSave, onClose }) {
 // ============================================================
 // 📤 ExcelUploadButton - 엑셀 업로드로 주문 데이터 일괄 업데이트
 // ============================================================
+// ============================================================
+// 📥 엑셀 백업 복원 버튼 - 백업 파일을 업로드해서 데이터 복원
+// ============================================================
+function BackupRestoreButton({ setCustomers, setItems, setOrders, showToast }) {
+  const [preview, setPreview] = useState(null);
+  const [parsing, setParsing] = useState(false);
+  const [mode, setMode] = useState('merge'); // 'replace' | 'merge'
+  const fileInputRef = useRef(null);
+
+  const handleFileSelect = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setParsing(true);
+    try {
+      const data = await file.arrayBuffer();
+      const wb = XLSX.read(data);
+
+      const result = importFromBackupExcel(wb);
+
+      if (!result.valid) {
+        showToast(`백업 파일을 읽을 수 없습니다: ${result.errors.join(', ')}`, 'error');
+        setParsing(false);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        return;
+      }
+
+      setPreview(result);
+    } catch (err) {
+      console.error(err);
+      showToast('백업 파일 읽기 실패. "워커힐김치_백업_xxx.xlsx" 형식이 맞는지 확인해주세요.', 'error');
+    }
+    setParsing(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleApply = () => {
+    if (!preview) return;
+
+    if (mode === 'replace') {
+      // 완전 교체
+      setCustomers(preview.customers);
+      setItems(preview.items);
+      setOrders(preview.orders);
+      showToast(`✅ 복원 완료! 고객 ${preview.customers.length}명, 주문 ${preview.orders.length}건, 품목 ${preview.items.length}개`);
+    } else {
+      // 병합 모드: 기존 데이터 유지 + 백업에 있는 것만 덮어쓰기
+      setCustomers(prevCustomers => {
+        const map = {};
+        prevCustomers.forEach(c => { map[c.id] = c; });
+        preview.customers.forEach(c => { map[c.id] = c; });
+        return Object.values(map);
+      });
+      setItems(prevItems => {
+        const map = {};
+        prevItems.forEach(i => { map[i.code] = i; });
+        preview.items.forEach(i => {
+          // 기존 원가/B2B가/입고이력은 유지 (백업에는 없을 수 있음)
+          const existing = map[i.code];
+          map[i.code] = existing ? { ...existing, ...i } : i;
+        });
+        return Object.values(map);
+      });
+      setOrders(prevOrders => {
+        const map = {};
+        prevOrders.forEach(o => { map[o.id] = o; });
+        preview.orders.forEach(o => { map[o.id] = o; });
+        return Object.values(map);
+      });
+      showToast(`✅ 병합 완료! 기존 데이터에 백업 데이터가 추가/업데이트되었습니다`);
+    }
+
+    setPreview(null);
+  };
+
+  return (
+    <>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".xlsx,.xls"
+        onChange={handleFileSelect}
+        className="hidden"
+      />
+
+      <button
+        onClick={() => fileInputRef.current?.click()}
+        disabled={parsing}
+        className="w-full flex items-center gap-2 px-3 py-2.5 bg-gradient-to-br from-sky-600 to-sky-700 hover:from-sky-700 hover:to-sky-800 text-white rounded-lg text-sm font-semibold shadow-sm transition-all disabled:opacity-60"
+      >
+        <span className="text-base">📥</span>
+        <span>{parsing ? '읽는 중...' : '엑셀 백업 복원'}</span>
+      </button>
+
+      {/* 미리보기 모달 */}
+      {preview && (
+        <div className="fixed inset-0 bg-stone-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setPreview(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="sticky top-0 bg-white z-10 px-6 py-4 border-b border-stone-200 flex items-center justify-between shadow-sm">
+              <div>
+                <h2 className="font-serif-ko text-lg font-bold text-stone-800">📥 백업 복원 미리보기</h2>
+                <div className="text-xs text-stone-500 mt-0.5">백업 파일의 내용을 확인하고 복원 방식을 선택하세요</div>
+              </div>
+              <button onClick={() => setPreview(null)} className="p-1.5 hover:bg-stone-100 rounded-lg"><X size={18} /></button>
+            </div>
+
+            <div className="p-6 space-y-5">
+              {/* 요약 */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="p-4 bg-sky-50 border border-sky-200 rounded-xl">
+                  <div className="text-[10px] text-sky-700">고객</div>
+                  <div className="font-bold text-sky-900 text-2xl tabular-nums">{preview.customers.length}</div>
+                  <div className="text-[10px] text-sky-600">명</div>
+                </div>
+                <div className="p-4 bg-sky-50 border border-sky-200 rounded-xl">
+                  <div className="text-[10px] text-sky-700">주문</div>
+                  <div className="font-bold text-sky-900 text-2xl tabular-nums">{preview.orders.length}</div>
+                  <div className="text-[10px] text-sky-600">건</div>
+                </div>
+                <div className="p-4 bg-sky-50 border border-sky-200 rounded-xl">
+                  <div className="text-[10px] text-sky-700">품목</div>
+                  <div className="font-bold text-sky-900 text-2xl tabular-nums">{preview.items.length}</div>
+                  <div className="text-[10px] text-sky-600">개</div>
+                </div>
+              </div>
+
+              {/* 에러가 있으면 표시 */}
+              {preview.errors.length > 0 && (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                  <div className="text-xs font-bold text-amber-900 mb-1">⚠️ 주의사항</div>
+                  <ul className="text-[11px] text-amber-800 list-disc list-inside space-y-0.5">
+                    {preview.errors.map((err, i) => <li key={i}>{err}</li>)}
+                  </ul>
+                </div>
+              )}
+
+              {/* 복원 방식 선택 */}
+              <div>
+                <div className="text-xs font-bold text-stone-700 mb-2">복원 방식 선택</div>
+                <div className="space-y-2">
+                  <label className={`flex items-start gap-3 p-3 rounded-xl cursor-pointer border-2 transition-all ${
+                    mode === 'merge' ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-stone-200 hover:bg-stone-50'
+                  }`}>
+                    <input
+                      type="radio"
+                      checked={mode === 'merge'}
+                      onChange={() => setMode('merge')}
+                      className="mt-0.5 w-4 h-4 accent-emerald-600"
+                    />
+                    <div className="flex-1">
+                      <div className="text-sm font-bold text-emerald-900">🔀 병합 모드 (추천)</div>
+                      <div className="text-[11px] text-emerald-700 mt-0.5">
+                        기존 데이터는 유지하고, 백업 데이터를 추가/업데이트합니다.
+                        <br/>같은 ID가 있으면 백업 데이터로 덮어쓰고, 없으면 새로 추가합니다.
+                        <br/><strong>안전한 선택 - 데이터 손실 없음</strong>
+                      </div>
+                    </div>
+                  </label>
+
+                  <label className={`flex items-start gap-3 p-3 rounded-xl cursor-pointer border-2 transition-all ${
+                    mode === 'replace' ? 'bg-red-50 border-red-300' : 'bg-white border-stone-200 hover:bg-stone-50'
+                  }`}>
+                    <input
+                      type="radio"
+                      checked={mode === 'replace'}
+                      onChange={() => setMode('replace')}
+                      className="mt-0.5 w-4 h-4 accent-red-600"
+                    />
+                    <div className="flex-1">
+                      <div className="text-sm font-bold text-red-900">⚠️ 완전 교체 모드</div>
+                      <div className="text-[11px] text-red-700 mt-0.5">
+                        기존 모든 데이터를 삭제하고 백업 데이터로 교체합니다.
+                        <br/><strong className="text-red-900">주의: 현재 데이터가 사라집니다!</strong>
+                      </div>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              {/* 고객 미리보기 */}
+              {preview.customers.length > 0 && (
+                <div>
+                  <div className="text-xs font-bold text-stone-700 mb-2">고객 미리보기 (상위 5명)</div>
+                  <div className="bg-stone-50 rounded-lg p-2 space-y-1">
+                    {preview.customers.slice(0, 5).map(c => (
+                      <div key={c.id} className="text-xs flex items-center gap-2">
+                        <span className="font-mono text-stone-500">{c.id}</span>
+                        <span className="font-medium">{c.name}</span>
+                        <span className="text-stone-400">{c.phone}</span>
+                      </div>
+                    ))}
+                    {preview.customers.length > 5 && (
+                      <div className="text-[10px] text-stone-500">...외 {preview.customers.length - 5}명</div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="sticky bottom-0 bg-white px-6 py-4 border-t border-stone-200 flex items-center justify-end gap-2 shadow-[0_-2px_8px_rgba(0,0,0,0.04)]">
+              <button onClick={() => setPreview(null)} className="px-4 py-2 text-sm text-stone-600 hover:bg-stone-100 rounded-lg">취소</button>
+              <button
+                onClick={handleApply}
+                className={`px-5 py-2 text-white rounded-lg text-sm font-semibold active:scale-95 transition-all ${
+                  mode === 'replace' ? 'bg-red-700 hover:bg-red-800' : 'bg-emerald-700 hover:bg-emerald-800'
+                }`}
+              >
+                {mode === 'replace' ? '⚠️ 완전 교체' : '🔀 병합 복원'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 function ExcelUploadButton({ customers, items, orders, setCustomers, setOrders, showToast }) {
   const [preview, setPreview] = useState(null);
   const [parsing, setParsing] = useState(false);
