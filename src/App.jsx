@@ -482,6 +482,48 @@ function getShippingFee(customerId, orders, items) {
 }
 
 // ============================================================
+// 🎁 사은품 이벤트 관리
+// ============================================================
+const GIFT_STORAGE_KEY = 'wh:v6:gifts';
+
+// 이벤트별 사은품 데이터 구조
+// { id, name, description, totalStock, remaining, tiers, active, startDate, endDate, createdAt }
+const INITIAL_GIFTS = [];
+
+// 기본 지급 기준 템플릿
+const DEFAULT_GIFT_TIERS = [
+  { minAmount: 100, qty: 1 },  // $100 이상 → 1개
+];
+
+// 현재 활성 사은품 이벤트 가져오기
+function getActiveGift(gifts) {
+  return gifts.find(g => g.active && g.remaining > 0) || null;
+}
+
+// 주문 합계 기반 사은품 자동 수량 계산
+function calcGiftQtyByAmount(orderTotal, tiers) {
+  if (!tiers || tiers.length === 0) return 0;
+  // 금액 기준 내림차순 정렬
+  const sorted = [...tiers].sort((a, b) => b.minAmount - a.minAmount);
+  for (const tier of sorted) {
+    if (orderTotal >= tier.minAmount) return tier.qty;
+  }
+  return 0;
+}
+
+// 주문의 사은품 수량 결정 (자동 + 수동 추가)
+// autoQty: 주문액 기준 자동 계산
+// manualExtra: 관리자가 수동으로 추가 (단골/VIP)
+// 우선순위: 주문의 giftQty 필드 있으면 그대로, 없으면 자동 계산
+function resolveGiftQty(order, activeGift, orderTotal) {
+  if (!activeGift) return 0;
+  // 명시적으로 설정된 값이 있으면 그대로 사용 (0 포함)
+  if (order && typeof order.giftQty === 'number') return order.giftQty;
+  // 아니면 자동 계산
+  return calcGiftQtyByAmount(orderTotal, activeGift.tiers || DEFAULT_GIFT_TIERS);
+}
+
+// ============================================================
 // 🏆 고객등급 자동 계산: VIP $2,000+ / 우수 $500+ / 일반
 // ============================================================
 const GRADE_VIP_THRESHOLD = 2000;
@@ -1367,6 +1409,7 @@ export default function App() {
   const [items, _setItemsInternal] = useState(INITIAL_ITEMS);
   const [orders, _setOrdersInternal] = useState(INITIAL_ORDERS);
   const [drivers, _setDriversInternal] = useState(INITIAL_DRIVERS);
+  const [gifts, setGifts] = useState(INITIAL_GIFTS);
   const [loaded, setLoaded] = useState(false);
   const [toast, setToast] = useState(null);
   const [showChangePassword, setShowChangePassword] = useState(false);
@@ -1402,16 +1445,18 @@ export default function App() {
       (async () => {
         try {
           // 먼저 로컬 데이터 로드 (빠른 첫 렌더링)
-          const [localC, localI, localO, localD] = await Promise.all([
+          const [localC, localI, localO, localD, localG] = await Promise.all([
             loadData(STORAGE_KEYS.customers, INITIAL_CUSTOMERS),
             loadData(STORAGE_KEYS.items, INITIAL_ITEMS),
             loadData(STORAGE_KEYS.orders, INITIAL_ORDERS),
             loadData(DRIVERS_KEY, INITIAL_DRIVERS),
+            loadData(GIFT_STORAGE_KEY, INITIAL_GIFTS),
           ]);
           _setCustomersInternal(localC);
           _setItemsInternal(localI);
           _setOrdersInternal(localO);
           _setDriversInternal(localD);
+          setGifts(localG);
           setLoaded(true);
 
           // Firestore 실시간 구독 - 다른 기기의 변경사항만 반영
@@ -1562,6 +1607,13 @@ export default function App() {
     }
   };
 
+  // 🎁 사은품 저장 래퍼 (localStorage만)
+  const saveGifts = (newGifts) => {
+    const resolved = typeof newGifts === 'function' ? newGifts(gifts) : newGifts;
+    setGifts(resolved);
+    saveData(GIFT_STORAGE_KEY, resolved);
+  };
+
   const itemsWithStock = useMemo(() => calcAvailStock(items, orders), [items, orders]);
 
   const handleLogout = () => {
@@ -1617,6 +1669,7 @@ export default function App() {
     { id: 'orders', label: '주문관리', icon: ShoppingCart },
     { id: 'customers', label: '고객관리', icon: Users },
     { id: 'items', label: '품목/재고', icon: Package },
+    { id: 'gifts', label: '사은품', icon: Package },
     { id: 'shipping', label: '배송관리', icon: Truck },
     { id: 'drivers', label: '기사관리', icon: Truck },
   ];
@@ -1762,6 +1815,7 @@ export default function App() {
               {view === 'orders' && '주문을 등록하고 카톡 메시지를 생성하세요'}
               {view === 'customers' && '고객 정보를 관리하세요 (최대 4,500명)'}
               {view === 'items' && '품목과 재고를 관리하세요'}
+              {view === 'gifts' && '사은품 이벤트와 자동 지급 기준을 관리하세요'}
               {view === 'shipping' && '배송 상태를 업데이트하세요'}
               {view === 'drivers' && '배송기사 계정을 관리하고 담당 Zone을 지정하세요'}
             </div>
@@ -1812,10 +1866,11 @@ export default function App() {
         </header>
 
         <div className="p-8">
-          {view === 'dashboard' && <Dashboard customers={customers} items={itemsWithStock} orders={orders} setView={setView} />}
-          {view === 'orders' && <Orders customers={customers} items={itemsWithStock} orders={orders} setOrders={setOrders} showToast={showToast} />}
+          {view === 'dashboard' && <Dashboard customers={customers} items={itemsWithStock} orders={orders} gifts={gifts} setView={setView} />}
+          {view === 'orders' && <Orders customers={customers} items={itemsWithStock} orders={orders} setOrders={setOrders} gifts={gifts} setGifts={saveGifts} showToast={showToast} />}
           {view === 'customers' && <Customers customers={customers} setCustomers={setCustomers} items={itemsWithStock} orders={orders} showToast={showToast} />}
           {view === 'items' && <Items items={itemsWithStock} setItems={setItems} showToast={showToast} />}
+          {view === 'gifts' && <Gifts gifts={gifts} setGifts={saveGifts} orders={orders} customers={customers} items={itemsWithStock} showToast={showToast} setView={setView} />}
           {view === 'shipping' && <Shipping customers={customers} orders={orders} setOrders={setOrders} showToast={showToast} />}
           {view === 'drivers' && <DriversManagement drivers={drivers} setDrivers={setDrivers} orders={orders} showToast={showToast} />}
         </div>
@@ -1839,7 +1894,7 @@ export default function App() {
   );
 }
 
-function Dashboard({ customers, items, orders, setView }) {
+function Dashboard({ customers, items, orders, gifts = [], setView }) {
   const stats = useMemo(() => {
     const priceMap = {};
     items.forEach(i => { priceMap[i.name] = i.price || 0; });
@@ -2188,6 +2243,101 @@ function Dashboard({ customers, items, orders, setView }) {
       </div>
 
       {/* ══════════════════════════════════════════════════ */}
+      {/* 🎁 섹션 3.5: 진행 중 사은품 이벤트 */}
+      {/* ══════════════════════════════════════════════════ */}
+      {(() => {
+        const activeGift = gifts.find(g => g.active);
+        if (!activeGift) return null;
+
+        // 지급 현황 계산
+        const linkedOrders = orders.filter(o => o.giftId === activeGift.id && o.giftQty > 0 && o.shipStatus !== '취소');
+        const givenQty = linkedOrders.reduce((s, o) => s + (o.giftQty || 0), 0);
+        const recipientCount = new Set(linkedOrders.map(o => o.customerId)).size;
+        const remaining = Math.max(0, (activeGift.totalStock || 0) - givenQty);
+        const pct = activeGift.totalStock > 0 ? (givenQty / activeGift.totalStock) * 100 : 0;
+
+        return (
+          <div className="bg-gradient-to-r from-pink-50 via-rose-50 to-pink-50 border-2 border-pink-200 rounded-2xl p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">🎁</span>
+                <div>
+                  <h2 className="font-bold text-pink-900 text-sm flex items-center gap-2">
+                    <span>진행 중 사은품 이벤트</span>
+                    <span className="text-[10px] px-1.5 py-0.5 bg-emerald-500 text-white rounded-full font-bold animate-pulse">LIVE</span>
+                  </h2>
+                  <p className="text-[11px] text-pink-700 mt-0.5">{activeGift.name}</p>
+                </div>
+              </div>
+              <button onClick={() => setView('gifts')} className="text-[11px] text-pink-700 hover:text-pink-900 font-medium bg-white hover:bg-pink-100 px-3 py-1.5 rounded-lg">
+                관리 →
+              </button>
+            </div>
+
+            <div className="grid grid-cols-4 gap-3">
+              {/* 남은 재고 */}
+              <div className="bg-white rounded-xl p-3 border border-pink-100">
+                <div className="text-[10px] font-bold text-pink-700 mb-1">남은 재고</div>
+                <div className={`text-2xl font-bold tabular-nums ${
+                  remaining === 0 ? 'text-red-700' :
+                  remaining <= 50 ? 'text-amber-700' :
+                  'text-emerald-700'
+                }`}>
+                  {remaining}<span className="text-xs font-normal text-stone-400 ml-0.5">/{activeGift.totalStock}개</span>
+                </div>
+                <div className="mt-2 h-1.5 bg-stone-100 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full ${
+                      pct >= 90 ? 'bg-red-500' :
+                      pct >= 70 ? 'bg-amber-500' :
+                      'bg-emerald-500'
+                    }`}
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* 지급 건수 */}
+              <div className="bg-white rounded-xl p-3 border border-pink-100">
+                <div className="text-[10px] font-bold text-pink-700 mb-1">지급 완료</div>
+                <div className="text-2xl font-bold text-stone-800 tabular-nums">
+                  {recipientCount}<span className="text-xs font-normal text-stone-400 ml-0.5">명</span>
+                </div>
+                <div className="text-[10px] text-stone-500 mt-2">{givenQty}개 지급됨</div>
+              </div>
+
+              {/* 지급 기준 */}
+              <div className="col-span-2 bg-white rounded-xl p-3 border border-pink-100">
+                <div className="text-[10px] font-bold text-pink-700 mb-1.5">📋 자동 지급 기준</div>
+                <div className="space-y-1">
+                  {(activeGift.tiers || DEFAULT_GIFT_TIERS).sort((a, b) => a.minAmount - b.minAmount).map((tier, idx) => (
+                    <div key={idx} className="flex items-center justify-between text-[11px]">
+                      <span className="text-stone-700">${tier.minAmount} 이상 주문</span>
+                      <span className="font-bold text-pink-700">{tier.qty}개 지급</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* 경보 */}
+            {remaining <= 50 && remaining > 0 && (
+              <div className="mt-3 p-2 bg-amber-100 border border-amber-300 rounded-lg text-xs text-amber-900 font-semibold flex items-center gap-2">
+                <span>⚠️</span>
+                <span>사은품 재고가 얼마 남지 않았습니다 ({remaining}개)</span>
+              </div>
+            )}
+            {remaining === 0 && (
+              <div className="mt-3 p-2 bg-red-100 border border-red-300 rounded-lg text-xs text-red-900 font-semibold flex items-center gap-2">
+                <span>🚨</span>
+                <span>사은품 재고가 모두 소진되었습니다!</span>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* ══════════════════════════════════════════════════ */}
       {/* 📦 섹션 4: 품목별 판매 분석 */}
       {/* ══════════════════════════════════════════════════ */}
       <div className="bg-white rounded-2xl border border-stone-200 p-5">
@@ -2417,7 +2567,7 @@ function KpiCard({ label, value, unit, accent, icon: Icon, big, warn }) {
   );
 }
 
-function Orders({ customers, items, orders, setOrders, showToast }) {
+function Orders({ customers, items, orders, setOrders, gifts, setGifts, showToast }) {
   const [search, setSearch] = useState('');
   const [yearFilter, setYearFilter] = useState('');
   const [monthFilter, setMonthFilter] = useState('');
@@ -2704,6 +2854,7 @@ function Orders({ customers, items, orders, setOrders, showToast }) {
                         {o.isPickup && <span className="text-[9px] px-1 py-0.5 rounded bg-sky-500 text-white font-bold">📍 픽업</span>}
                         {isWaitingStock && <span className="text-[9px] px-1 py-0.5 rounded bg-purple-500 text-white font-bold">⏳ 입고대기</span>}
                         {o.splitDeliveries?.length > 0 && <span className="text-[9px] px-1 py-0.5 rounded bg-indigo-500 text-white font-bold">📦 분할{o.splitDeliveries.length}회</span>}
+                        {o.giftQty > 0 && <span className="text-[9px] px-1 py-0.5 rounded bg-pink-500 text-white font-bold" title={o.giftName || '사은품'}>🎁 {o.giftQty}</span>}
                       </div>
                     </td>
                     <td className="px-4 py-3 text-stone-600 text-xs">
@@ -2810,6 +2961,8 @@ function Orders({ customers, items, orders, setOrders, showToast }) {
         <OrderFormModal
           customers={customers} items={items}
           editTarget={editTarget}
+          gifts={gifts}
+          orders={orders}
           onSave={handleSave}
           onClose={() => { setShowForm(false); setEditTarget(null); }}
         />
@@ -2828,7 +2981,7 @@ function Orders({ customers, items, orders, setOrders, showToast }) {
   );
 }
 
-function OrderFormModal({ customers, items, editTarget, onSave, onClose }) {
+function OrderFormModal({ customers, items, editTarget, gifts = [], orders = [], onSave, onClose }) {
   const [date, setDate] = useState(editTarget?.date || new Date().toISOString().slice(0,10));
   const [customerSearch, setCustomerSearch] = useState('');
   const [customerId, setCustomerId] = useState(editTarget?.customerId || '');
@@ -2841,6 +2994,11 @@ function OrderFormModal({ customers, items, editTarget, onSave, onClose }) {
   const [expectedStockDate, setExpectedStockDate] = useState(editTarget?.expectedStockDate || '');
   const [splitDeliveries, setSplitDeliveries] = useState(editTarget?.splitDeliveries || []);
   const [showSplitUI, setShowSplitUI] = useState(!!editTarget?.splitDeliveries?.length);
+  // 🎁 사은품 관련
+  const activeGift = getActiveGift(gifts);
+  const [giftQty, setGiftQty] = useState(
+    editTarget?.giftQty !== undefined ? editTarget.giftQty : null
+  ); // null = 자동 계산, 숫자 = 수동 지정
 
   const matchedCustomers = useMemo(() => {
     if (!customerSearch) return customers.slice(0, 8);
@@ -2879,6 +3037,24 @@ function OrderFormModal({ customers, items, editTarget, onSave, onClose }) {
   const canSubmit = customerId && itemName && qty > 0 && splitValid &&
     (!isPreOrder || !!expectedStockDate);
 
+  // 🎁 사은품 자동 계산 (주문 합계 기반)
+  // 같은 고객의 다른 주문 + 현재 주문 합산
+  const customerOtherOrdersTotal = useMemo(() => {
+    if (!customerId) return 0;
+    return orders
+      .filter(o => o.customerId === customerId && !o.isService && o.shipStatus !== '취소' && (!editTarget || o.id !== editTarget.id))
+      .reduce((s, o) => {
+        const it = items.find(i => i.name === o.itemName);
+        return s + (it?.price || 0) * o.qty;
+      }, 0);
+  }, [customerId, orders, items, editTarget]);
+
+  const currentOrderTotal = isService ? 0 : (unitPrice * qty);
+  const totalForGift = customerOtherOrdersTotal + currentOrderTotal;
+  const autoGiftQty = activeGift ? calcGiftQtyByAmount(totalForGift, activeGift.tiers) : 0;
+  // giftQty가 null이면 자동, 숫자면 수동
+  const effectiveGiftQty = giftQty === null ? autoGiftQty : giftQty;
+
   // 분할 배송 추가/제거
   const addSplit = () => {
     setSplitDeliveries([...splitDeliveries, { date: '', qty: 0 }]);
@@ -2901,6 +3077,15 @@ function OrderFormModal({ customers, items, editTarget, onSave, onClose }) {
     }
     if (showSplitUI && splitDeliveries.length > 0) {
       data.splitDeliveries = splitDeliveries;
+    }
+    // 🎁 사은품 정보 저장
+    if (activeGift && effectiveGiftQty > 0) {
+      data.giftId = activeGift.id;
+      data.giftName = activeGift.name;
+      data.giftQty = effectiveGiftQty;
+    } else if (giftQty !== null) {
+      // 수동으로 0으로 설정한 경우
+      data.giftQty = 0;
     }
     onSave(data);
   };
@@ -3188,6 +3373,96 @@ function OrderFormModal({ customers, items, editTarget, onSave, onClose }) {
               </div>
             )}
           </div>
+
+          {/* 🎁 사은품 섹션 */}
+          {activeGift && !isService && customerId && (
+            <div className={`p-4 rounded-xl border-2 transition-all ${
+              effectiveGiftQty > 0
+                ? 'bg-gradient-to-br from-pink-50 to-rose-50 border-pink-300'
+                : 'bg-stone-50 border-stone-200'
+            }`}>
+              <div className="flex items-start justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">🎁</span>
+                  <div>
+                    <div className="text-sm font-bold text-stone-800">
+                      {activeGift.name}
+                    </div>
+                    <div className="text-[10px] text-stone-500">
+                      현재 진행 중 이벤트 · 남은 재고: {activeGift.remaining || activeGift.totalStock}개
+                    </div>
+                  </div>
+                </div>
+                {giftQty !== null && (
+                  <button
+                    type="button"
+                    onClick={() => setGiftQty(null)}
+                    className="text-[10px] text-stone-500 hover:text-stone-800 underline"
+                  >
+                    자동으로 되돌리기
+                  </button>
+                )}
+              </div>
+
+              {/* 자동 계산 정보 */}
+              <div className="bg-white rounded-lg p-2.5 mb-3">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="text-stone-600">고객 총 주문액:</span>
+                  <span className="font-bold text-stone-800 tabular-nums">{formatWon(totalForGift)}</span>
+                </div>
+                <div className="flex items-center justify-between text-[11px] mt-0.5">
+                  <span className="text-stone-600">자동 계산:</span>
+                  <span className="font-bold text-pink-700">
+                    {autoGiftQty > 0 ? `${autoGiftQty}개 지급` : '지급 없음 (기준 미달)'}
+                  </span>
+                </div>
+              </div>
+
+              {/* 수량 조정 */}
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-semibold text-stone-700 flex-shrink-0">지급 수량:</span>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setGiftQty(Math.max(0, effectiveGiftQty - 1))}
+                    className="w-8 h-8 bg-white hover:bg-stone-100 border-2 border-stone-300 rounded-lg font-bold text-stone-700"
+                  >
+                    −
+                  </button>
+                  <input
+                    type="number"
+                    min="0"
+                    value={effectiveGiftQty}
+                    onChange={e => setGiftQty(Number(e.target.value) || 0)}
+                    className="w-14 h-8 text-center bg-white border-2 border-pink-300 rounded-lg font-bold text-pink-700 tabular-nums focus:outline-none focus:border-pink-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setGiftQty(effectiveGiftQty + 1)}
+                    className="w-8 h-8 bg-white hover:bg-stone-100 border-2 border-stone-300 rounded-lg font-bold text-stone-700"
+                  >
+                    +
+                  </button>
+                </div>
+                <span className="text-xs text-stone-500">개</span>
+                {giftQty !== null && giftQty !== autoGiftQty && (
+                  <span className="ml-auto text-[10px] px-2 py-0.5 bg-amber-100 text-amber-800 rounded font-bold">
+                    ⚙️ 수동 조정됨
+                  </span>
+                )}
+              </div>
+
+              {/* 결과 표시 */}
+              {effectiveGiftQty > 0 && (
+                <div className="mt-3 p-2 bg-pink-100 rounded-lg text-xs text-pink-900 font-semibold text-center">
+                  ✨ {activeGift.name} × {effectiveGiftQty}개 지급
+                  {giftQty !== null && giftQty > autoGiftQty && (
+                    <span className="ml-1 text-amber-700">(VIP/단골 특별 지급)</span>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="sticky bottom-0 bg-white px-6 py-4 border-t border-stone-200 flex items-center justify-end gap-2 shadow-[0_-2px_8px_rgba(0,0,0,0.04)]">
@@ -3221,9 +3496,14 @@ function MessageModal({ order, customers, items, orders, onClose }) {
   const finalTotal = total + (needsShipping ? SHIPPING_FEE : 0);
   const [copied, setCopied] = useState(false);
 
-  const orderMsg = `[워커힐김치 주문 안내] ${c?.name}고객님, ${koDate(order.date)}에 ${order.itemName} ${order.qty}개 주문해주셨습니다. 총 $${formatNum(finalTotal)}${shippingLine} 입니다. 감사합니다~♥`;
-  const confirmMsg = `[워커힐김치 배송 전 확인] ${c?.name}고객님, 곧 배송 예정인 주문 내역을 확인 부탁드립니다.\n- 품목: ${order.itemName}\n- 수량: ${order.qty}개\n- 금액: $${formatNum(finalTotal)}${shippingLine}\n- 배송지: ${c?.address}\n내역이 맞으시면 "확인" 답장 부탁드려요~♥`;
-  const shipMsg = (order.shipStatus === '배송완료' || order.shipStatus === '배송중') ? `[워커힐김치 배송 안내] ${c?.name}고객님, 주문하신 ${order.itemName} x${order.qty}이(가) ${order.shipDate ? order.shipDate + ' 출고되었습니다. ' : '배송 중입니다. '}${order.deliveryMethod ? '(' + order.deliveryMethod + ') ' : ''}감사합니다~♥` : null;
+  // 🎁 사은품 메시지 구문
+  const giftLine = (order.giftQty > 0 && order.giftName)
+    ? `\n🎁 사은품: ${order.giftName} ${order.giftQty}개`
+    : '';
+
+  const orderMsg = `[워커힐김치 주문 안내] ${c?.name}고객님, ${koDate(order.date)}에 ${order.itemName} ${order.qty}개 주문해주셨습니다. 총 $${formatNum(finalTotal)}${shippingLine} 입니다.${giftLine ? ' ' + giftLine.replace(/\n/g, ' ') : ''} 감사합니다~♥`;
+  const confirmMsg = `[워커힐김치 배송 전 확인] ${c?.name}고객님, 곧 배송 예정인 주문 내역을 확인 부탁드립니다.\n- 품목: ${order.itemName}\n- 수량: ${order.qty}개\n- 금액: $${formatNum(finalTotal)}${shippingLine}${giftLine}\n- 배송지: ${c?.address}\n내역이 맞으시면 "확인" 답장 부탁드려요~♥`;
+  const shipMsg = (order.shipStatus === '배송완료' || order.shipStatus === '배송중') ? `[워커힐김치 배송 안내] ${c?.name}고객님, 주문하신 ${order.itemName} x${order.qty}${giftLine ? ` + ${order.giftName} ${order.giftQty}개(사은품)` : ''}이(가) ${order.shipDate ? order.shipDate + ' 출고되었습니다. ' : '배송 중입니다. '}${order.deliveryMethod ? '(' + order.deliveryMethod + ') ' : ''}감사합니다~♥` : null;
 
   const copy = (text) => {
     navigator.clipboard.writeText(text);
@@ -5209,6 +5489,479 @@ function ShippingModal({ order, customer, onSave, onClose }) {
 // ============================================================
 // 🚚 DriversManagement - 관리자용 배송기사 계정 관리
 // ============================================================
+// ============================================================
+// 🎁 사은품 이벤트 관리 탭
+// ============================================================
+function Gifts({ gifts, setGifts, orders, customers, items, showToast, setView }) {
+  const [showForm, setShowForm] = useState(false);
+  const [editTarget, setEditTarget] = useState(null);
+
+  // 각 이벤트별 지급 현황 계산
+  const giftStats = useMemo(() => {
+    return gifts.map(g => {
+      // 이 사은품이 지급된 주문들
+      const linkedOrders = orders.filter(o => o.giftId === g.id && o.giftQty > 0 && o.shipStatus !== '취소');
+      const givenQty = linkedOrders.reduce((s, o) => s + (o.giftQty || 0), 0);
+      const recipientCount = new Set(linkedOrders.map(o => o.customerId)).size;
+      return {
+        ...g,
+        givenQty,
+        recipientCount,
+        remaining: Math.max(0, (g.totalStock || 0) - givenQty),
+      };
+    });
+  }, [gifts, orders]);
+
+  const activeGifts = giftStats.filter(g => g.active);
+  const inactiveGifts = giftStats.filter(g => !g.active);
+
+  const handleSave = (gift) => {
+    if (editTarget) {
+      setGifts(gifts.map(g => g.id === editTarget.id ? { ...gift, id: editTarget.id } : g));
+      showToast('사은품 이벤트가 수정되었습니다');
+    } else {
+      const newId = `GIFT-${Date.now()}`;
+      // 새 이벤트가 활성이면 기존 활성은 자동 비활성화 (1개만 활성)
+      let updatedGifts = [...gifts];
+      if (gift.active) {
+        updatedGifts = updatedGifts.map(g => ({ ...g, active: false }));
+      }
+      setGifts([...updatedGifts, { ...gift, id: newId, createdAt: new Date().toISOString() }]);
+      showToast('✨ 새 사은품 이벤트가 등록되었습니다');
+    }
+    setShowForm(false);
+    setEditTarget(null);
+  };
+
+  const handleToggleActive = (id) => {
+    const target = gifts.find(g => g.id === id);
+    if (!target) return;
+    // 활성화하면 다른 이벤트는 자동 비활성화
+    if (!target.active) {
+      setGifts(gifts.map(g => ({ ...g, active: g.id === id })));
+      showToast('✅ 활성 이벤트로 전환되었습니다');
+    } else {
+      setGifts(gifts.map(g => g.id === id ? { ...g, active: false } : g));
+      showToast('이벤트가 종료되었습니다');
+    }
+  };
+
+  const handleDelete = (id) => {
+    if (!confirm('이 이벤트를 삭제할까요? 지급 기록은 유지됩니다.')) return;
+    setGifts(gifts.filter(g => g.id !== id));
+    showToast('삭제되었습니다');
+  };
+
+  return (
+    <div className="space-y-5">
+      {/* 헤더 */}
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs text-stone-500">새 상품 입고 시 사은품 이벤트를 등록하고 자동 지급 기준을 설정하세요</p>
+        </div>
+        <button
+          onClick={() => { setEditTarget(null); setShowForm(true); }}
+          className="flex items-center gap-2 px-4 py-2.5 bg-red-800 hover:bg-red-900 text-white rounded-lg text-sm font-semibold shadow-sm"
+        >
+          <Plus size={16} />
+          새 이벤트 등록
+        </button>
+      </div>
+
+      {/* 🟢 활성 이벤트 */}
+      {activeGifts.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span className="text-xs font-bold text-emerald-700 uppercase tracking-wider">진행 중</span>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            {activeGifts.map(g => (
+              <GiftCard
+                key={g.id}
+                gift={g}
+                onEdit={() => { setEditTarget(g); setShowForm(true); }}
+                onToggle={() => handleToggleActive(g.id)}
+                onDelete={() => handleDelete(g.id)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 빈 상태 */}
+      {gifts.length === 0 && (
+        <div className="bg-white border-2 border-dashed border-stone-200 rounded-2xl p-12 text-center">
+          <div className="text-6xl mb-3">🎁</div>
+          <div className="text-lg font-bold text-stone-800 mb-2">아직 사은품 이벤트가 없습니다</div>
+          <div className="text-sm text-stone-500 mb-5 max-w-md mx-auto">
+            새 상품을 수입할 때마다 사은품 이벤트를 등록하세요.<br/>
+            주문 등록 시 자동으로 계산되어 표시됩니다.
+          </div>
+          <button
+            onClick={() => { setEditTarget(null); setShowForm(true); }}
+            className="px-5 py-2.5 bg-red-800 hover:bg-red-900 text-white rounded-lg text-sm font-semibold shadow-sm"
+          >
+            🎁 첫 이벤트 등록하기
+          </button>
+        </div>
+      )}
+
+      {/* 종료된 이벤트 */}
+      {inactiveGifts.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-3 mt-6">
+            <span className="w-2 h-2 rounded-full bg-stone-400"></span>
+            <span className="text-xs font-bold text-stone-500 uppercase tracking-wider">종료된 이벤트 ({inactiveGifts.length})</span>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            {inactiveGifts.map(g => (
+              <GiftCard
+                key={g.id}
+                gift={g}
+                onEdit={() => { setEditTarget(g); setShowForm(true); }}
+                onToggle={() => handleToggleActive(g.id)}
+                onDelete={() => handleDelete(g.id)}
+                inactive
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 폼 모달 */}
+      {showForm && (
+        <GiftFormModal
+          editTarget={editTarget}
+          onSave={handleSave}
+          onClose={() => { setShowForm(false); setEditTarget(null); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// 🎁 사은품 카드
+// ============================================================
+function GiftCard({ gift, onEdit, onToggle, onDelete, inactive }) {
+  const pct = gift.totalStock > 0 ? (gift.givenQty / gift.totalStock) * 100 : 0;
+
+  return (
+    <div className={`bg-white rounded-2xl border-2 p-5 transition-all ${
+      inactive ? 'border-stone-200 opacity-70' : 'border-emerald-200 shadow-sm hover:shadow-md'
+    }`}>
+      {/* 헤더 */}
+      <div className="flex items-start justify-between mb-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-2xl">🎁</span>
+            <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
+              inactive ? 'bg-stone-100 text-stone-500' : 'bg-emerald-100 text-emerald-700'
+            }`}>
+              {inactive ? '종료됨' : '진행 중'}
+            </span>
+          </div>
+          <h3 className="font-bold text-stone-800 text-base leading-tight truncate">
+            {gift.name}
+          </h3>
+          {gift.description && (
+            <p className="text-xs text-stone-500 mt-1 line-clamp-2">{gift.description}</p>
+          )}
+        </div>
+        <div className="flex items-center gap-1 ml-2">
+          <button
+            onClick={onToggle}
+            className={`px-2 py-1 rounded text-[10px] font-bold ${
+              inactive
+                ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+                : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+            }`}
+            title={inactive ? '활성화' : '종료'}
+          >
+            {inactive ? '활성화' : '종료'}
+          </button>
+          <button
+            onClick={onEdit}
+            className="p-1.5 text-stone-500 hover:bg-stone-100 rounded"
+            title="수정"
+          >
+            <Edit2 size={13} />
+          </button>
+          <button
+            onClick={onDelete}
+            className="p-1.5 text-stone-500 hover:bg-red-50 hover:text-red-700 rounded"
+            title="삭제"
+          >
+            <Trash2 size={13} />
+          </button>
+        </div>
+      </div>
+
+      {/* 재고 상황 */}
+      <div className="mb-4">
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="text-xs font-semibold text-stone-600">재고 사용 현황</span>
+          <span className="text-xs font-bold text-stone-800">
+            <span className="text-red-800">{gift.givenQty}</span>
+            <span className="text-stone-400"> / {gift.totalStock}개</span>
+          </span>
+        </div>
+        <div className="h-2 bg-stone-100 rounded-full overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all ${
+              pct >= 90 ? 'bg-red-500' :
+              pct >= 70 ? 'bg-amber-500' :
+              'bg-emerald-500'
+            }`}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+        <div className="flex items-center justify-between mt-1">
+          <span className="text-[10px] text-stone-500">남은 수량</span>
+          <span className={`text-xs font-bold tabular-nums ${
+            gift.remaining === 0 ? 'text-red-700' :
+            gift.remaining <= 50 ? 'text-amber-700' :
+            'text-emerald-700'
+          }`}>
+            {gift.remaining}개 {pct.toFixed(0)}% 사용
+          </span>
+        </div>
+      </div>
+
+      {/* 지급 기준 */}
+      <div className="mb-4 p-3 bg-indigo-50 border border-indigo-100 rounded-xl">
+        <div className="text-[10px] font-bold text-indigo-700 mb-1.5">📋 자동 지급 기준</div>
+        <div className="space-y-1">
+          {(gift.tiers || DEFAULT_GIFT_TIERS).sort((a, b) => a.minAmount - b.minAmount).map((tier, idx) => (
+            <div key={idx} className="flex items-center justify-between text-xs">
+              <span className="text-indigo-900">${tier.minAmount} 이상 주문 시</span>
+              <span className="font-bold text-indigo-800">{tier.qty}개</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 통계 */}
+      <div className="grid grid-cols-2 gap-2 pt-3 border-t border-stone-100">
+        <div>
+          <div className="text-[10px] text-stone-400 uppercase tracking-wider">지급 완료</div>
+          <div className="text-lg font-bold text-stone-800 tabular-nums">
+            {gift.recipientCount}<span className="text-[10px] font-normal text-stone-400 ml-0.5">명</span>
+          </div>
+        </div>
+        <div>
+          <div className="text-[10px] text-stone-400 uppercase tracking-wider">총 지급</div>
+          <div className="text-lg font-bold text-stone-800 tabular-nums">
+            {gift.givenQty}<span className="text-[10px] font-normal text-stone-400 ml-0.5">개</span>
+          </div>
+        </div>
+      </div>
+
+      {/* 기간 */}
+      {(gift.startDate || gift.endDate) && (
+        <div className="mt-3 pt-3 border-t border-stone-100 text-[10px] text-stone-500">
+          📅 {gift.startDate || '-'} ~ {gift.endDate || '-'}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// 🎁 사은품 등록/수정 폼
+// ============================================================
+function GiftFormModal({ editTarget, onSave, onClose }) {
+  const [form, setForm] = useState(editTarget || {
+    name: '',
+    description: '',
+    totalStock: 0,
+    tiers: [{ minAmount: 100, qty: 1 }],
+    active: true,
+    startDate: new Date().toISOString().slice(0, 10),
+    endDate: '',
+  });
+
+  const addTier = () => {
+    setForm({
+      ...form,
+      tiers: [...form.tiers, { minAmount: 0, qty: 1 }]
+    });
+  };
+
+  const removeTier = (idx) => {
+    setForm({
+      ...form,
+      tiers: form.tiers.filter((_, i) => i !== idx)
+    });
+  };
+
+  const updateTier = (idx, key, value) => {
+    const next = [...form.tiers];
+    next[idx] = { ...next[idx], [key]: Number(value) || 0 };
+    setForm({ ...form, tiers: next });
+  };
+
+  const canSubmit = form.name && form.totalStock > 0 && form.tiers.length > 0 &&
+    form.tiers.every(t => t.minAmount > 0 && t.qty > 0);
+
+  return (
+    <div className="fixed inset-0 bg-stone-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="sticky top-0 bg-white z-10 px-6 py-4 border-b border-stone-200 flex items-center justify-between shadow-sm">
+          <div>
+            <h2 className="font-serif-ko text-lg font-bold text-stone-800">
+              🎁 {editTarget ? '사은품 이벤트 수정' : '새 사은품 이벤트'}
+            </h2>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => canSubmit && onSave(form)}
+              disabled={!canSubmit}
+              className="px-4 py-2 bg-red-800 hover:bg-red-900 text-white rounded-lg text-sm font-bold shadow-sm disabled:bg-stone-300 disabled:cursor-not-allowed"
+            >
+              💾 저장
+            </button>
+            <button onClick={onClose} className="p-1.5 hover:bg-stone-100 rounded-lg"><X size={18} /></button>
+          </div>
+        </div>
+
+        <div className="p-6 space-y-4">
+          {/* 사은품 이름 */}
+          <div>
+            <label className="block text-xs font-semibold text-stone-600 mb-1.5">사은품 이름 *</label>
+            <input
+              value={form.name}
+              onChange={e => setForm({ ...form, name: e.target.value })}
+              placeholder="예: 프리미엄 김 1봉 / 제주 감귤 500g"
+              className="w-full px-3 py-2 border border-stone-200 rounded-lg text-sm focus:outline-none focus:border-red-700 focus:ring-2 focus:ring-red-100"
+            />
+          </div>
+
+          {/* 설명 */}
+          <div>
+            <label className="block text-xs font-semibold text-stone-600 mb-1.5">설명 (선택)</label>
+            <input
+              value={form.description}
+              onChange={e => setForm({ ...form, description: e.target.value })}
+              placeholder="예: 한국산 김 · 수량 한정"
+              className="w-full px-3 py-2 border border-stone-200 rounded-lg text-sm focus:outline-none focus:border-red-700 focus:ring-2 focus:ring-red-100"
+            />
+          </div>
+
+          {/* 총 수량 */}
+          <div>
+            <label className="block text-xs font-semibold text-stone-600 mb-1.5">총 수량 *</label>
+            <div className="relative">
+              <input
+                type="number"
+                min="1"
+                value={form.totalStock}
+                onChange={e => setForm({ ...form, totalStock: Number(e.target.value) || 0 })}
+                placeholder="900"
+                className="w-full px-3 py-2 pr-12 border border-stone-200 rounded-lg text-lg font-bold focus:outline-none focus:border-red-700 focus:ring-2 focus:ring-red-100 tabular-nums"
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 text-sm">개</span>
+            </div>
+          </div>
+
+          {/* 지급 기준 */}
+          <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-xl">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <div className="text-xs font-bold text-indigo-900">📋 자동 지급 기준</div>
+                <div className="text-[10px] text-indigo-700 mt-0.5">주문 합계 기준으로 자동 계산됩니다</div>
+              </div>
+              <button
+                onClick={addTier}
+                type="button"
+                className="text-[10px] font-bold text-indigo-700 hover:text-indigo-900 hover:underline"
+              >
+                + 기준 추가
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              {form.tiers.map((tier, idx) => (
+                <div key={idx} className="flex items-center gap-2 bg-white p-2 rounded-lg">
+                  <span className="text-xs text-stone-500">$</span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={tier.minAmount}
+                    onChange={e => updateTier(idx, 'minAmount', e.target.value)}
+                    className="w-20 px-2 py-1.5 border border-stone-200 rounded text-sm focus:outline-none focus:border-indigo-700 tabular-nums text-right"
+                  />
+                  <span className="text-xs text-stone-600">이상 주문 시</span>
+                  <input
+                    type="number"
+                    min="1"
+                    value={tier.qty}
+                    onChange={e => updateTier(idx, 'qty', e.target.value)}
+                    className="w-14 px-2 py-1.5 border border-stone-200 rounded text-sm focus:outline-none focus:border-indigo-700 tabular-nums text-right"
+                  />
+                  <span className="text-xs text-stone-600">개 지급</span>
+                  {form.tiers.length > 1 && (
+                    <button
+                      onClick={() => removeTier(idx)}
+                      type="button"
+                      className="p-1 text-red-600 hover:bg-red-50 rounded"
+                    >
+                      <X size={12} />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-2 text-[10px] text-indigo-600 italic">
+              💡 예: $100 이상 → 1개, $200 이상 → 2개, $300 이상 → 3개
+            </div>
+          </div>
+
+          {/* 기간 */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-stone-600 mb-1.5">시작일 (선택)</label>
+              <input
+                type="date"
+                value={form.startDate}
+                onChange={e => setForm({ ...form, startDate: e.target.value })}
+                className="w-full px-3 py-2 border border-stone-200 rounded-lg text-sm focus:outline-none focus:border-red-700"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-stone-600 mb-1.5">종료일 (선택)</label>
+              <input
+                type="date"
+                value={form.endDate}
+                onChange={e => setForm({ ...form, endDate: e.target.value })}
+                className="w-full px-3 py-2 border border-stone-200 rounded-lg text-sm focus:outline-none focus:border-red-700"
+              />
+            </div>
+          </div>
+
+          {/* 활성 상태 */}
+          <label className="flex items-center gap-3 p-3 bg-emerald-50 border-2 border-emerald-200 rounded-xl cursor-pointer hover:bg-emerald-100 transition-all">
+            <input
+              type="checkbox"
+              checked={form.active}
+              onChange={e => setForm({ ...form, active: e.target.checked })}
+              className="w-5 h-5 accent-emerald-600"
+            />
+            <div>
+              <div className="text-sm font-bold text-emerald-900">🟢 지금 활성화</div>
+              <div className="text-[10px] text-emerald-700 mt-0.5">
+                체크 시 주문 등록에서 자동 적용됩니다. (한 번에 하나의 이벤트만 활성 가능)
+              </div>
+            </div>
+          </label>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DriversManagement({ drivers, setDrivers, orders, showToast }) {
   const [editTarget, setEditTarget] = useState(null);
   const [showForm, setShowForm] = useState(false);
