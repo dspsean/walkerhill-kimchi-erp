@@ -110,6 +110,10 @@ export function suppressRealtimeEcho(tableName, durationMs = 3000) {
 export function subscribeToTable(tableName, onChange, onError) {
   if (!supabase) return () => {};
 
+  let realtimeWorking = false;  // Realtime이 작동하는지 추적
+  let pollingInterval = null;
+  let subscribeStartTime = Date.now();
+
   // 스로틀된 fetch (1초에 최대 1번만 호출)
   const throttledFetch = async () => {
     const now = Date.now();
@@ -142,22 +146,49 @@ export function subscribeToTable(tableName, onChange, onError) {
     }, 500);
   };
 
+  // 💡 Fallback 폴링 (Realtime 안 될 때를 대비)
+  // 30초마다 데이터 확인 - 다른 PC의 변경사항 반영
+  const startPolling = () => {
+    if (pollingInterval) return;
+    console.log(`🔄 ${tableName} 폴링 모드 시작 (30초 주기)`);
+    pollingInterval = setInterval(async () => {
+      const now = Date.now();
+      const suppressUntil = _suppressFetchUntil[tableName] || 0;
+      if (now < suppressUntil) return;  // 방금 저장한 건 폴링하지 않음
+      try {
+        const fresh = await fetchAll(tableName);
+        onChange(fresh);
+      } catch (err) {
+        console.error(`Error in polling ${tableName}:`, err);
+      }
+    }, 30000);
+  };
+
+  const stopPolling = () => {
+    if (pollingInterval) {
+      clearInterval(pollingInterval);
+      pollingInterval = null;
+    }
+  };
+
   // 초기 데이터 로드 + 이후 변경 감지
   const channel = supabase
-    .channel(`${tableName}-changes`)
+    .channel(`${tableName}-changes-${Date.now()}`)  // 고유 채널명으로 충돌 방지
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: tableName },
-      () => {
+      (payload) => {
+        console.log(`📨 ${tableName} 실시간 변경 감지:`, payload.eventType);
+        realtimeWorking = true;
+        stopPolling();  // Realtime 확인되면 폴링 중지
         throttledFetch();
       }
     )
     .subscribe((status, err) => {
       if (status === 'SUBSCRIBED') {
-        console.log(`✓ ${tableName} 실시간 구독 시작`);
+        console.log(`✓ ${tableName} 구독 시작`);
         _recentFetches[tableName] = Date.now();
         fetchAll(tableName).then(fresh => {
-          // 🚀 초기 데이터로 lastSavedRows 초기화 (불필요한 전체 재업로드 방지)
           const map = {};
           fresh.forEach(row => {
             if (row.id) map[row.id] = JSON.stringify(row);
@@ -165,19 +196,49 @@ export function subscribeToTable(tableName, onChange, onError) {
           _lastSavedRows[tableName] = map;
           onChange(fresh);
         });
+        // Realtime 테스트: 10초 내 이벤트 안 오면 폴링 시작
+        setTimeout(() => {
+          if (!realtimeWorking) {
+            console.warn(`⚠️ ${tableName} Realtime 이벤트 미확인 - 폴링 모드로 fallback`);
+            startPolling();
+          }
+        }, 10000);
       } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-        console.warn(`${tableName} 구독 상태:`, status);
+        console.warn(`❌ ${tableName} 구독 상태:`, status);
+        startPolling();  // 실패 시 즉시 폴링 시작
         if (onError) onError(err || new Error(status));
+      } else if (status === 'CLOSED') {
+        console.log(`🔌 ${tableName} 채널 닫힘`);
       }
     });
 
   return () => {
+    stopPolling();
     if (_fetchAllTimers[tableName]) {
       clearTimeout(_fetchAllTimers[tableName]);
       delete _fetchAllTimers[tableName];
     }
     supabase.removeChannel(channel);
   };
+}
+
+/**
+ * 🆕 수동 새로고침 - 모든 테이블 최신 데이터 재조회
+ * 실시간이 안 될 때 사용자가 수동으로 새로 불러올 수 있게
+ */
+export async function refreshAllTables(tableNames, onUpdate) {
+  if (!supabase) return;
+  const results = {};
+  for (const name of tableNames) {
+    try {
+      const data = await fetchAll(name);
+      results[name] = data;
+      if (onUpdate) onUpdate(name, data);
+    } catch (err) {
+      console.error(`Error refreshing ${name}:`, err);
+    }
+  }
+  return results;
 }
 
 /**
