@@ -27,9 +27,13 @@ export const supabase = isSupabaseConfigured
   : null;
 
 if (isSupabaseConfigured) {
-  console.log('🟢 Supabase 연결 준비 완료!');
+  console.log('%c🟢 Supabase 연결 준비 완료!', 'background: #15803D; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold;');
+  console.log(`   URL: ${SUPABASE_URL}`);
+  console.log('   Realtime 구독이 곧 시작됩니다...');
 } else {
-  console.log('ℹ️ Supabase 미설정 - 로컬 모드로 동작');
+  console.error('%c❌ Supabase 설정되지 않음 - 로컬 모드로 동작', 'background: #B91C1C; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold;');
+  console.error('⚠️ 다른 PC와 데이터 동기화 안 됩니다!');
+  console.error('⚠️ 이 메시지가 보이면 supabase.js가 제대로 배포되지 않았거나 값이 비어있습니다.');
 }
 
 // ============================================================
@@ -258,20 +262,20 @@ export async function upsertRow(tableName, row) {
  * 여러 row 일괄 upsert (Diff 기반 - 변경된 것만)
  */
 export async function saveBatch(tableName, rows) {
-  if (!supabase || !rows || rows.length === 0) return;
+  if (!supabase || !rows || rows.length === 0) return { success: true, saved: 0 };
 
   // debounce 500ms로 연속 호출 묶기
   if (_saveBatchTimers[tableName]) {
     clearTimeout(_saveBatchTimers[tableName]);
   }
 
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     _saveBatchTimers[tableName] = setTimeout(() => {
       // 🚀 UI 블로킹 방지: requestIdleCallback으로 백그라운드 실행
       const runInBackground = () => {
         _saveBatchInternal(tableName, rows).then(resolve).catch(err => {
-          console.error(`Error in saveBatch ${tableName}:`, err);
-          resolve();
+          console.error(`❌ saveBatch ${tableName} 에러:`, err);
+          reject(err);  // 🔑 에러를 호출자에게 전파!
         });
       };
 
@@ -287,106 +291,99 @@ export async function saveBatch(tableName, rows) {
 // 실제 저장 로직 분리 (백그라운드 실행)
 async function _saveBatchInternal(tableName, rows) {
   // 🛡️ 업로드 진행 중에는 echo suppress 유지 (덮어쓰기 방지)
-  _suppressFetchUntil[tableName] = Date.now() + 30000; // 일단 30초로 확장
+  // ⚠️ 30초는 너무 김 → 5초로 단축 (다른 PC의 변경이 너무 오래 차단되던 문제)
+  _suppressFetchUntil[tableName] = Date.now() + 5000;
 
-  try {
-    // items 테이블의 경우 code를 id로 사용
-    const normalizedRows = rows.map(row => {
-      if (!row.id && row.code) {
-        return { ...row, id: row.code };
-      }
-      return row;
-    });
-
-    // 🚀 Diff 체크 최적화: 큰 테이블은 JSON.stringify 대신 참조 비교
-    const prevMap = _lastSavedRows[tableName] || {};
-    const currentMap = {};
-    const changedRows = [];
-
-    // 작은 배치면 stringify diff, 큰 배치는 ID 기반 간이 diff
-    const USE_DEEP_DIFF = normalizedRows.length < 500;
-
-    for (const row of normalizedRows) {
-      if (!row.id) continue;
-      if (USE_DEEP_DIFF) {
-        const rowJson = JSON.stringify(row);
-        currentMap[row.id] = rowJson;
-        if (prevMap[row.id] !== rowJson) {
-          changedRows.push(row);
-        }
-      } else {
-        // 대용량은 updatedAt만 비교 (약식)
-        const prev = prevMap[row.id];
-        const rowSig = `${row.updatedAt || ''}_${row.id}`;
-        currentMap[row.id] = rowSig;
-        if (prev !== rowSig) {
-          changedRows.push(row);
-        }
-      }
+  // items 테이블의 경우 code를 id로 사용
+  const normalizedRows = rows.map(row => {
+    if (!row.id && row.code) {
+      return { ...row, id: row.code };
     }
+    return row;
+  });
 
-    if (changedRows.length === 0) {
-      _lastSavedRows[tableName] = currentMap;
-      // 저장할 것 없으면 suppress 즉시 해제
-      _suppressFetchUntil[tableName] = 0;
-      return;
+  // 🚀 Diff 체크 - 정확한 비교로 불필요한 업로드 방지
+  // ⚠️ 대용량(4000+건)도 JSON.stringify 비교 필수
+  // - updatedAt 기반 비교는 필드 없으면 작동 안 함!
+  // - 전체 JSON 비교가 느려도 정확함 (단, 효율적 구현)
+  const prevMap = _lastSavedRows[tableName] || {};
+  const currentMap = {};
+  const changedRows = [];
+
+  // 🔑 첫 저장 여부 판단: 이전 맵이 비어있으면 초기 구독 전
+  const isFirstSave = Object.keys(prevMap).length === 0;
+
+  for (const row of normalizedRows) {
+    if (!row.id) continue;
+    const rowJson = JSON.stringify(row);
+    currentMap[row.id] = rowJson;
+    if (isFirstSave || prevMap[row.id] !== rowJson) {
+      changedRows.push(row);
     }
-
-    console.log(`📤 ${tableName}: ${changedRows.length}/${rows.length}건 변경됨, 업로드 중...`);
-
-    // 청크 업로드
-    const CHUNK_SIZE = 50;
-    const DELAY_MS = 300;
-    const MAX_RETRIES = 3;
-    const chunks = [];
-    for (let i = 0; i < changedRows.length; i += CHUNK_SIZE) {
-      chunks.push(changedRows.slice(i, i + CHUNK_SIZE));
-    }
-
-    let uploadedCount = 0;
-    for (let idx = 0; idx < chunks.length; idx++) {
-      const chunk = chunks[idx];
-      let retries = 0;
-      let success = false;
-
-      while (!success && retries < MAX_RETRIES) {
-        try {
-          const { error } = await supabase.from(tableName).upsert(chunk);
-          if (error) throw error;
-          uploadedCount += chunk.length;
-          success = true;
-          // 🛡️ 업로드 중에도 suppress 갱신 (Realtime echo 방지)
-          _suppressFetchUntil[tableName] = Date.now() + 5000;
-
-          if (chunks.length > 5 && idx % 5 === 0) {
-            console.log(`  ⏳ ${tableName}: ${uploadedCount}/${changedRows.length} (${Math.round(uploadedCount / changedRows.length * 100)}%)`);
-          }
-        } catch (err) {
-          retries++;
-          if (retries < MAX_RETRIES) {
-            console.warn(`  ⚠️ ${tableName} 청크 ${idx + 1} 실패 (재시도 ${retries}/${MAX_RETRIES})`, err.message);
-            await new Promise(r => setTimeout(r, 2000));
-          } else {
-            console.error(`  ❌ ${tableName} 청크 ${idx + 1} 최종 실패:`, err);
-            break;
-          }
-        }
-      }
-
-      if (idx < chunks.length - 1) {
-        await new Promise(r => setTimeout(r, DELAY_MS));
-      }
-    }
-
-    _lastSavedRows[tableName] = currentMap;
-    console.log(`✓ ${tableName} ${uploadedCount}/${changedRows.length}건 업로드 완료`);
-
-    // 🛡️ 업로드 완료 후에도 echo가 돌아올 시간 확보 (Supabase Realtime 지연 고려)
-    _suppressFetchUntil[tableName] = Date.now() + 5000;
-  } catch (err) {
-    console.error(`Error batch saving ${tableName}:`, err);
-    // 에러 시에도 suppress는 유지 (부분 업로드된 데이터 보호)
   }
+
+  if (changedRows.length === 0) {
+    _lastSavedRows[tableName] = currentMap;
+    _suppressFetchUntil[tableName] = 0;  // 즉시 해제
+    return { success: true, saved: 0, total: rows.length };
+  }
+
+  console.log(`📤 ${tableName}: ${changedRows.length}/${rows.length}건 변경됨, 업로드 중...`);
+
+  // 청크 업로드
+  const CHUNK_SIZE = 50;
+  const DELAY_MS = 300;
+  const MAX_RETRIES = 3;
+  const chunks = [];
+  for (let i = 0; i < changedRows.length; i += CHUNK_SIZE) {
+    chunks.push(changedRows.slice(i, i + CHUNK_SIZE));
+  }
+
+  let uploadedCount = 0;
+  let failedChunks = 0;
+
+  for (let idx = 0; idx < chunks.length; idx++) {
+    const chunk = chunks[idx];
+    let retries = 0;
+    let success = false;
+    let lastError = null;
+
+    while (!success && retries < MAX_RETRIES) {
+      try {
+        const { error } = await supabase.from(tableName).upsert(chunk);
+        if (error) throw error;
+        uploadedCount += chunk.length;
+        success = true;
+        _suppressFetchUntil[tableName] = Date.now() + 5000;
+
+        if (chunks.length > 5 && idx % 5 === 0) {
+          console.log(`  ⏳ ${tableName}: ${uploadedCount}/${changedRows.length} (${Math.round(uploadedCount / changedRows.length * 100)}%)`);
+        }
+      } catch (err) {
+        lastError = err;
+        retries++;
+        if (retries < MAX_RETRIES) {
+          console.warn(`  ⚠️ ${tableName} 청크 ${idx + 1} 실패 (재시도 ${retries}/${MAX_RETRIES})`, err.message);
+          await new Promise(r => setTimeout(r, 2000));
+        } else {
+          console.error(`  ❌ ${tableName} 청크 ${idx + 1} 최종 실패:`, err);
+          failedChunks++;
+          // 🔑 최종 실패는 throw로 전파
+          throw err;
+        }
+      }
+    }
+
+    if (idx < chunks.length - 1) {
+      await new Promise(r => setTimeout(r, DELAY_MS));
+    }
+  }
+
+  _lastSavedRows[tableName] = currentMap;
+  console.log(`✓ ${tableName} ${uploadedCount}/${changedRows.length}건 업로드 완료`);
+  _suppressFetchUntil[tableName] = Date.now() + 3000;
+
+  return { success: true, saved: uploadedCount, total: rows.length };
 }
 
 /**
