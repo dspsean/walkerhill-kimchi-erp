@@ -1682,11 +1682,53 @@ export default function App() {
   const lowStockCount = itemsWithStock.filter(i => i.availStock <= 20).length;
 
   return (
-    <div className="min-h-screen bg-[#FAF7F2]" style={{ fontFamily: "'Pretendard', -apple-system, 'Malgun Gothic', sans-serif" }}>
+    <div className="min-h-screen bg-[#FAF7F2]" style={{ fontFamily: "'Pretendard', 'Pretendard Variable', -apple-system, BlinkMacSystemFont, system-ui, 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif", WebkitFontSmoothing: 'antialiased', MozOsxFontSmoothing: 'grayscale' }}>
       <style>{`
-        @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+        @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/variable/pretendardvariable.css');
         @import url('https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&display=swap');
-        .font-serif-ko { font-family: 'Gowun Batang', serif; }
+
+        /* 🎨 전역 폰트 정의 */
+        html, body, #root, button, input, textarea, select, div {
+          font-family: 'Pretendard Variable', 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
+        }
+
+        /* 🔡 한글 장식 폰트 (제목용) */
+        .font-serif-ko {
+          font-family: 'Gowun Batang', 'Pretendard Variable', serif;
+          letter-spacing: -0.02em;
+        }
+
+        /* 📝 입력 폼 최적화 (가독성 + 터치 친화적) */
+        input, select, textarea {
+          font-feature-settings: "tnum" 1;
+          font-variant-numeric: tabular-nums;
+        }
+        input[type="text"], input[type="number"], input[type="date"], input[type="tel"], select, textarea {
+          font-size: 14px;
+          line-height: 1.5;
+          letter-spacing: -0.01em;
+        }
+
+        /* 📱 모바일 터치 대응 */
+        button {
+          -webkit-tap-highlight-color: transparent;
+          letter-spacing: -0.01em;
+        }
+
+        /* 🎯 숫자 표시 */
+        .tabular-nums {
+          font-variant-numeric: tabular-nums;
+          font-feature-settings: "tnum" 1;
+        }
+
+        /* 📋 모달 내부 폰트 통일 (Portal 밖에서도 적용) */
+        .fixed input, .fixed select, .fixed textarea, .fixed button, .fixed div, .fixed span, .fixed label {
+          font-family: 'Pretendard Variable', 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+        }
+
+        /* 스크롤바 */
         .scrollbar-slim::-webkit-scrollbar { width: 6px; height: 6px; }
         .scrollbar-slim::-webkit-scrollbar-track { background: transparent; }
         .scrollbar-slim::-webkit-scrollbar-thumb { background: #D4C9B8; border-radius: 3px; }
@@ -2684,13 +2726,50 @@ function Orders({ customers, items, orders, setOrders, gifts, setGifts, showToas
     return 'ORD-' + String(max + 1).padStart(4, '0');
   };
 
-  const handleSave = (order) => {
-    if (editTarget) {
-      setOrders(orders.map(o => o.id === editTarget.id ? { ...o, ...order, id: editTarget.id } : o));
-      showToast('주문이 수정되었습니다');
+  const handleSave = (orderOrArray) => {
+    // 다품목인 경우 배열로 전달됨
+    if (Array.isArray(orderOrArray)) {
+      // 여러 주문 생성 (다품목)
+      const baseId = Date.now();
+      const existingIds = new Set(orders.map(o => o.id));
+      let counter = 0;
+      const newOrders = orderOrArray.map((o) => {
+        let newId = nextOrderId();
+        while (existingIds.has(newId)) {
+          counter += 1;
+          const nums = [...orders, ...orderOrArray.slice(0, counter)].map(x => parseInt(x.id?.replace('ORD-','') || '0'));
+          const max = Math.max(0, ...nums);
+          newId = `ORD-${String(max + 1).padStart(4, '0')}`;
+        }
+        existingIds.add(newId);
+        return {
+          id: newId,
+          shipStatus: '배송준비중',
+          deliveryMethod: '',
+          paymentType: '',
+          paymentStatus: '미결제',
+          deliveryMemo: '',
+          shipDate: '',
+          arriveDate: '',
+          shippingGroup: '',
+          isService: false,
+          isPickup: false,
+          cashReceived: 0,
+          ...o,
+        };
+      });
+      setOrders([...orders, ...newOrders]);
+      showToast(`✅ ${newOrders.length}개 품목 주문이 등록되었습니다`);
     } else {
-      setOrders([...orders, { id: nextOrderId(), shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: '', isService: false, isPickup: false, cashReceived: 0, ...order }]);
-      showToast('주문이 등록되었습니다');
+      // 단일 주문 (기존 방식)
+      const order = orderOrArray;
+      if (editTarget) {
+        setOrders(orders.map(o => o.id === editTarget.id ? { ...o, ...order, id: editTarget.id } : o));
+        showToast('주문이 수정되었습니다');
+      } else {
+        setOrders([...orders, { id: nextOrderId(), shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: '', isService: false, isPickup: false, cashReceived: 0, ...order }]);
+        showToast('주문이 등록되었습니다');
+      }
     }
     setShowForm(false);
     setEditTarget(null);
@@ -2886,7 +2965,13 @@ function Orders({ customers, items, orders, setOrders, gifts, setGifts, showToas
                     <td className="px-4 py-3 text-stone-700">{o.itemName}</td>
                     <td className="px-4 py-3 text-right text-stone-700 tabular-nums">
                       <div>{o.qty}</div>
-                      {isB2B_o && o.qty >= 10 && (
+                      {isB2B_o && o.perBox > 0 && o.qty >= o.perBox && (
+                        <div className="text-[10px] text-indigo-700 font-bold">
+                          {Math.floor(o.qty / o.perBox)}박스
+                          {(o.qty % o.perBox) > 0 && `+${o.qty % o.perBox}`}
+                        </div>
+                      )}
+                      {isB2B_o && !o.perBox && o.qty >= 10 && (
                         <div className="text-[10px] text-indigo-700 font-bold">{Math.ceil(o.qty / 10)}박스</div>
                       )}
                     </td>
@@ -2990,8 +3075,20 @@ function OrderFormModal({ customers, items, editTarget, gifts = [], orders = [],
   const [date, setDate] = useState(editTarget?.date || new Date().toISOString().slice(0,10));
   const [customerSearch, setCustomerSearch] = useState('');
   const [customerId, setCustomerId] = useState(editTarget?.customerId || '');
-  const [itemName, setItemName] = useState(editTarget?.itemName || '');
-  const [qty, setQty] = useState(editTarget?.qty || 1);
+
+  // 🆕 다품목 지원: orderItems 배열로 관리
+  // 각 아이템: { itemName, qty, perBox }
+  const [orderItems, setOrderItems] = useState(() => {
+    if (editTarget) {
+      return [{
+        itemName: editTarget.itemName || '',
+        qty: editTarget.qty || 1,
+        perBox: editTarget.perBox || 10,
+      }];
+    }
+    return [{ itemName: '', qty: 1, perBox: 10 }];
+  });
+
   const [isService, setIsService] = useState(editTarget?.isService || false);
   const [isPickup, setIsPickup] = useState(editTarget?.isPickup || false);
   // 🏢 B2B / 선주문 관련
@@ -3003,70 +3100,120 @@ function OrderFormModal({ customers, items, editTarget, gifts = [], orders = [],
   const activeGift = getActiveGift(gifts);
   const [giftQty, setGiftQty] = useState(
     editTarget?.giftQty !== undefined ? editTarget.giftQty : null
-  ); // null = 자동 계산, 숫자 = 수동 지정
+  );
+
+  // 🔍 고객 검색 - debounce
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(customerSearch);
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [customerSearch]);
 
   const matchedCustomers = useMemo(() => {
-    if (!customerSearch) return customers.slice(0, 8);
-    const s = customerSearch.toLowerCase();
-    return customers.filter(c =>
-      c.name.toLowerCase().includes(s) ||
-      c.id.toLowerCase().includes(s) ||
-      c.phone.includes(s)
-    ).slice(0, 8);
-  }, [customerSearch, customers]);
+    if (!debouncedSearch) return customers.slice(0, 8);
+    if (debouncedSearch.length < 2) return [];
+    const s = debouncedSearch.toLowerCase();
+    const results = [];
+    for (let i = 0; i < customers.length && results.length < 20; i++) {
+      const c = customers[i];
+      if (!c.name && !c.id && !c.phone) continue;
+      if (
+        (c.name && c.name.toLowerCase().includes(s)) ||
+        (c.id && c.id.toLowerCase().includes(s)) ||
+        (c.phone && c.phone.includes(s))
+      ) {
+        results.push(c);
+      }
+    }
+    return results.slice(0, 8);
+  }, [debouncedSearch, customers]);
 
   const selectedCustomer = customers.find(c => c.id === customerId);
-  const selectedItem = items.find(i => i.name === itemName);
   const isB2B = !!selectedCustomer?.isB2B;
   const discountRate = selectedCustomer?.b2bDiscount || 0;
-  const basePrice = selectedItem?.price || 0;
-  // 🎯 실제 적용 단가 (오버라이드 > 기본 B2B가 > 할인율 순)
-  const unitPrice = selectedItem ? getEffectivePrice(selectedItem, selectedCustomer) : 0;
-  const total = unitPrice * qty;
-  const savedAmount = (basePrice - unitPrice) * qty;
-  // 가격이 어떻게 결정되었는지 추적 (UI 표시용)
-  const priceSource = selectedItem && selectedCustomer?.isB2B
-    ? (selectedCustomer.itemPriceOverrides?.[selectedItem.code] !== undefined ? 'override'
-      : selectedItem.b2bPrice > 0 ? 'itemB2B'
-      : discountRate > 0 ? 'discount'
-      : 'base')
-    : 'base';
 
-  // 박스 단위 표시 (대량 주문)
-  const isBulkOrder = isB2B && qty >= 10;
+  // 품목 추가/제거/수정
+  const addOrderItem = () => {
+    setOrderItems([...orderItems, { itemName: '', qty: 1, perBox: 10 }]);
+  };
+  const removeOrderItem = (idx) => {
+    if (orderItems.length <= 1) return; // 최소 1개 유지
+    setOrderItems(orderItems.filter((_, i) => i !== idx));
+  };
+  const updateOrderItem = (idx, key, value) => {
+    const next = [...orderItems];
+    next[idx] = { ...next[idx], [key]: value };
+    setOrderItems(next);
+  };
 
-  // 분할 배송 유효성 체크
+  // 각 품목별 계산
+  const orderItemsWithCalc = useMemo(() => {
+    return orderItems.map(oi => {
+      const item = items.find(i => i.name === oi.itemName);
+      const basePrice = item?.price || 0;
+      const unitPrice = item ? getEffectivePrice(item, selectedCustomer) : 0;
+      const qty = Number(oi.qty) || 0;
+      const perBox = Number(oi.perBox) || 10;
+      const boxCount = qty / perBox;
+      const itemTotal = unitPrice * qty;
+      const itemSaved = (basePrice - unitPrice) * qty;
+      return {
+        ...oi,
+        item,
+        basePrice,
+        unitPrice,
+        qty,
+        perBox,
+        boxCount,
+        boxCountFloor: Math.floor(boxCount),
+        boxCountCeil: Math.ceil(boxCount),
+        isExactBox: boxCount === Math.floor(boxCount) && boxCount > 0,
+        remainder: qty % perBox,
+        itemTotal,
+        itemSaved,
+      };
+    });
+  }, [orderItems, items, selectedCustomer]);
+
+  // 전체 합계
+  const grandTotal = orderItemsWithCalc.reduce((s, oi) => s + oi.itemTotal, 0);
+  const totalSaved = orderItemsWithCalc.reduce((s, oi) => s + oi.itemSaved, 0);
+  const totalQty = orderItemsWithCalc.reduce((s, oi) => s + oi.qty, 0);
+
+  // 박스 주문 여부 (B2B + 박스 단위로 주문한 경우)
+  const hasBulkOrder = isB2B && orderItemsWithCalc.some(oi => oi.qty >= oi.perBox);
+
+  // 분할 배송 유효성 (첫 품목 기준으로 유지)
   const splitTotal = splitDeliveries.reduce((s, d) => s + (Number(d.qty) || 0), 0);
-  const splitValid = !showSplitUI || splitTotal === qty;
+  const splitValid = !showSplitUI || splitTotal === totalQty;
 
-  const canSubmit = customerId && itemName && qty > 0 && splitValid &&
+  // 저장 가능 여부
+  const hasValidItem = orderItemsWithCalc.some(oi => oi.itemName && oi.qty > 0);
+  const canSubmit = customerId && hasValidItem && splitValid &&
     (!isPreOrder || !!expectedStockDate);
 
-  // 🎁 사은품 자동 계산 (주문 합계 기반)
-  // 같은 고객의 다른 주문 + 현재 주문 합산
+  // 🎁 사은품 자동 계산
   const customerOtherOrdersTotal = useMemo(() => {
     if (!customerId) return 0;
+    const otherIds = editTarget ? new Set([editTarget.id]) : new Set();
     return orders
-      .filter(o => o.customerId === customerId && !o.isService && o.shipStatus !== '취소' && (!editTarget || o.id !== editTarget.id))
+      .filter(o => o.customerId === customerId && !o.isService && o.shipStatus !== '취소' && !otherIds.has(o.id))
       .reduce((s, o) => {
         const it = items.find(i => i.name === o.itemName);
         return s + (it?.price || 0) * o.qty;
       }, 0);
   }, [customerId, orders, items, editTarget]);
 
-  const currentOrderTotal = isService ? 0 : (unitPrice * qty);
+  const currentOrderTotal = isService ? 0 : grandTotal;
   const totalForGift = customerOtherOrdersTotal + currentOrderTotal;
   const autoGiftQty = activeGift ? calcGiftQtyByAmount(totalForGift, activeGift.tiers) : 0;
-  // giftQty가 null이면 자동, 숫자면 수동
   const effectiveGiftQty = giftQty === null ? autoGiftQty : giftQty;
 
-  // 분할 배송 추가/제거
-  const addSplit = () => {
-    setSplitDeliveries([...splitDeliveries, { date: '', qty: 0 }]);
-  };
-  const removeSplit = (idx) => {
-    setSplitDeliveries(splitDeliveries.filter((_, i) => i !== idx));
-  };
+  // 분할 배송
+  const addSplit = () => setSplitDeliveries([...splitDeliveries, { date: '', qty: 0 }]);
+  const removeSplit = (idx) => setSplitDeliveries(splitDeliveries.filter((_, i) => i !== idx));
   const updateSplit = (idx, key, value) => {
     const next = [...splitDeliveries];
     next[idx] = { ...next[idx], [key]: value };
@@ -3075,33 +3222,52 @@ function OrderFormModal({ customers, items, editTarget, gifts = [], orders = [],
 
   const handleSave = () => {
     if (!canSubmit) return;
-    const data = { date, customerId, itemName, qty, isService, isPickup };
-    if (isPreOrder) {
-      data.shipStatus = '입고대기';
-      data.expectedStockDate = expectedStockDate;
-    }
-    if (showSplitUI && splitDeliveries.length > 0) {
-      data.splitDeliveries = splitDeliveries;
-    }
-    // 🎁 사은품 정보 저장
-    if (activeGift && effectiveGiftQty > 0) {
-      data.giftId = activeGift.id;
-      data.giftName = activeGift.name;
-      data.giftQty = effectiveGiftQty;
-    } else if (giftQty !== null) {
-      // 수동으로 0으로 설정한 경우
-      data.giftQty = 0;
-    }
-    onSave(data);
+    // 다품목인 경우 각 품목마다 별도 주문 생성
+    const validItems = orderItemsWithCalc.filter(oi => oi.itemName && oi.qty > 0);
+
+    const ordersToSave = validItems.map((oi, idx) => {
+      const data = {
+        date,
+        customerId,
+        itemName: oi.itemName,
+        qty: oi.qty,
+        perBox: oi.perBox, // 🆕 박스 단위 저장
+        isService,
+        isPickup,
+      };
+      if (isPreOrder) {
+        data.shipStatus = '입고대기';
+        data.expectedStockDate = expectedStockDate;
+      }
+      // 분할 배송은 첫 품목에만 적용
+      if (idx === 0 && showSplitUI && splitDeliveries.length > 0) {
+        data.splitDeliveries = splitDeliveries;
+      }
+      // 🎁 사은품은 첫 품목에만 적용
+      if (idx === 0) {
+        if (activeGift && effectiveGiftQty > 0) {
+          data.giftId = activeGift.id;
+          data.giftName = activeGift.name;
+          data.giftQty = effectiveGiftQty;
+        } else if (giftQty !== null) {
+          data.giftQty = 0;
+        }
+      }
+      return data;
+    });
+
+    // 기존 onSave는 단일 주문만 받으므로, 배열로 전달
+    onSave(ordersToSave.length === 1 ? ordersToSave[0] : ordersToSave);
   };
 
   return (
-    <div className="fixed inset-0 bg-stone-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto scrollbar-slim" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-stone-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose} style={{ fontFamily: "'Pretendard Variable', 'Pretendard', -apple-system, sans-serif" }}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] overflow-y-auto scrollbar-slim" onClick={e => e.stopPropagation()}>
         <div className="sticky top-0 bg-white z-10 px-6 py-4 border-b border-stone-200 flex items-center justify-between shadow-sm">
-          <h2 className="font-serif-ko text-lg font-bold text-stone-800">
+          <h2 className="font-serif-ko text-lg font-bold text-stone-800 tracking-tight">
             {editTarget ? '주문 수정' : '새 주문 등록'}
             {isB2B && <span className="ml-2 text-xs px-2 py-0.5 bg-indigo-600 text-white rounded-full font-bold">🏢 B2B</span>}
+            {orderItems.length > 1 && <span className="ml-2 text-xs px-2 py-0.5 bg-amber-500 text-white rounded-full font-bold">{orderItems.length}개 품목</span>}
           </h2>
           <div className="flex items-center gap-2">
             <button
@@ -3116,45 +3282,51 @@ function OrderFormModal({ customers, items, editTarget, gifts = [], orders = [],
         </div>
 
         <div className="p-6 space-y-5">
+          {/* 주문일 */}
           <div>
-            <label className="block text-xs font-semibold text-stone-600 mb-1.5">주문일</label>
+            <label className="block text-xs font-bold text-stone-700 mb-1.5 tracking-tight">주문일</label>
             <input type="date" value={date} onChange={e => setDate(e.target.value)}
-              className="w-full px-3 py-2 border border-stone-200 rounded-lg text-sm focus:outline-none focus:border-red-700 focus:ring-2 focus:ring-red-100" />
+              className="w-full px-3 py-2.5 border border-stone-200 rounded-lg text-sm focus:outline-none focus:border-red-700 focus:ring-2 focus:ring-red-100" />
           </div>
 
+          {/* 고객 조회 */}
           <div>
-            <label className="block text-xs font-semibold text-stone-600 mb-1.5">
-              고객 조회 {selectedCustomer && <span className="text-red-700 ml-1">✓ {selectedCustomer.name}</span>}
+            <label className="block text-xs font-bold text-stone-700 mb-1.5 tracking-tight">
+              고객 조회 {selectedCustomer && <span className="text-red-700 ml-1 font-semibold">✓ {selectedCustomer.name}</span>}
             </label>
             <div className="relative">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
               <input
                 value={customerSearch}
                 onChange={e => setCustomerSearch(e.target.value)}
-                placeholder="이름, 고객ID, 전화번호로 검색..."
-                className="w-full pl-9 pr-3 py-2 border border-stone-200 rounded-lg text-sm focus:outline-none focus:border-red-700 focus:ring-2 focus:ring-red-100"
+                placeholder="이름, 고객ID, 전화번호로 검색 (2글자 이상)"
+                className="w-full pl-9 pr-3 py-2.5 border border-stone-200 rounded-lg text-sm focus:outline-none focus:border-red-700 focus:ring-2 focus:ring-red-100"
               />
             </div>
-            <div className="mt-2 max-h-48 overflow-y-auto border border-stone-100 rounded-lg divide-y divide-stone-100">
+            <div className="mt-2 max-h-48 overflow-y-auto border border-stone-100 rounded-lg divide-y divide-stone-100 scrollbar-slim">
               {matchedCustomers.map(c => (
                 <button
                   key={c.id}
                   onClick={() => { setCustomerId(c.id); setCustomerSearch(''); }}
-                  className={`w-full text-left px-3 py-2 hover:bg-stone-50 ${customerId === c.id ? 'bg-red-50' : ''}`}
+                  className={`w-full text-left px-3 py-2 hover:bg-stone-50 transition-colors ${customerId === c.id ? 'bg-red-50' : ''}`}
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
-                      <span className="font-medium text-sm text-stone-800">{c.name}</span>
+                      <span className="font-semibold text-sm text-stone-800">{c.name}</span>
                       {c.isB2B && <span className="text-[9px] px-1.5 py-0.5 rounded bg-indigo-600 text-white font-bold">🏢 B2B</span>}
                       {c.isB2B && c.b2bDiscount > 0 && <span className="text-[9px] px-1 py-0.5 rounded bg-indigo-50 text-indigo-700 font-bold">-{c.b2bDiscount}%</span>}
                       {!c.isB2B && <span className={`ml-1 text-[10px] px-1.5 py-0.5 rounded ${gradeStyle(c.grade)}`}>{c.grade}</span>}
                     </div>
-                    <span className="text-xs text-stone-500 font-mono">{c.id}</span>
+                    <span className="text-xs text-stone-500 font-mono tabular-nums">{c.id}</span>
                   </div>
-                  <div className="text-xs text-stone-500 mt-0.5">{c.phone} · {c.address}</div>
+                  <div className="text-xs text-stone-500 mt-0.5 truncate">{c.phone} · {c.address}</div>
                 </button>
               ))}
-              {matchedCustomers.length === 0 && <div className="text-center py-4 text-xs text-stone-400">고객이 없습니다</div>}
+              {matchedCustomers.length === 0 && (
+                <div className="text-center py-4 text-xs text-stone-400">
+                  {debouncedSearch && debouncedSearch.length < 2 ? '2글자 이상 입력해주세요' : '고객이 없습니다'}
+                </div>
+              )}
             </div>
           </div>
 
@@ -3163,57 +3335,188 @@ function OrderFormModal({ customers, items, editTarget, gifts = [], orders = [],
             <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-xl">
               <div className="flex items-center justify-between mb-1">
                 <span className="text-xs font-bold text-indigo-900">🏢 거래처 정보</span>
-                <span className="text-[10px] text-indigo-700">{selectedCustomer.b2bPaymentTerms || '즉시결제'}</span>
+                <span className="text-[10px] text-indigo-700 font-semibold">{selectedCustomer.b2bPaymentTerms || '즉시결제'}</span>
               </div>
               <div className="grid grid-cols-3 gap-2 text-[11px]">
                 <div>
                   <span className="text-stone-500">담당자</span>
-                  <div className="font-semibold text-stone-800">{selectedCustomer.b2bContact || '-'}</div>
+                  <div className="font-bold text-stone-800">{selectedCustomer.b2bContact || '-'}</div>
                 </div>
                 <div>
                   <span className="text-stone-500">할인율</span>
-                  <div className="font-bold text-indigo-700">{discountRate}%</div>
+                  <div className="font-bold text-indigo-700 tabular-nums">{discountRate}%</div>
                 </div>
                 <div>
                   <span className="text-stone-500">미수금</span>
-                  <div className="font-bold text-red-700">${formatNum(calcB2BReceivable(selectedCustomer.id, [], items))}</div>
+                  <div className="font-bold text-red-700 tabular-nums">${formatNum(calcB2BReceivable(selectedCustomer.id, [], items))}</div>
                 </div>
               </div>
             </div>
           )}
 
-          <div className="grid grid-cols-3 gap-4">
-            <div className="col-span-2">
-              <label className="block text-xs font-semibold text-stone-600 mb-1.5">품목</label>
-              <select value={itemName} onChange={e => setItemName(e.target.value)}
-                className="w-full px-3 py-2 border border-stone-200 rounded-lg text-sm focus:outline-none focus:border-red-700 focus:ring-2 focus:ring-red-100 bg-white">
-                <option value="">선택하세요</option>
-                {items.map(i => (
-                  <option key={i.code} value={i.name} disabled={i.availStock <= 0 && !isB2B}>
-                    {i.name} ({formatWon(i.price)}) {i.availStock <= 0 ? '- 품절' : i.availStock <= 20 ? `- 재고 ${i.availStock}개` : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-stone-600 mb-1.5">
-                수량 {isBulkOrder && <span className="ml-1 text-[10px] text-indigo-700 font-bold">({Math.ceil(qty / 10)}박스)</span>}
+          {/* 🆕 주문 품목 리스트 (다품목 지원) */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-bold text-stone-700 tracking-tight">
+                주문 품목 {orderItems.length > 1 && <span className="ml-1 text-red-700">({orderItems.length}개)</span>}
               </label>
-              <input type="number" min="1" value={qty} onChange={e => setQty(parseInt(e.target.value) || 1)}
-                className="w-full px-3 py-2 border border-stone-200 rounded-lg text-sm focus:outline-none focus:border-red-700 focus:ring-2 focus:ring-red-100" />
+              <button
+                type="button"
+                onClick={addOrderItem}
+                className="flex items-center gap-1 px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-800 rounded-md text-xs font-bold border border-red-200 active:scale-95 transition-all"
+              >
+                <Plus size={12} />
+                품목 추가
+              </button>
             </div>
+
+            <div className="space-y-2">
+              {orderItemsWithCalc.map((oi, idx) => (
+                <div key={idx} className="p-3 bg-stone-50/70 border border-stone-200 rounded-xl">
+                  <div className="grid grid-cols-12 gap-2 items-end">
+                    {/* 품목 선택 */}
+                    <div className="col-span-6">
+                      <label className="block text-[10px] font-bold text-stone-600 mb-1 uppercase tracking-wider">
+                        품목 {idx + 1}
+                      </label>
+                      <select
+                        value={oi.itemName}
+                        onChange={e => updateOrderItem(idx, 'itemName', e.target.value)}
+                        className="w-full px-2.5 py-2 border border-stone-200 rounded-lg text-sm focus:outline-none focus:border-red-700 focus:ring-2 focus:ring-red-100 bg-white"
+                      >
+                        <option value="">선택하세요</option>
+                        {items.map(i => (
+                          <option key={i.code} value={i.name} disabled={i.availStock <= 0 && !isB2B}>
+                            {i.name} ({formatWon(i.price)}) {i.availStock <= 0 ? '- 품절' : i.availStock <= 20 ? `- 재고 ${i.availStock}개` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* 수량 */}
+                    <div className="col-span-2">
+                      <label className="block text-[10px] font-bold text-stone-600 mb-1 uppercase tracking-wider">수량</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={oi.qty}
+                        onChange={e => updateOrderItem(idx, 'qty', parseInt(e.target.value) || 1)}
+                        className="w-full px-2.5 py-2 border border-stone-200 rounded-lg text-sm text-right tabular-nums font-semibold focus:outline-none focus:border-red-700 focus:ring-2 focus:ring-red-100"
+                      />
+                    </div>
+
+                    {/* 박스당 수량 (B2B일 때만) */}
+                    {isB2B && (
+                      <div className="col-span-2">
+                        <label className="block text-[10px] font-bold text-indigo-700 mb-1 uppercase tracking-wider">
+                          박스당
+                        </label>
+                        <select
+                          value={oi.perBox}
+                          onChange={e => updateOrderItem(idx, 'perBox', parseInt(e.target.value) || 10)}
+                          className="w-full px-2 py-2 border border-indigo-200 rounded-lg text-sm bg-indigo-50 font-semibold tabular-nums focus:outline-none focus:border-indigo-700 focus:ring-2 focus:ring-indigo-100"
+                        >
+                          <option value={5}>5개</option>
+                          <option value={10}>10개</option>
+                          <option value={12}>12개</option>
+                          <option value={15}>15개</option>
+                          <option value={20}>20개</option>
+                          <option value={24}>24개</option>
+                          <option value={25}>25개</option>
+                          <option value={30}>30개</option>
+                          <option value={50}>50개</option>
+                        </select>
+                      </div>
+                    )}
+
+                    {/* 소계 */}
+                    <div className={isB2B ? 'col-span-1' : 'col-span-3'}>
+                      <label className="block text-[10px] font-bold text-stone-600 mb-1 uppercase tracking-wider">소계</label>
+                      <div className="h-[38px] flex items-center justify-end px-1">
+                        <span className="text-sm font-bold text-red-800 tabular-nums">
+                          ${formatNum(oi.itemTotal)}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* 삭제 버튼 */}
+                    <div className="col-span-1">
+                      {orderItems.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeOrderItem(idx)}
+                          className="w-full h-[38px] flex items-center justify-center text-stone-400 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                          title="품목 삭제"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 📦 박스 정보 표시 (B2B + 박스 수량 도달 시) */}
+                  {isB2B && oi.qty >= oi.perBox && oi.itemName && (
+                    <div className="mt-2 flex items-center gap-2 px-2.5 py-1.5 bg-indigo-100 border border-indigo-200 rounded-lg">
+                      <span className="text-base">📦</span>
+                      <div className="flex-1 flex items-center gap-3 text-[11px]">
+                        <span className="font-bold text-indigo-900 tabular-nums">
+                          {oi.boxCountFloor}박스
+                          {oi.remainder > 0 && <span className="text-indigo-600"> + {oi.remainder}개</span>}
+                        </span>
+                        <span className="text-indigo-500">=</span>
+                        <span className="text-indigo-800 tabular-nums">
+                          {oi.perBox}개 × {oi.boxCountFloor}박스
+                          {oi.remainder > 0 && ` + 낱개 ${oi.remainder}개`}
+                        </span>
+                      </div>
+                      {!oi.isExactBox && oi.remainder > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => updateOrderItem(idx, 'qty', oi.boxCountCeil * oi.perBox)}
+                          className="text-[10px] font-bold text-indigo-700 hover:bg-indigo-200 px-2 py-1 rounded"
+                        >
+                          {oi.boxCountCeil}박스로 맞추기 ↑
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {/* 재고 부족 경고 */}
+                  {oi.item && oi.qty > oi.item.availStock && !isB2B && (
+                    <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg text-[11px] text-red-800">
+                      ⚠️ 재고 부족: 가용재고 {oi.item.availStock}개
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* 📦 전체 요약 (다품목 또는 박스 주문) */}
+            {(orderItems.length > 1 || hasBulkOrder) && (
+              <div className="mt-3 p-3 bg-gradient-to-r from-red-50 to-amber-50 border border-red-200 rounded-xl">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-bold text-stone-700">📋 총 주문</span>
+                    <span className="text-xs text-stone-600">
+                      품목 <span className="font-bold text-stone-800">{orderItems.filter(o => o.itemName).length}개</span>
+                      <span className="mx-1.5 text-stone-400">·</span>
+                      총 수량 <span className="font-bold text-stone-800 tabular-nums">{totalQty}</span>개
+                    </span>
+                  </div>
+                  <span className="text-lg font-bold text-red-800 tabular-nums">${formatNum(grandTotal)}</span>
+                </div>
+                {totalSaved > 0 && (
+                  <div className="mt-1 text-[11px] text-emerald-700 font-semibold">
+                    💰 총 할인: -${formatNum(totalSaved)} (기본가 대비)
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
-          {/* 재고 부족 경고 + 선주문 옵션 */}
-          {selectedItem && qty > selectedItem.availStock && (
+          {/* 🏢 B2B 전용: 선주문 옵션 */}
+          {isB2B && (
             <div className="p-3 bg-purple-50 border-2 border-purple-200 rounded-xl space-y-2">
-              <div className="flex items-start gap-2">
-                <AlertTriangle size={16} className="text-purple-600 shrink-0 mt-0.5" />
-                <div className="text-xs text-purple-900">
-                  <strong>재고 부족:</strong> 요청 수량 {qty}개 &gt; 가용재고 {selectedItem.availStock}개
-                  <br/>선주문으로 등록하면 입고 후 자동 처리됩니다.
-                </div>
-              </div>
               <label className="flex items-center gap-2 p-2 bg-white rounded-lg cursor-pointer">
                 <input
                   type="checkbox"
@@ -3238,8 +3541,8 @@ function OrderFormModal({ customers, items, editTarget, gifts = [], orders = [],
             </div>
           )}
 
-          {/* 🏢 B2B 전용: 분할 배송 */}
-          {isB2B && qty >= 5 && (
+          {/* 🏢 B2B 전용: 분할 배송 (총 수량 5개 이상일 때) */}
+          {isB2B && totalQty >= 5 && (
             <div className={`p-3 rounded-xl border-2 ${showSplitUI ? 'bg-indigo-50 border-indigo-300' : 'bg-stone-50 border-stone-200'}`}>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
@@ -3248,7 +3551,7 @@ function OrderFormModal({ customers, items, editTarget, gifts = [], orders = [],
                   onChange={e => {
                     setShowSplitUI(e.target.checked);
                     if (e.target.checked && splitDeliveries.length === 0) {
-                      setSplitDeliveries([{ date: '', qty: Math.ceil(qty / 2) }, { date: '', qty: Math.floor(qty / 2) }]);
+                      setSplitDeliveries([{ date: '', qty: Math.ceil(totalQty / 2) }, { date: '', qty: Math.floor(totalQty / 2) }]);
                     }
                   }}
                   className="w-4 h-4 accent-indigo-700"
@@ -3273,7 +3576,7 @@ function OrderFormModal({ customers, items, editTarget, gifts = [], orders = [],
                       <input
                         type="number"
                         min="1"
-                        max={qty}
+                        max={totalQty}
                         value={split.qty}
                         onChange={e => updateSplit(idx, 'qty', parseInt(e.target.value) || 0)}
                         className="w-20 px-2 py-1.5 border border-stone-200 rounded text-xs focus:outline-none focus:border-indigo-700"
@@ -3294,8 +3597,8 @@ function OrderFormModal({ customers, items, editTarget, gifts = [], orders = [],
                     >
                       + 배송일 추가
                     </button>
-                    <div className={`text-xs font-bold ${splitTotal === qty ? 'text-emerald-700' : 'text-red-700'}`}>
-                      합계: {splitTotal} / {qty}개 {splitTotal === qty ? '✓' : '⚠️ 수량 일치 필요'}
+                    <div className={`text-xs font-bold ${splitTotal === totalQty ? 'text-emerald-700' : 'text-red-700'}`}>
+                      합계: {splitTotal} / {totalQty}개 {splitTotal === totalQty ? '✓' : '⚠️ 수량 일치 필요'}
                     </div>
                   </div>
                 </div>
@@ -3334,37 +3637,24 @@ function OrderFormModal({ customers, items, editTarget, gifts = [], orders = [],
             </div>
           </div>
 
-          {/* 합계 - B2B 도매가 표시 */}
+          {/* 합계 - 다품목 + B2B 구조 맞춤 */}
           <div className={`p-4 rounded-xl ${isService ? 'bg-amber-50 border-2 border-amber-200' : isB2B ? 'bg-indigo-50 border-2 border-indigo-200' : isPickup ? 'bg-sky-50 border-2 border-sky-200' : 'bg-stone-50'}`}>
-            {isB2B && !isService && discountRate > 0 && (
-              <div className="flex items-center justify-between text-xs mb-2 pb-2 border-b border-indigo-200">
-                <span className="text-stone-600">정가 {formatWon(basePrice)} × {qty}</span>
-                <span className="text-stone-400 line-through">{formatWon(basePrice * qty)}</span>
-              </div>
-            )}
             <div className="flex items-center justify-between text-sm">
-              <span className={isService ? 'text-amber-900 font-semibold' : isB2B ? 'text-indigo-900 font-semibold' : isPickup ? 'text-sky-900 font-semibold' : 'text-stone-600'}>
-                {isService ? '🎁 서비스 (무료)' : isB2B ? (
-                  <span className="flex items-center gap-1.5">
-                    🏢 B2B 적용가
-                    {priceSource === 'override' && <span className="text-[9px] px-1.5 py-0.5 rounded bg-indigo-700 text-white font-bold">🎯 개별가</span>}
-                    {priceSource === 'itemB2B' && <span className="text-[9px] px-1.5 py-0.5 rounded bg-indigo-500 text-white font-bold">📦 상품B2B</span>}
-                    {priceSource === 'discount' && <span className="text-[9px] px-1.5 py-0.5 rounded bg-indigo-400 text-white font-bold">-{discountRate}%</span>}
-                  </span>
-                ) : isPickup ? '📍 픽업 (배송료 없음)' : '합계'}
+              <span className={isService ? 'text-amber-900 font-semibold' : isB2B ? 'text-indigo-900 font-semibold' : isPickup ? 'text-sky-900 font-semibold' : 'text-stone-700 font-semibold'}>
+                {isService ? '🎁 서비스 (무료)' : isB2B ? '🏢 B2B 적용가 합계' : isPickup ? '📍 픽업 (배송료 없음)' : '총 합계'}
               </span>
               <span className={`text-2xl font-bold tabular-nums ${isService ? 'text-amber-700 line-through' : isB2B ? 'text-indigo-700' : isPickup ? 'text-sky-800' : 'text-red-800'}`}>
-                {formatWon(total)}
+                ${formatNum(grandTotal)}
               </span>
             </div>
-            {isB2B && savedAmount > 0 && !isService && (
-              <div className="text-[10px] text-indigo-700 text-right mt-1">
-                💰 절약 금액: ${formatNum(savedAmount)}
+            {isB2B && totalSaved > 0 && !isService && (
+              <div className="text-[11px] text-indigo-700 text-right mt-1 font-semibold">
+                💰 절약 금액: ${formatNum(totalSaved)}
               </div>
             )}
-            {isBulkOrder && (
-              <div className="text-[10px] text-indigo-700 text-right mt-0.5">
-                📦 대량주문: {qty}개 ({Math.ceil(qty / 10)}박스 기준)
+            {hasBulkOrder && (
+              <div className="text-[11px] text-indigo-700 text-right mt-0.5">
+                📦 박스 주문 포함 (각 품목 박스 단위 확인됨)
               </div>
             )}
             {isService && (
@@ -3558,6 +3848,7 @@ function MsgBlock({ title, msg, onCopy, copied }) {
 
 function Customers({ customers, setCustomers, items, orders, showToast }) {
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [gradeFilter, setGradeFilter] = useState('');
   const [agedCareFilter, setAgedCareFilter] = useState(false);
   const [customerTypeFilter, setCustomerTypeFilter] = useState('all'); // 'all' | 'b2c' | 'b2b'
@@ -3567,6 +3858,14 @@ function Customers({ customers, setCustomers, items, orders, showToast }) {
   const [editTarget, setEditTarget] = useState(null);
   const [historyTarget, setHistoryTarget] = useState(null);
   const [displayLimit, setDisplayLimit] = useState(50);
+
+  // 🔍 검색 debounce 300ms (4000명+ 대용량 대응)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   const toggleSort = (key) => {
     if (sortKey === key) setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
@@ -3611,8 +3910,8 @@ function Customers({ customers, setCustomers, items, orders, showToast }) {
         return autoGrade === gradeFilter;
       });
     }
-    if (search) {
-      const s = search.toLowerCase();
+    if (debouncedSearch) {
+      const s = debouncedSearch.toLowerCase();
       result = result.filter(c =>
         c.name.toLowerCase().includes(s) ||
         c.id.toLowerCase().includes(s) ||
