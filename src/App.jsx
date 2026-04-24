@@ -6,6 +6,8 @@ import {
   subscribeToTable,
   saveBatch,
   suppressRealtimeEcho,
+  refreshAllTables,
+  fetchAll,
   TABLES,
 } from './supabase.js';
 
@@ -1711,6 +1713,49 @@ export default function App() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [saveState]);
 
+  // 🔄 수동 새로고침 - 다른 기기에서의 변경사항 강제 불러오기
+  const [refreshing, setRefreshing] = useState(false);
+  const handleRefresh = async () => {
+    if (!isSupabaseConfigured) {
+      showToast('클라우드 연결이 필요합니다', 'error');
+      return;
+    }
+    if (refreshing) return;
+
+    setRefreshing(true);
+    try {
+      console.log('🔄 수동 새로고침 시작...');
+      const [customers2, items2, orders2, drivers2] = await Promise.all([
+        fetchAll(TABLES.customers),
+        fetchAll(TABLES.items),
+        fetchAll(TABLES.orders),
+        fetchAll(TABLES.drivers),
+      ]);
+
+      // Firebase 에코 방지 플래그 설정 (받은 데이터로 state 업데이트 시)
+      isReceivingFromFirebaseRef.current = true;
+
+      _setCustomersInternal(customers2);
+      _setItemsInternal(items2);
+      _setOrdersInternal(orders2);
+      _setDriversInternal(drivers2);
+
+      saveData(STORAGE_KEYS.customers, customers2);
+      saveData(STORAGE_KEYS.items, items2);
+      saveData(STORAGE_KEYS.orders, orders2);
+      saveData(DRIVERS_KEY, drivers2);
+
+      setTimeout(() => { isReceivingFromFirebaseRef.current = false; }, 100);
+
+      console.log(`✓ 새로고침 완료: 고객${customers2.length}명, 주문${orders2.length}건`);
+      showToast(`✓ 최신 데이터 불러옴 (주문 ${orders2.length}건)`);
+    } catch (err) {
+      console.error('새로고침 실패:', err);
+      showToast('새로고침 실패. 인터넷 연결을 확인해주세요.', 'error');
+    }
+    setRefreshing(false);
+  };
+
   // 🎁 사은품 저장 래퍼 (localStorage만)
   const saveGifts = (newGifts) => {
     const resolved = typeof newGifts === 'function' ? newGifts(gifts) : newGifts;
@@ -2120,6 +2165,19 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-2">
+            {/* 🔄 새로고침 버튼 (다른 PC 변경사항 즉시 반영) */}
+            {isSupabaseConfigured && (
+              <button
+                onClick={handleRefresh}
+                disabled={refreshing}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] text-[12px] font-medium bg-white text-[#52525B] border border-[#E4E4E7] hover:bg-[#FAFAFA] hover:text-[#09090B] transition-colors disabled:opacity-50"
+                title="다른 기기의 변경사항 즉시 불러오기"
+              >
+                <RotateCcw size={12} className={refreshing ? 'animate-spin' : ''} />
+                <span>{refreshing ? '불러오는 중' : '새로고침'}</span>
+              </button>
+            )}
+
             {/* 💾 저장 상태 버튼 (Notion/Linear 스타일) */}
             {isSupabaseConfigured && (
               <button
