@@ -2731,26 +2731,27 @@ function Orders({ customers, items, orders, setOrders, gifts, setGifts, showToas
     return 'ORD-' + String(max + 1).padStart(4, '0');
   };
 
-  const handleSave = (orderOrArray) => {
-    // 🚀 모달 먼저 닫기 (UI 반응성 향상)
+  const handleSave = (order) => {
+    // 🚀 모달 먼저 닫기 (UI 반응성)
     setShowForm(false);
     setEditTarget(null);
 
-    // 🚀 저장 로직은 다음 tick에서 실행 (UI 블로킹 방지)
+    // 🚀 백그라운드 저장 (함수형 setState로 stale 참조 방지)
     setTimeout(() => {
-      // 다품목인 경우 배열로 전달됨
-      if (Array.isArray(orderOrArray)) {
-        // 안전한 ID 생성: 현재 최대 번호 찾아서 순차적으로 부여
-        const allNums = orders.map(o => {
-          const match = o.id?.match(/ORD-(\d+)/);
-          return match ? parseInt(match[1]) : 0;
-        });
-        let maxNum = allNums.length > 0 ? Math.max(...allNums) : 0;
-
-        const newOrders = orderOrArray.map((o) => {
-          maxNum += 1;
-          const newId = `ORD-${String(maxNum).padStart(4, '0')}`;
-          return {
+      if (editTarget) {
+        // ⚠️ 함수형 업데이트: 최신 orders 상태를 받아 변경
+        setOrders(prev => prev.map(o => o.id === editTarget.id ? { ...o, ...order, id: editTarget.id } : o));
+        showToast('주문이 수정되었습니다');
+      } else {
+        // 최신 orders 기반으로 새 ID 생성 + 추가 (함수형 업데이트)
+        setOrders(prev => {
+          const allNums = prev.map(o => {
+            const m = o.id?.match(/ORD-(\d+)/);
+            return m ? parseInt(m[1]) : 0;
+          });
+          const maxNum = allNums.length > 0 ? Math.max(...allNums) : 0;
+          const newId = `ORD-${String(maxNum + 1).padStart(4, '0')}`;
+          const newOrder = {
             id: newId,
             shipStatus: '배송준비중',
             deliveryMethod: '',
@@ -2763,21 +2764,12 @@ function Orders({ customers, items, orders, setOrders, gifts, setGifts, showToas
             isService: false,
             isPickup: false,
             cashReceived: 0,
-            ...o,
+            ...order,
           };
+          return [...prev, newOrder];
         });
-        setOrders([...orders, ...newOrders]);
-        showToast(`✅ ${newOrders.length}개 품목 주문이 등록되었습니다`);
-      } else {
-        // 단일 주문
-        const order = orderOrArray;
-        if (editTarget) {
-          setOrders(orders.map(o => o.id === editTarget.id ? { ...o, ...order, id: editTarget.id } : o));
-          showToast('주문이 수정되었습니다');
-        } else {
-          setOrders([...orders, { id: nextOrderId(), shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: '', isService: false, isPickup: false, cashReceived: 0, ...order }]);
-          showToast('주문이 등록되었습니다');
-        }
+        const itemCount = Array.isArray(order.items) ? order.items.length : 1;
+        showToast(itemCount > 1 ? `✅ 주문 등록 (${itemCount}개 품목)` : '주문이 등록되었습니다');
       }
     }, 50);
   };
@@ -2920,11 +2912,25 @@ function Orders({ customers, items, orders, setOrders, gifts, setGifts, showToas
             <tbody>
               {filtered.slice(0, displayLimit).map(o => {
                 const c = customerMap[o.customerId];
-                const basePrice = priceMap[o.itemName] || 0;
                 const isB2B_o = !!c?.isB2B;
                 const discount_o = c?.b2bDiscount || 0;
+
+                // 🆕 다품목 주문 처리: items 배열이 있으면 합계 계산
+                let total = 0;
+                if (Array.isArray(o.items) && o.items.length > 0) {
+                  o.items.forEach(it => {
+                    const bp = priceMap[it.itemName] || 0;
+                    const up = isB2B_o ? getB2BPrice(bp, discount_o) : bp;
+                    total += up * it.qty;
+                  });
+                } else {
+                  const basePrice = priceMap[o.itemName] || 0;
+                  const unitPrice_o = isB2B_o ? getB2BPrice(basePrice, discount_o) : basePrice;
+                  total = unitPrice_o * o.qty;
+                }
+                const basePrice = priceMap[o.itemName] || 0;
                 const unitPrice_o = isB2B_o ? getB2BPrice(basePrice, discount_o) : basePrice;
-                const total = unitPrice_o * o.qty;
+
                 // 서비스면 배송료/금액 없음
                 const isServ = !!o.isService;
                 const isWaitingStock = o.shipStatus === '입고대기';
@@ -2969,17 +2975,47 @@ function Orders({ customers, items, orders, setOrders, gifts, setGifts, showToas
                       </div>
                       <div className="text-xs text-stone-400">{o.customerId}</div>
                     </td>
-                    <td className="px-4 py-3 text-stone-700">{o.itemName}</td>
-                    <td className="px-4 py-3 text-right text-stone-700 tabular-nums">
-                      <div>{o.qty}</div>
-                      {isB2B_o && o.perBox > 0 && o.qty >= o.perBox && (
-                        <div className="text-[10px] text-indigo-700 font-bold">
-                          {Math.floor(o.qty / o.perBox)}박스
-                          {(o.qty % o.perBox) > 0 && `+${o.qty % o.perBox}`}
+                    <td className="px-4 py-3 text-stone-700">
+                      {Array.isArray(o.items) && o.items.length > 1 ? (
+                        <div className="space-y-0.5">
+                          {o.items.map((it, i) => (
+                            <div key={i} className="text-xs">
+                              {i === 0 && <span className="text-[9px] px-1 py-0.5 mr-1 rounded bg-amber-100 text-amber-800 font-bold">{o.items.length}개</span>}
+                              {it.itemName}
+                            </div>
+                          ))}
                         </div>
+                      ) : (
+                        o.itemName
                       )}
-                      {isB2B_o && !o.perBox && o.qty >= 10 && (
-                        <div className="text-[10px] text-indigo-700 font-bold">{Math.ceil(o.qty / 10)}박스</div>
+                    </td>
+                    <td className="px-4 py-3 text-right text-stone-700 tabular-nums">
+                      {Array.isArray(o.items) && o.items.length > 1 ? (
+                        <div className="space-y-0.5">
+                          {o.items.map((it, i) => (
+                            <div key={i} className="text-xs">
+                              {it.qty}
+                              {isB2B_o && it.perBox > 0 && it.qty >= it.perBox && (
+                                <span className="ml-1 text-[9px] text-indigo-700 font-bold">
+                                  ({Math.floor(it.qty / it.perBox)}박{(it.qty % it.perBox) > 0 && `+${it.qty % it.perBox}`})
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <>
+                          <div>{o.qty}</div>
+                          {isB2B_o && o.perBox > 0 && o.qty >= o.perBox && (
+                            <div className="text-[10px] text-indigo-700 font-bold">
+                              {Math.floor(o.qty / o.perBox)}박스
+                              {(o.qty % o.perBox) > 0 && `+${o.qty % o.perBox}`}
+                            </div>
+                          )}
+                          {isB2B_o && !o.perBox && o.qty >= 10 && (
+                            <div className="text-[10px] text-indigo-700 font-bold">{Math.ceil(o.qty / 10)}박스</div>
+                          )}
+                        </>
                       )}
                     </td>
                     <td className="px-4 py-3 text-right tabular-nums">
@@ -3087,6 +3123,15 @@ function OrderFormModal({ customers, items, editTarget, gifts = [], orders = [],
   // 각 아이템: { itemName, qty, perBox }
   const [orderItems, setOrderItems] = useState(() => {
     if (editTarget) {
+      // items 배열이 있으면 그대로 사용 (다품목 주문)
+      if (Array.isArray(editTarget.items) && editTarget.items.length > 0) {
+        return editTarget.items.map(it => ({
+          itemName: it.itemName || '',
+          qty: it.qty || 1,
+          perBox: it.perBox || 10,
+        }));
+      }
+      // 단일 품목 주문
       return [{
         itemName: editTarget.itemName || '',
         qty: editTarget.qty || 1,
@@ -3272,42 +3317,49 @@ function OrderFormModal({ customers, items, editTarget, gifts = [], orders = [],
 
   const handleSave = () => {
     if (!canSubmit) return;
-    // 다품목인 경우 각 품목마다 별도 주문 생성
     const validItems = orderItemsWithCalc.filter(oi => oi.itemName && oi.qty > 0);
 
-    const ordersToSave = validItems.map((oi, idx) => {
-      const data = {
-        date,
-        customerId,
-        itemName: oi.itemName,
-        qty: oi.qty,
-        perBox: oi.perBox, // 🆕 박스 단위 저장
-        isService,
-        isPickup,
-      };
-      if (isPreOrder) {
-        data.shipStatus = '입고대기';
-        data.expectedStockDate = expectedStockDate;
-      }
-      // 분할 배송은 첫 품목에만 적용
-      if (idx === 0 && showSplitUI && splitDeliveries.length > 0) {
-        data.splitDeliveries = splitDeliveries;
-      }
-      // 🎁 사은품은 첫 품목에만 적용
-      if (idx === 0) {
-        if (activeGift && effectiveGiftQty > 0) {
-          data.giftId = activeGift.id;
-          data.giftName = activeGift.name;
-          data.giftQty = effectiveGiftQty;
-        } else if (giftQty !== null) {
-          data.giftQty = 0;
-        }
-      }
-      return data;
-    });
+    // 🆕 하나의 주문 = 여러 품목 (items 배열)
+    // items: [{ itemName, qty, perBox }]
+    const orderItemsArr = validItems.map(oi => ({
+      itemName: oi.itemName,
+      qty: oi.qty,
+      perBox: oi.perBox,
+    }));
 
-    // 기존 onSave는 단일 주문만 받으므로, 배열로 전달
-    onSave(ordersToSave.length === 1 ? ordersToSave[0] : ordersToSave);
+    // 대표 품목 (첫 번째 품목을 itemName으로 유지 - 호환성)
+    const firstItem = orderItemsArr[0];
+
+    const data = {
+      date,
+      customerId,
+      // 호환성: 단일 품목은 기존 필드 유지
+      itemName: firstItem.itemName,
+      qty: firstItem.qty,
+      perBox: firstItem.perBox,
+      // 🆕 다품목 배열 (2개 이상일 때만 저장)
+      items: orderItemsArr.length > 1 ? orderItemsArr : null,
+      isService,
+      isPickup,
+    };
+
+    if (isPreOrder) {
+      data.shipStatus = '입고대기';
+      data.expectedStockDate = expectedStockDate;
+    }
+    if (showSplitUI && splitDeliveries.length > 0) {
+      data.splitDeliveries = splitDeliveries;
+    }
+    // 🎁 사은품
+    if (activeGift && effectiveGiftQty > 0) {
+      data.giftId = activeGift.id;
+      data.giftName = activeGift.name;
+      data.giftQty = effectiveGiftQty;
+    } else if (giftQty !== null) {
+      data.giftQty = 0;
+    }
+
+    onSave(data);
   };
 
   return (
