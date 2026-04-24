@@ -526,11 +526,14 @@ function resolveGiftQty(order, activeGift, orderTotal) {
 
 // ============================================================
 // 🏆 고객등급 자동 계산: VIP $2,000+ / 우수 $500+ / 일반
+// 🆕 B2B 거래처는 자동 등급 계산 제외 (항상 '일반')
 // ============================================================
 const GRADE_VIP_THRESHOLD = 2000;
 const GRADE_PREMIUM_THRESHOLD = 500;
 
-function calcCustomerGrade(customerId, orders, items) {
+function calcCustomerGrade(customerId, orders, items, customer) {
+  // B2B는 자동 등급 계산 제외
+  if (customer && customer.isB2B) return '일반';
   const priceMap = {};
   items.forEach(i => { priceMap[i.name] = i.price || 0; });
   const total = orders
@@ -728,8 +731,10 @@ function exportToExcel(customers, items, orders) {
       const it = items.find(i => i.name === o.itemName);
       return s + (it ? it.price * o.qty : 0);
     }, 0);
-    // 자동등급 계산
-    const autoGrade = totalSpent >= GRADE_VIP_THRESHOLD ? 'VIP' : totalSpent >= GRADE_PREMIUM_THRESHOLD ? '우수' : '일반';
+    // 자동등급 계산 (🆕 B2B 제외)
+    const autoGrade = c.isB2B
+      ? '일반'
+      : (totalSpent >= GRADE_VIP_THRESHOLD ? 'VIP' : totalSpent >= GRADE_PREMIUM_THRESHOLD ? '우수' : '일반');
     return {
       '고객ID': c.id, '성함': c.name, '연락처': c.phone,
       'Aged Care': c.agedCare ? '✓' : '',
@@ -2168,11 +2173,15 @@ function Dashboard({ customers, items, orders, gifts = [], setView }) {
     const deliveredCount = orders.filter(o => o.shipStatus === '배송완료').length;
     // 취소를 제외한 실제 배송 대상 주문 기준으로 완료율 계산
     const activeOrders = orders.filter(o => o.shipStatus !== '취소').length;
-    // 자동등급 계산
+    // 자동등급 계산 (🆕 B2B 제외)
     const customerGrades = {};
     customers.forEach(c => {
-      const total = customerTotalMap[c.id] || 0;
-      customerGrades[c.id] = total >= GRADE_VIP_THRESHOLD ? 'VIP' : total >= GRADE_PREMIUM_THRESHOLD ? '우수' : '일반';
+      if (c.isB2B) {
+        customerGrades[c.id] = '일반';  // B2B는 등급 계산 안 함
+      } else {
+        const total = customerTotalMap[c.id] || 0;
+        customerGrades[c.id] = total >= GRADE_VIP_THRESHOLD ? 'VIP' : total >= GRADE_PREMIUM_THRESHOLD ? '우수' : '일반';
+      }
     });
     const vipCount = Object.values(customerGrades).filter(g => g === 'VIP').length;
 
@@ -4221,10 +4230,13 @@ function Customers({ customers, setCustomers, items, orders, showToast, setOrder
   };
 
   // 성능 최적화: 고객ID → 주문 배열 + 자동등급 미리 계산 (서비스 제외)
+  // 🆕 B2B 거래처는 등급 자동 업그레이드 대상 아님 (항상 '일반')
   const ordersByCustomer = useMemo(() => {
     const map = {};
     const priceMap = {};
     items.forEach(i => { priceMap[i.name] = i.price || 0; });
+    const b2bSet = new Set(customers.filter(c => c.isB2B).map(c => c.id));
+
     orders.forEach(o => {
       if (!map[o.customerId]) {
         map[o.customerId] = { orders: [], count: 0, totalSpent: 0, serviceCount: 0, summary: '', autoGrade: '일반' };
@@ -4239,13 +4251,18 @@ function Customers({ customers, setCustomers, items, orders, showToast, setOrder
     });
     Object.keys(map).forEach(cid => {
       map[cid].summary = map[cid].orders.map(o => `${o.itemName}×${o.qty}${o.isService ? '🎁' : ''}`).join(', ');
-      const total = map[cid].totalSpent;
-      if (total >= GRADE_VIP_THRESHOLD) map[cid].autoGrade = 'VIP';
-      else if (total >= GRADE_PREMIUM_THRESHOLD) map[cid].autoGrade = '우수';
-      else map[cid].autoGrade = '일반';
+      // 🆕 B2B 거래처는 자동 등급 계산 제외
+      if (b2bSet.has(cid)) {
+        map[cid].autoGrade = '일반';
+      } else {
+        const total = map[cid].totalSpent;
+        if (total >= GRADE_VIP_THRESHOLD) map[cid].autoGrade = 'VIP';
+        else if (total >= GRADE_PREMIUM_THRESHOLD) map[cid].autoGrade = '우수';
+        else map[cid].autoGrade = '일반';
+      }
     });
     return map;
-  }, [orders, items]);
+  }, [orders, items, customers]);
 
   const filtered = useMemo(() => {
     let result = [...customers];
