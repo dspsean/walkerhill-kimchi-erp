@@ -635,14 +635,14 @@ const ZONE_VEHICLE = {
 
 // 지역 설명
 const ZONE_REGIONS = {
-  'Zone1': 'Upper North Shore',
-  'Zone2': 'Beecroft·Epping·Ryde',
-  'Zone3': 'Kellyville·Castle Hill',
-  'Zone4': 'Parramatta·Burwood',
-  'Zone5': 'Strathfield·Campsie',
-  'Zone6': '서부 외곽·City',
-  'Zone7': 'Hurstville·Kogarah',
-  'Zone8': 'Eastwood·Chatswood',
+  'Zone1': '차량1 · Day 1  │  서부 (Marsden Park 퇴근)',
+  'Zone2': '차량1 · Day 2  │  서부 (Marsden Park 퇴근)',
+  'Zone3': '차량1 · Day 3  │  서부 (Marsden Park 퇴근)',
+  'Zone4': '차량2 · Day 1  │  동부 (Newington 퇴근)',
+  'Zone5': '차량2 · Day 2  │  동부 (Newington 퇴근)',
+  'Zone6': '차량2 · Day 3  │  동부 (Newington 퇴근)',
+  'Zone7': '단시간 알바 배송구역',
+  'Zone8': '(미사용)',
 };
 
 // 배송 출발지
@@ -1986,11 +1986,11 @@ export default function App() {
           </div>
 
           {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-          {/* 🚚 섹션 2: 배차 관리 (통합) */}
+          {/* 📦 섹션 2: 주문·배송 통합 업로드 */}
           {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
           <div className="space-y-1.5">
             <div className="flex items-center gap-1.5 px-1">
-              <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider">🚚 배차 관리</span>
+              <span className="text-[10px] font-semibold text-[#52525B] uppercase tracking-wider">주문·배송 통합</span>
             </div>
             <ExcelUploadButton
               customers={customers}
@@ -8993,11 +8993,11 @@ function ExcelUploadButton({ customers, items, orders, setCustomers, setOrders, 
       const data = await file.arrayBuffer();
       const wb = XLSX.read(data);
 
-      const result = parseUploadedExcel(wb, customers, items, orders);
+      // 🆕 통합 파싱 (전체(원본) + Zone A~H) - 데이터 보존 중심
+      const result = parseFullReplaceExcel(wb, customers, items, orders);
 
-      // 결과가 비어있으면 에러 표시
-      if (Object.keys(result.orderUpdates).length === 0 && result.newCustomers.length === 0) {
-        showToast('데이터를 찾을 수 없습니다. 양식이 올바른지 확인해주세요.', 'error');
+      if (result.totalExcelOrders === 0) {
+        showToast('엑셀에서 주문 데이터를 찾을 수 없습니다. "전체(원본)" 시트를 확인해주세요.', 'error');
         setParsing(false);
         if (fileInputRef.current) fileInputRef.current.value = '';
         return;
@@ -9015,7 +9015,7 @@ function ExcelUploadButton({ customers, items, orders, setCustomers, setOrders, 
   const handleApply = () => {
     if (!preview) return;
 
-    // 🆕 완전 교체 방식
+    // 🎯 데이터 보존 중심 업로드
     // ① 신규 고객 추가
     let updatedCustomers = [...customers];
     preview.newCustomers.forEach(nc => {
@@ -9024,36 +9024,35 @@ function ExcelUploadButton({ customers, items, orders, setCustomers, setOrders, 
       }
     });
 
-    // ② 주문 처리 (완전 교체)
-    let updatedOrders = orders.map(o => {
-      const update = preview.orderUpdates[o.id];
+    // ② 주문 처리
+    // ⚠️ 삭제는 하지 않음 - 모든 과거 기록 보존!
+    // - 배차 대상 주문 중 엑셀에 없는 것 → "취소"로 상태 변경 (기록은 유지)
+    // - 엑셀에 있는 것 → 업데이트
+    // - 그 외 모든 주문 → 그대로 (완료/취소/서비스/픽업/배송중 등)
+    const cancelIds = new Set(preview.toDelete.map(d => d.orderId));
 
-      // [A] 엑셀에 있는 주문 → 새 Zone/순번/도착시간으로 업데이트
+    let updatedOrders = orders.map(o => {
+      // [A] 유지+업데이트 대상
+      const update = preview.orderUpdates[o.id];
       if (update) {
         return { ...o, ...update };
       }
-
-      // [B] 엑셀에 없는 주문 중 "배차 대상" → 배차 해제 (완전 교체!)
-      //  - 배송 완료/취소는 그대로 유지 (과거 기록)
-      //  - 서비스/픽업도 그대로 유지 (배차 대상 아님)
-      //  - 배송준비중/출고대기/배송중은 배차 해제 (재배차 대기)
-      const isAssignableState =
-        o.shipStatus !== '취소' &&
-        o.shipStatus !== '배송완료' &&
-        !o.isService &&
-        !o.isPickup;
-
-      if (isAssignableState && (o.shippingGroup || o.sequence)) {
-        // 기존에 배차되어 있었는데 이번 엑셀에 없음 → 배차 해제
+      // [B] 이번 배차 대상이었지만 엑셀에 없음 → "취소" 상태로 (삭제 X, 기록 유지)
+      if (cancelIds.has(o.id)) {
+        const today = new Date().toISOString().slice(0, 10);
+        const tag = `[${today} 엑셀 업로드 시 제외]`;
         return {
           ...o,
+          shipStatus: '취소',
           shippingGroup: '',
           sequence: null,
           arrivalTime: '',
+          deliveryMemo: o.deliveryMemo
+            ? `${o.deliveryMemo} | ${tag}`
+            : tag,
         };
       }
-
-      // [C] 그 외 모두 그대로 (완료/취소/서비스/픽업)
+      // [C] 영향 없는 주문 (완료/취소/서비스/픽업)은 그대로
       return o;
     });
 
@@ -9067,17 +9066,18 @@ function ExcelUploadButton({ customers, items, orders, setCustomers, setOrders, 
     setCustomers(updatedCustomers);
     setOrders(updatedOrders);
 
-    // 배차 해제된 주문 수 계산
-    const unassignedCount = orders.filter(o => {
-      if (preview.orderUpdates[o.id]) return false;
-      const isAssignable = o.shipStatus !== '취소' && o.shipStatus !== '배송완료' && !o.isService && !o.isPickup;
-      return isAssignable && (o.shippingGroup || o.sequence);
-    }).length;
+    const keptCount = preview.keptOrderIds.length;
+    const updatedCount = Object.keys(preview.orderUpdates).length;
+    const newCount = preview.newOrders.length;
+    const cancelledCount = preview.toDelete.length;
+    const newCustCount = preview.newCustomers.length;
 
     showToast(
-      `✓ 배차 완료: ${Object.keys(preview.orderUpdates).length}건 배정` +
-      (unassignedCount > 0 ? ` · ${unassignedCount}건 배차해제` : '') +
-      (preview.newOrders.length > 0 ? ` · 신규 ${preview.newOrders.length}건` : '')
+      `✓ 업로드 완료: ` +
+      `유지 ${keptCount}건 · ` +
+      `신규 ${newCount}건` +
+      (cancelledCount > 0 ? ` · 취소처리 ${cancelledCount}건` : '') +
+      (newCustCount > 0 ? ` · 신규고객 ${newCustCount}명` : '')
     );
     setPreview(null);
   };
@@ -9106,33 +9106,33 @@ function ExcelUploadButton({ customers, items, orders, setCustomers, setOrders, 
       {/* 1. 양식 다운로드 */}
       <button
         onClick={handleDownloadTemplate}
-        className="w-full flex items-center gap-2 px-3 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-all"
-        title="현재 주문 데이터로 배차 엑셀 양식 생성"
+        className="w-full flex items-center gap-2 px-3 py-2.5 bg-[#09090B] hover:bg-black text-white rounded-[8px] text-[12px] font-medium transition-colors"
+        title="현재 주문관리 + 배송관리 데이터로 엑셀 양식 생성"
       >
         <FileDown size={14} />
-        <span className="flex-1 text-left">양식 다운로드</span>
-        <span className="text-[9px] opacity-80">.xlsx</span>
+        <span className="flex-1 text-left">주문·배송 양식 다운로드</span>
+        <span className="text-[10px] opacity-70">.xlsx</span>
       </button>
 
       {/* 2. 엑셀 업로드 */}
       <button
         onClick={() => fileInputRef.current?.click()}
         disabled={parsing}
-        className="w-full flex items-center gap-2 px-3 py-2.5 bg-white hover:bg-indigo-50 border-2 border-indigo-600 text-indigo-700 rounded-lg text-xs font-semibold transition-all disabled:opacity-60"
-        title="수정한 배차 엑셀을 업로드하여 배송 정보 적용"
+        className="w-full flex items-center gap-2 px-3 py-2.5 bg-white hover:bg-[#FAFAFA] border border-[#09090B] text-[#09090B] rounded-[8px] text-[12px] font-medium transition-colors disabled:opacity-50"
+        title="엑셀 업로드: 주문관리 + 배송관리 통합 업데이트"
       >
         <Download size={14} className="rotate-180" />
-        <span className="flex-1 text-left">{parsing ? '분석 중...' : '배차 업로드'}</span>
-        <span className="text-[9px] opacity-60">.xlsx</span>
+        <span className="flex-1 text-left">{parsing ? '분석 중...' : '주문·배송 업로드'}</span>
+        <span className="text-[10px] opacity-60">.xlsx</span>
       </button>
 
       {/* 3. 도움말 */}
       <button
         onClick={() => setShowHelp(true)}
-        className="w-full flex items-center gap-1.5 px-3 py-1 text-[10px] text-stone-500 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg transition-all"
+        className="w-full flex items-center gap-1.5 px-3 py-1 text-[11px] text-[#71717A] hover:text-[#09090B] transition-colors"
       >
         <span>❓</span>
-        <span>배차 업로드 사용법</span>
+        <span>업로드 사용법</span>
       </button>
 
       {showHelp && <ExcelHelpModal onClose={() => setShowHelp(false)} />}
@@ -9150,82 +9150,110 @@ function ExcelUploadButton({ customers, items, orders, setCustomers, setOrders, 
 
 function ExcelUploadPreviewModal({ preview, onApply, onCancel }) {
   const totalUpdates = Object.keys(preview.orderUpdates).length;
+  const keptCount = preview.keptOrderIds?.length || 0;
+  const newCount = preview.newOrders?.length || 0;
+  const newCustCount = preview.newCustomers?.length || 0;
+  const cancelledCount = preview.toDelete?.length || 0;
+  const unmatchedCount = preview.unmatchedNames?.length || 0;
+
+  // 배송비/비고 업데이트 건수
+  const shippingFeeUpdates = Object.values(preview.orderUpdates).filter(u => u.shippingFee > 0).length;
+  const memoUpdates = Object.values(preview.orderUpdates).filter(u => u.deliveryMemo).length;
+
+  // Zone 배정 통계
+  const zoneAssignCount = Object.values(preview.orderUpdates).filter(u => u.shippingGroup).length;
 
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onCancel}>
       <div className="bg-white rounded-[16px] shadow-2xl w-full max-w-3xl max-h-[88vh] overflow-y-auto scrollbar-slim" onClick={e => e.stopPropagation()}>
         <div className="sticky top-0 bg-white px-6 py-4 border-b border-[#E4E4E7] flex items-center justify-between z-10">
           <div>
-            <h2 className="text-[18px] font-semibold text-[#09090B] tracking-tight">배차 업로드 미리보기</h2>
-            <div className="text-[13px] text-[#71717A] mt-0.5">변경 내역을 확인하고 적용하세요</div>
+            <h2 className="text-[18px] font-semibold text-[#09090B] tracking-tight">엑셀 업로드 미리보기</h2>
+            <div className="text-[13px] text-[#71717A] mt-0.5">
+              엑셀에서 총 {preview.totalExcelOrders}건의 주문을 읽었습니다
+            </div>
           </div>
           <button onClick={onCancel} className="p-1.5 hover:bg-[#F4F4F5] rounded-[6px] transition-colors"><X size={18} /></button>
         </div>
 
         <div className="p-6 space-y-5">
-          {/* 요약 카드 */}
-          <div className="grid grid-cols-4 gap-3">
-            <div className="bg-white border border-[#E4E4E7] rounded-[12px] p-4">
-              <div className="text-[12px] font-medium text-[#71717A] mb-2">배차 업데이트</div>
-              <div className="text-[24px] font-semibold text-[#09090B] tabular-nums tracking-tight">{totalUpdates}</div>
-            </div>
-            <div className="bg-white border border-[#E4E4E7] rounded-[12px] p-4">
-              <div className="text-[12px] font-medium text-[#71717A] mb-2">신규 고객</div>
-              <div className="text-[24px] font-semibold text-[#09090B] tabular-nums tracking-tight">{preview.newCustomers.length}</div>
-            </div>
-            <div className="bg-white border border-[#E4E4E7] rounded-[12px] p-4">
-              <div className="text-[12px] font-medium text-[#71717A] mb-2">신규 주문</div>
-              <div className="text-[24px] font-semibold text-[#09090B] tabular-nums tracking-tight">{preview.newOrders.length}</div>
-            </div>
-            <div className="bg-white border border-[#E4E4E7] rounded-[12px] p-4">
-              <div className="text-[12px] font-medium text-[#71717A] mb-2">엑셀에 없음</div>
-              <div className="text-[24px] font-semibold text-[#09090B] tabular-nums tracking-tight">{preview.cancelled.length}</div>
+          {/* ⚠️ 데이터 보존 안내 (최상단) */}
+          <div className="p-3 bg-[#F0FDF4] border border-[#BBF7D0] rounded-[10px]">
+            <div className="flex items-start gap-2">
+              <Check size={14} className="text-[#15803D] mt-0.5 flex-shrink-0" strokeWidth={2.5} />
+              <div className="text-[12px] text-[#166534] leading-relaxed">
+                <div className="font-semibold mb-1">데이터 보존 모드</div>
+                <div>• <strong>배송완료·취소·서비스·픽업</strong> 주문은 <strong>절대 영향받지 않습니다</strong> (과거 기록 보호)</div>
+                <div>• 엑셀과 정확히 일치하는 주문은 <strong>유지</strong>, 엑셀에 있지만 시스템에 없는 주문은 <strong>신규 추가</strong></div>
+                <div>• 이번 배차 대상 중 엑셀에 없는 주문은 <strong>"취소" 상태로 변경</strong> (기록은 그대로 남음)</div>
+              </div>
             </div>
           </div>
 
-          {/* ⚠️ 매칭 실패 정보 (디버깅) */}
-          {preview.unmatchedNames && preview.unmatchedNames.length > 0 && (
-            <div className="bg-[#FFFBEB] border border-[#FDE68A] rounded-[12px] p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <AlertTriangle size={15} className="text-[#B45309]" />
-                <div className="text-[13px] font-semibold text-[#92400E]">
-                  매칭 실패 {preview.unmatchedNames.length}건
-                </div>
-                <span className="text-[11px] text-[#B45309]">
-                  엑셀의 이름이 기존 고객과 매칭되지 않아 신규 고객으로 추가됩니다
-                </span>
-              </div>
-              <div className="bg-white rounded-[8px] p-2.5 space-y-1 max-h-32 overflow-y-auto scrollbar-slim">
-                {preview.unmatchedNames.map((u, i) => (
-                  <div key={i} className="text-[12px] flex items-center justify-between">
-                    <span className="font-medium text-[#09090B]">{u.name}</span>
-                    <span className="text-[11px] text-[#71717A]">{u.sheetName}</span>
-                  </div>
-                ))}
+          {/* 요약 카드 (4개) */}
+          <div className="grid grid-cols-4 gap-3">
+            <div className="bg-white border border-[#E4E4E7] rounded-[12px] p-4">
+              <div className="text-[12px] font-medium text-[#71717A] mb-2">기존 유지</div>
+              <div className="text-[24px] font-semibold text-[#09090B] tabular-nums tracking-tight">{keptCount}</div>
+              <div className="text-[10px] text-[#A1A1AA] mt-1">엑셀과 일치</div>
+            </div>
+            <div className="bg-white border border-[#E4E4E7] rounded-[12px] p-4">
+              <div className="text-[12px] font-medium text-[#71717A] mb-2">신규 주문</div>
+              <div className="text-[24px] font-semibold text-[#09090B] tabular-nums tracking-tight">{newCount}</div>
+              <div className="text-[10px] text-[#A1A1AA] mt-1">엑셀에만 있음</div>
+            </div>
+            <div className="bg-white border border-[#E4E4E7] rounded-[12px] p-4">
+              <div className="text-[12px] font-medium text-[#71717A] mb-2">신규 고객</div>
+              <div className="text-[24px] font-semibold text-[#09090B] tabular-nums tracking-tight">{newCustCount}</div>
+              <div className="text-[10px] text-[#A1A1AA] mt-1">신규 등록</div>
+            </div>
+            <div className="bg-white border border-[#E4E4E7] rounded-[12px] p-4">
+              <div className="text-[12px] font-medium text-[#71717A] mb-2">취소 처리</div>
+              <div className="text-[24px] font-semibold text-[#09090B] tabular-nums tracking-tight">{cancelledCount}</div>
+              <div className="text-[10px] text-[#A1A1AA] mt-1">엑셀에 없음</div>
+            </div>
+          </div>
+
+          {/* 배송비/비고/Zone 업데이트 정보 */}
+          {(shippingFeeUpdates > 0 || memoUpdates > 0 || zoneAssignCount > 0) && (
+            <div className="flex items-center gap-3 px-4 py-2.5 bg-[#EFF6FF] border border-[#BFDBFE] rounded-[10px]">
+              <Package size={14} className="text-[#1D4ED8] flex-shrink-0" strokeWidth={2.5} />
+              <div className="text-[12px] text-[#1E3A8A] flex items-center gap-4 flex-wrap">
+                {zoneAssignCount > 0 && (
+                  <span>Zone 배정 <strong className="tabular-nums">{zoneAssignCount}</strong>건</span>
+                )}
+                {shippingFeeUpdates > 0 && (
+                  <span>배송비 <strong className="tabular-nums">{shippingFeeUpdates}</strong>건</span>
+                )}
+                {memoUpdates > 0 && (
+                  <span>비고 <strong className="tabular-nums">{memoUpdates}</strong>건</span>
+                )}
               </div>
             </div>
           )}
 
           {/* Zone별 배정 현황 */}
-          <div>
-            <div className="text-[13px] font-semibold text-[#09090B] mb-2">Zone별 배정 현황</div>
-            <div className="grid grid-cols-4 gap-2">
-              {SHIPPING_ZONES.map(z => {
-                const count = Object.values(preview.orderUpdates).filter(u => u.shippingGroup === z).length;
-                return (
-                  <div key={z} className="bg-white border border-[#E4E4E7] rounded-[8px] px-3 py-2 flex items-center justify-between">
-                    <div className="text-[12px] font-medium text-[#52525B]">Z{z.replace('Zone', '')}</div>
-                    <div className="text-[16px] font-semibold text-[#09090B] tabular-nums">{count}</div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* 신규 고객 */}
-          {preview.newCustomers.length > 0 && (
+          {zoneAssignCount > 0 && (
             <div>
-              <div className="text-[13px] font-semibold text-[#09090B] mb-2">신규 고객 {preview.newCustomers.length}명</div>
+              <div className="text-[13px] font-semibold text-[#09090B] mb-2">Zone별 배정 현황</div>
+              <div className="grid grid-cols-4 gap-2">
+                {SHIPPING_ZONES.map(z => {
+                  const count = Object.values(preview.orderUpdates).filter(u => u.shippingGroup === z).length;
+                  return (
+                    <div key={z} className="bg-white border border-[#E4E4E7] rounded-[8px] px-3 py-2 flex items-center justify-between">
+                      <div className="text-[12px] font-medium text-[#52525B]">Z{z.replace('Zone', '')}</div>
+                      <div className="text-[16px] font-semibold text-[#09090B] tabular-nums">{count}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* 신규 고객 섹션 */}
+          {newCustCount > 0 && (
+            <div>
+              <div className="text-[13px] font-semibold text-[#09090B] mb-2">신규 고객 {newCustCount}명</div>
               <div className="bg-white border border-[#E4E4E7] rounded-[10px] p-3 space-y-1.5 max-h-32 overflow-y-auto scrollbar-slim">
                 {preview.newCustomers.map(c => (
                   <div key={c.id} className="text-[12px] flex items-center justify-between">
@@ -9237,35 +9265,58 @@ function ExcelUploadPreviewModal({ preview, onApply, onCancel }) {
             </div>
           )}
 
-          {/* 🆕 제외된 주문 (엑셀에 없는 주문) - 자동 배차 해제 */}
-          {preview.cancelled.length > 0 && (
+          {/* 취소 처리 대상 주문 */}
+          {cancelledCount > 0 && (
             <div>
               <div className="flex items-center justify-between mb-2">
                 <div className="text-[13px] font-semibold text-[#09090B]">
-                  배차 해제 예정 <span className="text-[#71717A] ml-1 tabular-nums">{preview.cancelled.length}건</span>
+                  취소 처리 예정 <span className="text-[#71717A] ml-1 tabular-nums">{cancelledCount}건</span>
                 </div>
               </div>
 
-              {/* 안내 메시지 */}
-              <div className="mb-2 p-3 bg-[#EFF6FF] border border-[#BFDBFE] rounded-[10px]">
+              <div className="mb-2 p-3 bg-[#FFFBEB] border border-[#FDE68A] rounded-[10px]">
                 <div className="flex items-start gap-2">
-                  <AlertTriangle size={14} className="text-[#1D4ED8] mt-0.5 flex-shrink-0" />
-                  <div className="text-[12px] text-[#1E3A8A] leading-relaxed">
-                    <span className="font-semibold">완전 교체 방식</span>으로 적용됩니다.
-                    엑셀에 없는 기존 배차 주문은 <strong>Zone/순번이 초기화</strong>되어 미배정 상태로 돌아갑니다.
-                    <div className="text-[11px] text-[#3B82F6] mt-1">
-                      ※ 배송완료 · 취소 · 픽업 주문은 영향받지 않습니다
+                  <AlertTriangle size={14} className="text-[#B45309] mt-0.5 flex-shrink-0" />
+                  <div className="text-[12px] text-[#92400E] leading-relaxed">
+                    이번 배차 대상이지만 엑셀에 없는 주문입니다.
+                    <div className="mt-1">
+                      <strong>삭제하지 않고 "취소" 상태로 변경</strong>되어 주문 기록은 그대로 남습니다.
+                      나중에 필요하면 수동으로 복구하거나 검색할 수 있습니다.
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* 대상 주문 리스트 */}
               <div className="bg-white border border-[#E4E4E7] rounded-[10px] p-3 space-y-1 max-h-40 overflow-y-auto scrollbar-slim">
-                {preview.cancelled.map((c, i) => (
+                {preview.toDelete.map((c, i) => (
                   <div key={i} className="text-[12px] flex items-center justify-between">
-                    <span className="font-medium text-[#09090B]">{c.customerName || c.orderId}</span>
-                    <span className="text-[11px] text-[#71717A]">{c.reason || '엑셀에 없음'}</span>
+                    <div className="flex-1 min-w-0">
+                      <span className="font-medium text-[#09090B]">{c.customerName}</span>
+                      <span className="text-[11px] text-[#71717A] ml-2">
+                        {c.itemName}×{c.qty}
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-[#A1A1AA] font-mono ml-2">{c.orderId}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 매칭 실패 (신규로 처리된 이름) */}
+          {unmatchedCount > 0 && (
+            <div>
+              <div className="text-[13px] font-semibold text-[#09090B] mb-2">
+                신규 고객으로 등록된 이름 <span className="text-[#71717A] ml-1 tabular-nums">{unmatchedCount}명</span>
+              </div>
+              <div className="mb-2 p-3 bg-[#FFFBEB] border border-[#FDE68A] rounded-[10px] text-[12px] text-[#92400E]">
+                기존 고객과 매칭되지 않아 신규로 추가됩니다. 동일 인물인 경우 나중에 고객관리에서 병합할 수 있습니다.
+              </div>
+              <div className="bg-white border border-[#E4E4E7] rounded-[10px] p-3 space-y-1 max-h-32 overflow-y-auto scrollbar-slim">
+                {preview.unmatchedNames.map((u, i) => (
+                  <div key={i} className="text-[12px] flex items-center justify-between">
+                    <span className="font-medium text-[#09090B]">{u.name}</span>
+                    <span className="text-[11px] text-[#71717A]">{u.sheetName}</span>
                   </div>
                 ))}
               </div>
@@ -9273,7 +9324,7 @@ function ExcelUploadPreviewModal({ preview, onApply, onCancel }) {
           )}
         </div>
 
-        {/* 하단 버튼 - 모던 스타일 */}
+        {/* 하단 버튼 */}
         <div className="sticky bottom-0 bg-white px-6 py-4 border-t border-[#E4E4E7] flex items-center justify-end gap-2">
           <button
             onClick={onCancel}
@@ -9293,359 +9344,417 @@ function ExcelUploadPreviewModal({ preview, onApply, onCancel }) {
   );
 }
 
+
 // 엑셀 파싱 로직 - 차량A~F 시트 형식 지원
-function parseUploadedExcel(wb, customers, items, orders) {
-  const orderUpdates = {}; // orderId -> {shippingGroup, sequence, arrivalTime}
-  const newCustomers = [];
-  const newOrders = [];
-  const cancelled = [];
-
-  // 새 양식: Zone A ~ Zone H 시트명 → Zone1 ~ Zone8
-  const zoneSheetMap = {
-    'Zone A': 'Zone1', 'Zone B': 'Zone2', 'Zone C': 'Zone3', 'Zone D': 'Zone4',
-    'Zone E': 'Zone5', 'Zone F': 'Zone6', 'Zone G': 'Zone7', 'Zone H': 'Zone8',
-    // 구 양식 호환 (차량A~F)
-    '차량A': 'Zone1', '차량B': 'Zone2', '차량C': 'Zone3',
-    '차량D': 'Zone4', '차량E': 'Zone5', '차량F': 'Zone6',
-  };
-
-  // 엑셀 No. → 시스템 customerId (C0XXX) 매핑
-  const noToCustomerId = (no) => `C${String(no).padStart(4, '0')}`;
-
-  // 이름 → 기존 고객 찾기 (새 양식은 No. 컬럼이 없을 수 있음)
-  // 🆕 정규화된 이름으로 매칭 (공백/특수문자/한영 혼용 대응)
+// ============================================================
+// 🎯 통합 엑셀 파싱 - "전체(원본)" + Zone A~H 모두 처리
+// - 전체(원본): 주문 데이터 완전 교체 (정확 일치는 유지, 나머지는 교체)
+// - Zone A~H: 배송 배정 (순번, 도착시간, Zone)
+// ============================================================
+function parseFullReplaceExcel(wb, customers, items, orders) {
+  // 이름 정규화 함수
   const normalizeName = (name) => {
     if (!name) return '';
     return String(name)
       .trim()
       .toLowerCase()
-      .replace(/\s+/g, ' ')  // 연속 공백 → 단일 공백
-      .replace(/[·・•]/g, ' ')  // 특수 구분자 → 공백
-      .replace(/[()（）\[\]【】]/g, ' ')  // 괄호 → 공백
+      .replace(/\s+/g, ' ')
+      .replace(/[·・•]/g, ' ')
+      .replace(/[()（）\[\]【】]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
   };
 
+  // 주소/전화 정규화
+  const normalizeAddress = (addr) => {
+    if (!addr) return '';
+    return String(addr).trim().toLowerCase().replace(/\s+/g, ' ').replace(/[,.]/g, '');
+  };
+  const normalizePhone = (phone) => {
+    if (!phone) return '';
+    return String(phone).replace(/\D/g, '');
+  };
+
+  // 고객 인덱스 구축
   const customerByName = {};
   const customerByNormalizedName = {};
-  const customerByAddress = {};  // 🆕 주소 기반 fallback 매칭용
-  const customerByPhone = {};  // 🆕 전화번호 기반 매칭
+  const customerByAddress = {};
+  const customerByPhone = {};
   customers.forEach(c => {
     if (c.name) {
       customerByName[c.name.trim()] = c;
-      const normalized = normalizeName(c.name);
-      if (normalized) {
-        customerByNormalizedName[normalized] = c;
-        // 괄호 안 이름도 매핑 (예: "Felicity(이정임)" → "이정임" 검색 가능)
+      const norm = normalizeName(c.name);
+      if (norm) {
+        customerByNormalizedName[norm] = c;
         const parenMatch = c.name.match(/[(（](.+?)[)）]/);
         if (parenMatch) {
-          const insideParen = normalizeName(parenMatch[1]);
-          if (insideParen) customerByNormalizedName[insideParen] = c;
+          const inside = normalizeName(parenMatch[1]);
+          if (inside) customerByNormalizedName[inside] = c;
         }
-        // 괄호 밖 이름도 매핑
         const beforeParen = c.name.split(/[(（]/)[0].trim();
         if (beforeParen && beforeParen !== c.name) {
-          const normalizedBefore = normalizeName(beforeParen);
-          if (normalizedBefore) customerByNormalizedName[normalizedBefore] = c;
+          const normBefore = normalizeName(beforeParen);
+          if (normBefore) customerByNormalizedName[normBefore] = c;
         }
       }
     }
-    // 주소 정규화 (공백/대소문자 무시)
     if (c.address) {
-      const normAddr = String(c.address).trim().toLowerCase().replace(/\s+/g, ' ').replace(/[,.]/g, '');
+      const normAddr = normalizeAddress(c.address);
       if (normAddr) customerByAddress[normAddr] = c;
     }
-    // 전화번호 (숫자만)
     if (c.phone) {
-      const normPhone = String(c.phone).replace(/\D/g, '');
+      const normPhone = normalizePhone(c.phone);
       if (normPhone) customerByPhone[normPhone] = c;
     }
   });
 
-  // 🔍 매칭 실패한 이름 추적 (디버깅용)
+  // 고객 매칭 헬퍼
+  const findCustomer = (name, address, phone) => {
+    if (!name) return null;
+    let c = customerByName[name];
+    if (c) return c;
+
+    const norm = normalizeName(name);
+    if (norm && customerByNormalizedName[norm]) return customerByNormalizedName[norm];
+
+    const parenMatch = name.match(/[(（](.+?)[)）]/);
+    if (parenMatch) {
+      const inside = normalizeName(parenMatch[1]);
+      if (inside && customerByNormalizedName[inside]) return customerByNormalizedName[inside];
+    }
+
+    const beforeParen = normalizeName(name.split(/[(（]/)[0]);
+    if (beforeParen && customerByNormalizedName[beforeParen]) return customerByNormalizedName[beforeParen];
+
+    const normPhone = normalizePhone(phone);
+    if (normPhone && normPhone.length >= 8 && customerByPhone[normPhone]) return customerByPhone[normPhone];
+
+    const normAddr = normalizeAddress(address);
+    if (normAddr && normAddr.length > 10 && customerByAddress[normAddr]) return customerByAddress[normAddr];
+
+    return null;
+  };
+
+  // 배송비 파싱 (텍스트 섞인 경우 대응)
+  const parseShippingFee = (raw) => {
+    if (raw == null || raw === '') return { fee: 0, extraMemo: '' };
+    if (typeof raw === 'number') return { fee: raw, extraMemo: '' };
+    const str = String(raw).trim();
+    const match = str.match(/^(\d+(?:\.\d+)?)/);
+    if (match) {
+      const fee = parseFloat(match[1]);
+      const remaining = str.substring(match[1].length).trim();
+      return { fee, extraMemo: remaining };
+    }
+    return { fee: 0, extraMemo: str };
+  };
+
+  // 품목 컬럼 → 품목 배열
+  const getItemsFromRow = (row, startCol) => {
+    const qty4KG = Number(row[startCol]) || 0;
+    const qty4KG2 = Number(row[startCol + 1]) || 0;
+    const qty4KG3 = Number(row[startCol + 2]) || 0;
+    const qtyChonggak = Number(row[startCol + 3]) || 0;
+    const qtyChonggak2 = Number(row[startCol + 4]) || 0;
+    const qtyMix = Number(row[startCol + 5]) || 0;
+
+    const result = [];
+    if (qty4KG) result.push({ itemName: '배추김치 4KG', qty: qty4KG, perBox: 10 });
+    if (qty4KG2) result.push({ itemName: '배추김치 4KG - 2세트(할인)', qty: qty4KG2, perBox: 10 });
+    if (qty4KG3) result.push({ itemName: '배추김치 4KG - 3세트(할인)', qty: qty4KG3, perBox: 10 });
+    if (qtyChonggak) result.push({ itemName: '총각김치 2KG', qty: qtyChonggak, perBox: 10 });
+    if (qtyChonggak2) result.push({ itemName: '총각김치 2KG - 2세트(할인)', qty: qtyChonggak2, perBox: 10 });
+    if (qtyMix) result.push({ itemName: '혼합세트 (배추4KG + 총각2KG)', qty: qtyMix, perBox: 10 });
+    return result;
+  };
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 1️⃣ 전체(원본) 시트 → 주문 데이터 파싱
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 엑셀에서 읽은 주문 후보들 (신규 고객 포함)
+  const excelOrders = [];  // { customer: {...} or null, items: [...], memo, shippingFee, needNewCustomer: bool, customerInfo: {...} }
   const unmatchedNames = [];
 
-  // Zone별 시트 파싱
-  const processedCustomerIds = new Set();
+  if (wb.Sheets['전체(원본)']) {
+    const ws = wb.Sheets['전체(원본)'];
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+    // 행4(index 3)가 헤더, 행5~(index 4~)가 데이터
+    for (let i = 4; i < rows.length; i++) {
+      const row = rows[i];
+      if (!row || row.length === 0) continue;
+
+      const no = row[0];
+      const name = row[1] ? String(row[1]).trim() : '';
+      const address = row[2] ? String(row[2]).trim() : '';
+      const phone = row[3] ? String(row[3]).trim() : '';
+      // row[4]: 가격 (계산값, 무시)
+      // row[5]: 수금액 (무시)
+      // row[6~11]: 품목 수량
+      // row[12]: 배송비
+      // row[13]: 비고
+
+      if (!name) continue;
+
+      const itemsArr = getItemsFromRow(row, 6);
+      if (itemsArr.length === 0) continue;  // 품목 없으면 스킵
+
+      const { fee, extraMemo } = parseShippingFee(row[12]);
+      let memo = row[13] ? String(row[13]).trim() : '';
+      if (extraMemo && !memo.includes(extraMemo)) {
+        memo = memo ? `${memo} | ${extraMemo}` : extraMemo;
+      }
+
+      const existingCustomer = findCustomer(name, address, phone);
+
+      excelOrders.push({
+        name,
+        address,
+        phone,
+        items: itemsArr,
+        shippingFee: fee,
+        memo,
+        customer: existingCustomer,
+        needNewCustomer: !existingCustomer,
+      });
+
+      if (!existingCustomer) {
+        unmatchedNames.push({ name, sheetName: '전체(원본)', zone: '-' });
+      }
+    }
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 2️⃣ Zone A~H 시트 → 배송 배정 (name → zone, sequence 매핑)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  const zoneSheetMap = {
+    'Zone A': 'Zone1', 'Zone B': 'Zone2', 'Zone C': 'Zone3', 'Zone D': 'Zone4',
+    'Zone E': 'Zone5', 'Zone F': 'Zone6', 'Zone G': 'Zone7', 'Zone H': 'Zone8',
+  };
+
+  // 이름(정규화) → 배차 정보
+  const zoneAssignments = {};  // normalizedName → { zone, sequence, arrivalTime }
+
   for (const [sheetName, zone] of Object.entries(zoneSheetMap)) {
     if (!wb.Sheets[sheetName]) continue;
     const ws = wb.Sheets[sheetName];
     const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
-
-    // 새 양식: 행 0: 제목, 행 1: 출발지, 행 2: 헤더, 행 3+: 데이터
-    // 구 양식: 행 0: 제목, 행 1: 출발 정보, 행 2: 헤더, 행 3+: 데이터
-    // 컬럼: [순번, 도착시간, 이름, 주소, 연락처, ...]
-    let sheetProcessed = 0;
-    let sheetSkipped = 0;
+    // 행3(index 2)이 헤더, 행4~(index 3~)가 데이터
     for (let i = 3; i < rows.length; i++) {
       const row = rows[i];
-      if (!row || row.length === 0) { sheetSkipped++; continue; }
+      if (!row || row.length === 0) continue;
+
       const seq = row[0];
       const arrivalTime = row[1];
       const name = row[2] ? String(row[2]).trim() : '';
 
-      // 🆕 순번은 숫자 또는 숫자로 변환 가능한 문자열
-      const seqNum = typeof seq === 'number' ? seq : (typeof seq === 'string' ? parseInt(seq, 10) : NaN);
-      if (isNaN(seqNum)) { sheetSkipped++; continue; }
-      if (!name) { sheetSkipped++; continue; }  // 빈 slot 건너뛰기
-      sheetProcessed++;
+      const seqNum = typeof seq === 'number' ? seq :
+                     (typeof seq === 'string' ? parseInt(seq, 10) : NaN);
+      if (isNaN(seqNum) || !name) continue;
 
-      // 이름으로 기존 고객 찾기 (다단계 매칭)
-      let existingCustomer = customerByName[name];
-      let matchMethod = 'exact';
-
-      if (!existingCustomer) {
-        // 1단계: 정규화된 이름으로 재시도
-        const normalizedName = normalizeName(name);
-        if (normalizedName) {
-          existingCustomer = customerByNormalizedName[normalizedName];
-          if (existingCustomer) matchMethod = 'normalized';
-        }
-      }
-      if (!existingCustomer) {
-        // 2단계: 괄호 안 이름 매칭
-        const parenMatch = name.match(/[(（](.+?)[)）]/);
-        if (parenMatch) {
-          const insideParen = normalizeName(parenMatch[1]);
-          if (insideParen) {
-            existingCustomer = customerByNormalizedName[insideParen];
-            if (existingCustomer) matchMethod = 'inside-paren';
-          }
-        }
-      }
-      if (!existingCustomer) {
-        // 3단계: 괄호 밖 이름 매칭
-        const beforeParen = normalizeName(name.split(/[(（]/)[0]);
-        if (beforeParen) {
-          existingCustomer = customerByNormalizedName[beforeParen];
-          if (existingCustomer) matchMethod = 'before-paren';
-        }
-      }
-      if (!existingCustomer) {
-        // 4단계: 전화번호 매칭 (가장 확실)
-        const phone = String(row[4] || '').replace(/\D/g, '');
-        if (phone && phone.length >= 8) {
-          existingCustomer = customerByPhone[phone];
-          if (existingCustomer) matchMethod = 'phone';
-        }
-      }
-      if (!existingCustomer) {
-        // 5단계: 주소 매칭 (주소만 같아도)
-        const address = String(row[3] || '').trim().toLowerCase().replace(/\s+/g, ' ').replace(/[,.]/g, '');
-        if (address && address.length > 10) {
-          existingCustomer = customerByAddress[address];
-          if (existingCustomer) matchMethod = 'address';
-        }
-      }
-
-      // 🔍 매칭 실패 기록
-      if (!existingCustomer) {
-        unmatchedNames.push({ name, zone, sheetName });
-      }
-
-      if (existingCustomer) {
-        // 🎯 배차 가능한 주문만 업데이트 (이미 완료/취소 제외, 서비스 제외)
-        processedCustomerIds.add(existingCustomer.id);
-        const assignableOrders = orders.filter(o =>
-          o.customerId === existingCustomer.id &&
-          !o.isService &&
-          o.shipStatus !== '취소' &&
-          o.shipStatus !== '배송완료' &&
-          !o.isPickup  // 픽업 주문은 배차 제외
-        );
-
-        if (assignableOrders.length > 0) {
-          // 배차 가능한 주문에만 Zone/순번 배정
-          assignableOrders.forEach(o => {
-            orderUpdates[o.id] = {
-              shippingGroup: zone,
-              sequence: seqNum,
-              arrivalTime: String(arrivalTime || ''),
-            };
-          });
-        } else {
-          // 기존 고객인데 배차할 주문이 없음 → 신규 주문 생성 옵션
-          // 엑셀에 수량이 있으면 새 주문으로 생성
-          const qty4KG = Number(row[7]) || 0;
-          const qty4KG2 = Number(row[8]) || 0;
-          const qty4KG3 = Number(row[9]) || 0;
-          const qtyChonggak = Number(row[10]) || 0;
-          const qtyChonggak2 = Number(row[11]) || 0;
-          const qtyMix = Number(row[12]) || 0;
-          const hasQty = qty4KG || qty4KG2 || qty4KG3 || qtyChonggak || qtyChonggak2 || qtyMix;
-
-          if (hasQty) {
-            // 기존 고객에게 신규 주문 생성
-            const maxOrderNum = orders.reduce((max, o) => {
-              const n = parseInt(o.id.replace('ORD-', ''), 10);
-              return isNaN(n) ? max : Math.max(max, n);
-            }, newOrders.reduce((m, o) => {
-              const n = parseInt(o.id.replace('ORD-', ''), 10);
-              return isNaN(n) ? m : Math.max(m, n);
-            }, 0));
-
-            const today = new Date().toISOString().slice(0, 10);
-            const itemsArr = [];
-            if (qty4KG) itemsArr.push({ itemName: '배추김치 4KG', qty: qty4KG, perBox: 10 });
-            if (qty4KG2) itemsArr.push({ itemName: '배추김치 4KG - 2세트(할인)', qty: qty4KG2, perBox: 10 });
-            if (qty4KG3) itemsArr.push({ itemName: '배추김치 4KG - 3세트(할인)', qty: qty4KG3, perBox: 10 });
-            if (qtyChonggak) itemsArr.push({ itemName: '총각김치 2KG', qty: qtyChonggak, perBox: 10 });
-            if (qtyChonggak2) itemsArr.push({ itemName: '총각김치 2KG - 2세트(할인)', qty: qtyChonggak2, perBox: 10 });
-            if (qtyMix) itemsArr.push({ itemName: '혼합세트 (배추4KG + 총각2KG)', qty: qtyMix, perBox: 10 });
-
-            if (itemsArr.length > 0) {
-              const first = itemsArr[0];
-              newOrders.push({
-                id: `ORD-${String(maxOrderNum + 1).padStart(4, '0')}`,
-                date: today,
-                customerId: existingCustomer.id,
-                itemName: first.itemName,
-                qty: first.qty,
-                perBox: first.perBox,
-                items: itemsArr.length > 1 ? itemsArr : null,
-                shipStatus: '배송준비중',
-                deliveryMethod: '',
-                paymentType: '',
-                paymentStatus: '미결제',
-                deliveryMemo: '',
-                shipDate: '',
-                arriveDate: '',
-                shippingGroup: zone,
-                sequence: seqNum,
-                arrivalTime: String(arrivalTime || ''),
-                isService: false,
-                isPickup: false,
-                cashReceived: 0,
-              });
-            }
-          }
-        }
-      } else {
-        // 신규 고객 + 신규 주문
-        const address = String(row[3] || '');
-        const phone = String(row[4] || '');
-        const newCid = `C${String(customers.length + newCustomers.length + 1).padStart(4, '0')}`;
-        newCustomers.push({
-          id: newCid,
-          name,
-          phone,
-          agedCare: false,
-          address,
-          grade: '일반',
-          joinDate: new Date().toISOString().slice(0, 10),
-          memo: `엑셀 신규 ${sheetName}`,
-        });
-        processedCustomerIds.add(newCid);
-
-        // 엑셀 품목 수량 읽기 (H~M 컬럼)
-        // 새 양식 컬럼: [순번, 도착시간, 이름, 주소, 연락처, 가격, 수금액, 4KG, 4KG*2, 4KG*3, 총각, 총긱2, 혼합]
-        const qty4KG = Number(row[7]) || 0;
-        const qty4KG2 = Number(row[8]) || 0;
-        const qty4KG3 = Number(row[9]) || 0;
-        const qtyChonggak = Number(row[10]) || 0;
-        const qtyChonggak2 = Number(row[11]) || 0;
-        const qtyMix = Number(row[12]) || 0;
-
-        const maxOrderNum = orders.reduce((max, o) => {
-          const n = parseInt(o.id.replace('ORD-', ''), 10);
-          return isNaN(n) ? max : Math.max(max, n);
-        }, 0);
-
-        // 품목별로 주문 생성
-        const itemQtyPairs = [
-          { name: '배추김치 4KG', qty: qty4KG },
-          { name: '배추김치 4KG - 2세트(할인)', qty: qty4KG2 },
-          { name: '배추김치 4KG - 3세트(할인)', qty: qty4KG3 },
-          { name: '총각김치 2KG', qty: qtyChonggak },
-          { name: '총각김치 2KG - 2세트(할인)', qty: qtyChonggak2 },
-          { name: '혼합세트 (배추4KG + 총각2KG)', qty: qtyMix },
-        ];
-
-        const orderedItems = itemQtyPairs.filter(x => x.qty > 0);
-
-        if (orderedItems.length === 0) {
-          // 품목 미지정 → 혼합세트 기본값
-          const newOrderId = `ORD-${String(maxOrderNum + newOrders.length + 1).padStart(4, '0')}`;
-          newOrders.push({
-            id: newOrderId,
-            date: new Date().toISOString().slice(0, 10),
-            customerId: newCid,
-            itemName: '혼합세트 (배추4KG + 총각2KG)',
-            qty: 1,
-            shipStatus: '배송준비중',
-            deliveryMethod: '',
-            paymentType: '',
-            paymentStatus: '미결제',
-            deliveryMemo: `엑셀 신규 고객`,
-            shipDate: '',
-            arriveDate: '',
-            shippingGroup: zone,
-            isService: false,
-            isPickup: false,
-            sequence: seqNum,
-            arrivalTime: String(arrivalTime || ''),
-          });
-        } else {
-          orderedItems.forEach(it => {
-            const newOrderId = `ORD-${String(maxOrderNum + newOrders.length + 1).padStart(4, '0')}`;
-            newOrders.push({
-              id: newOrderId,
-              date: new Date().toISOString().slice(0, 10),
-              customerId: newCid,
-              itemName: it.name,
-              qty: it.qty,
-              shipStatus: '배송준비중',
-              deliveryMethod: '',
-              paymentType: '',
-              paymentStatus: '미결제',
-              deliveryMemo: `엑셀 신규 고객`,
-              shipDate: '',
-              arriveDate: '',
-              shippingGroup: zone,
-              isService: false,
-              isPickup: false,
-              sequence: seqNum,
-              arrivalTime: String(arrivalTime || ''),
-            });
-          });
-        }
+      const norm = normalizeName(name);
+      if (norm) {
+        zoneAssignments[norm] = {
+          zone,
+          sequence: seqNum,
+          arrivalTime: String(arrivalTime || ''),
+        };
       }
     }
-    // 🔍 시트별 처리 통계 (F12 콘솔에서 확인)
-    console.log(`[배차업로드] ${sheetName}(${zone}): 처리 ${sheetProcessed}명, 건너뜀 ${sheetSkipped}행`);
   }
 
-  // 🔍 전체 통계 요약
-  console.log('[배차업로드] ━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log(`[배차업로드] 주문 업데이트: ${Object.keys(orderUpdates).length}건`);
-  console.log(`[배차업로드] 신규 고객: ${newCustomers.length}명`);
-  console.log(`[배차업로드] 신규 주문: ${newOrders.length}건`);
-  console.log(`[배차업로드] 매칭 실패: ${unmatchedNames.length}명`, unmatchedNames);
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 3️⃣ 변경사항 계산
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  // 🆕 배정받지 못한 주문 = "엑셀에 없음" (배송 대상 주문만 검사)
-  // - 배송준비중/출고대기/배송중만 대상 (이미 완료/취소는 제외)
-  // - 서비스 주문 제외
-  // - 이미 Zone 배정된 주문 중 이번에 재배정 안 된 것만
+  // 3-1. "이번 배차 대상" 기존 주문 ID 수집
+  //  ✅ 보호 대상 (절대 건드리지 않음):
+  //     - 배송완료: 과거 배송 기록 (데이터 보존)
+  //     - 배송중: 이미 차량 출발함 (건드리면 안 됨)
+  //     - 취소: 이미 처리됨
+  //     - 서비스/픽업: 배차 대상 아님
+  //  🔄 배차 대상 (교체 가능):
+  //     - 배송준비중
+  //     - 출고대기
+  //     - 입고대기 (아직 물건 안 들어왔지만 주문 예정)
+  const targetOrderIds = new Set();
   orders.forEach(o => {
-    // 이미 이번 업로드로 업데이트된 주문은 건너뜀
-    if (orderUpdates[o.id]) return;
-    // 고객이 엑셀에 있으면 건너뜀 (다른 주문이 업데이트됐을 수도)
-    if (processedCustomerIds.has(o.customerId)) return;
-    // 취소/서비스 주문 제외
-    if (o.shipStatus === '취소' || o.isService) return;
-    // 이미 완료된 주문 제외 (재배차 대상 아님)
+    // 보호 대상 제외
     if (o.shipStatus === '배송완료') return;
-    // 픽업 주문도 제외 (배차 대상 아님)
+    if (o.shipStatus === '배송중') return;
+    if (o.shipStatus === '취소') return;
+    if (o.isService) return;
     if (o.isPickup) return;
+    // 배차 대상 (배송준비중/출고대기/입고대기)
+    targetOrderIds.add(o.id);
+  });
 
-    cancelled.push({
+  // 3-2. 엑셀 주문을 "고객+품목+수량" 해시로 매칭
+  //      기존 주문과 정확히 일치하는 것은 유지, 나머지는 신규로 추가
+  const makeOrderKey = (customerId, items) => {
+    const sortedItems = [...items].sort((a, b) => a.itemName.localeCompare(b.itemName));
+    const itemsStr = sortedItems.map(it => `${it.itemName}×${it.qty}`).join('|');
+    return `${customerId}::${itemsStr}`;
+  };
+
+  // 기존 주문들의 키 맵 (배송 대상만)
+  const existingOrderByKey = {};
+  orders.forEach(o => {
+    if (!targetOrderIds.has(o.id)) return;
+    const itemsList = Array.isArray(o.items) && o.items.length > 0
+      ? o.items
+      : [{ itemName: o.itemName, qty: o.qty }];
+    const key = makeOrderKey(o.customerId, itemsList);
+    if (!existingOrderByKey[key]) existingOrderByKey[key] = [];
+    existingOrderByKey[key].push(o);
+  });
+
+  // 3-3. 각 엑셀 주문에 대한 처리 결정
+  const newCustomers = [];
+  const newOrders = [];
+  const orderUpdates = {};  // 기존 유지될 주문의 배차 정보 업데이트
+  const keptOrderIds = new Set();  // 유지될 기존 주문 ID
+
+  let newCustomerCounter = 1;
+  const getNextCustomerId = () => {
+    while (true) {
+      const candidate = `C${String(customers.length + newCustomerCounter).padStart(4, '0')}`;
+      newCustomerCounter++;
+      if (!customers.find(c => c.id === candidate) && !newCustomers.find(c => c.id === candidate)) {
+        return candidate;
+      }
+    }
+  };
+
+  let newOrderCounter = 1;
+  const maxOrderNum = orders.reduce((max, o) => {
+    const n = parseInt(o.id.replace('ORD-', ''), 10);
+    return isNaN(n) ? max : Math.max(max, n);
+  }, 0);
+  const getNextOrderId = () => {
+    return `ORD-${String(maxOrderNum + newOrderCounter++).padStart(4, '0')}`;
+  };
+
+  excelOrders.forEach(eo => {
+    let customer = eo.customer;
+    let customerId;
+
+    // 신규 고객 처리
+    if (!customer) {
+      customerId = getNextCustomerId();
+      const newCust = {
+        id: customerId,
+        name: eo.name,
+        phone: eo.phone,
+        address: eo.address,
+        agedCare: false,
+        grade: '일반',
+        joinDate: new Date().toISOString().slice(0, 10),
+        memo: '엑셀 업로드 신규',
+      };
+      newCustomers.push(newCust);
+      customer = newCust;
+    } else {
+      customerId = customer.id;
+    }
+
+    // 배차 정보 찾기
+    const norm = normalizeName(eo.name);
+    const zoneInfo = zoneAssignments[norm] || {};
+
+    // 기존 주문과 정확히 일치하는지 확인
+    const orderKey = makeOrderKey(customerId, eo.items);
+    const matching = existingOrderByKey[orderKey];
+
+    if (matching && matching.length > 0) {
+      // 정확히 일치하는 기존 주문 발견 → 유지 + 배차 정보 업데이트
+      const existing = matching.shift();  // 하나 꺼냄 (같은 키 여러개 대응)
+      keptOrderIds.add(existing.id);
+
+      const update = {};
+      if (zoneInfo.zone) {
+        update.shippingGroup = zoneInfo.zone;
+        update.sequence = zoneInfo.sequence;
+        update.arrivalTime = zoneInfo.arrivalTime;
+      } else {
+        // Zone 시트에 없음 → 배차 해제
+        update.shippingGroup = '';
+        update.sequence = null;
+        update.arrivalTime = '';
+      }
+      if (eo.shippingFee > 0) update.shippingFee = eo.shippingFee;
+      if (eo.memo) update.deliveryMemo = eo.memo;
+
+      orderUpdates[existing.id] = update;
+    } else {
+      // 기존에 없음 → 신규 주문 생성
+      const first = eo.items[0];
+      const today = new Date().toISOString().slice(0, 10);
+
+      const newOrder = {
+        id: getNextOrderId(),
+        date: today,
+        customerId,
+        itemName: first.itemName,
+        qty: first.qty,
+        perBox: first.perBox,
+        items: eo.items.length > 1 ? eo.items : null,
+        shipStatus: '배송준비중',
+        deliveryMethod: '',
+        paymentType: '',
+        paymentStatus: '미결제',
+        deliveryMemo: eo.memo || '',
+        shippingFee: eo.shippingFee || 0,
+        shipDate: '',
+        arriveDate: '',
+        shippingGroup: zoneInfo.zone || '',
+        sequence: zoneInfo.sequence || null,
+        arrivalTime: zoneInfo.arrivalTime || '',
+        isService: false,
+        isPickup: false,
+        cashReceived: 0,
+      };
+
+      newOrders.push(newOrder);
+    }
+  });
+
+  // 3-4. 엑셀에 없는 기존 배송 대상 주문 → 삭제 대상
+  const toDelete = [];
+  orders.forEach(o => {
+    if (!targetOrderIds.has(o.id)) return;  // 배송 대상 아니면 건너뜀
+    if (keptOrderIds.has(o.id)) return;  // 유지 대상이면 건너뜀
+    if (orderUpdates[o.id]) return;  // 업데이트 대상이면 건너뜀
+
+    const c = customers.find(x => x.id === o.customerId);
+    toDelete.push({
       orderId: o.id,
-      customerName: customers.find(c => c.id === o.customerId)?.name || o.customerId,
-      reason: '엑셀에 없음',
+      customerName: c?.name || o.customerId,
+      itemName: o.itemName,
+      qty: o.qty,
     });
   });
 
-  return { orderUpdates, newCustomers, newOrders, cancelled, unmatchedNames };
+  // 디버그 로그
+  console.log('[통합 업로드]', {
+    엑셀주문수: excelOrders.length,
+    배송대상기존주문: targetOrderIds.size,
+    유지될주문: keptOrderIds.size,
+    업데이트될주문: Object.keys(orderUpdates).length,
+    신규주문: newOrders.length,
+    신규고객: newCustomers.length,
+    삭제될주문: toDelete.length,
+    매칭실패이름: unmatchedNames.length,
+  });
+
+  return {
+    orderUpdates,
+    keptOrderIds: Array.from(keptOrderIds),
+    newCustomers,
+    newOrders,
+    toDelete,
+    unmatchedNames,
+    totalExcelOrders: excelOrders.length,
+  };
 }
 
 // ============================================================
@@ -9711,6 +9820,9 @@ function generateBatchTemplate(customers, items, orders) {
     const needsShipping = !o.isPickup && customerTotal < SHIPPING_THRESHOLD;
     const rowNum = idx + 5; // 데이터는 5행부터
 
+    // 🆕 배송비: 주문에 설정된 값 우선, 없으면 자동 계산
+    const shippingFeeValue = o.shippingFee > 0 ? o.shippingFee : (needsShipping ? SHIPPING_FEE : '');
+
     origData.push([
       idx + 1,
       c.name || '',
@@ -9720,16 +9832,28 @@ function generateBatchTemplate(customers, items, orders) {
       '', // 수금액
       cols['4KG'], cols['4KG*2'], cols['4KG*3'],
       cols['총각'], cols['총긱2'], cols['혼합'],
-      needsShipping ? SHIPPING_FEE : '',
-      c.memo || (o.deliveryMemo || ''),
+      shippingFeeValue,
+      o.deliveryMemo || c.memo || '',
     ]);
   });
 
   const ws1 = XLSX.utils.aoa_to_sheet(origData);
+  // 🎯 업로드 파일과 동일한 컬럼 너비
   ws1['!cols'] = [
-    {wch:5},{wch:15},{wch:40},{wch:14},{wch:8},{wch:8},
-    {wch:6},{wch:6},{wch:6},{wch:6},{wch:6},{wch:6},
-    {wch:7},{wch:25}
+    {wch:5.85},   // A: No.
+    {wch:15.85},  // B: 이름
+    {wch:40.85},  // C: 주소
+    {wch:14.85},  // D: 연락처
+    {wch:8.85},   // E: 가격
+    {wch:8},      // F: 수금액
+    {wch:6.85},   // G: 4KG
+    {wch:6},      // H: 4KG*2
+    {wch:6},      // I: 4KG*3
+    {wch:6},      // J: 총각
+    {wch:6},      // K: 총긱2
+    {wch:6},      // L: 혼합
+    {wch:7.85},   // M: 배송비
+    {wch:25.85},  // N: 비고
   ];
   XLSX.utils.book_append_sheet(wb, ws1, '전체(원본)');
 
@@ -9754,15 +9878,29 @@ function generateBatchTemplate(customers, items, orders) {
       .filter(o => o.shippingGroup === zone && o.shipStatus !== '취소' && !o.isService)
       .sort((a, b) => (a.sequence || 999) - (b.sequence || 999));
 
-    // 행1: 제목 (Zone A  |  지역명)
+    // 🎯 업로드 파일과 완전 동일한 양식
+    // 행1: 제목 (Zone A  |  차량1 · Day 1  │  서부 (Marsden Park 퇴근)  |  N개  |  시간)
     // 행2: 출발지
-    // 행3: 헤더
+    // 행3: 헤더 (순번, 도착시간, 이름, ..., 배송비, 비고)
     // 행4~: 데이터
-    // 행62: 단가 (H62~N62)
+    // 행62: 단가 (H62~M62: 70, 130, 180, 55, 100, 120)
     const header = ['순번', '도착시간', '이름', '주소', '연락처', '가격', '수금액', '4KG', '4KG*2', '4KG*3', '총각', '총긱2', '혼합', '배송비', '비고'];
 
+    // 총 배송 개수 계산 (업로드 파일처럼)
+    const totalCount = zoneOrders.reduce((s, o) => s + (o.qty || 0), 0);
+
+    // 제목 포맷 (Zone G/H는 특별 처리)
+    let titleText;
+    if (zone === 'Zone7') {
+      titleText = `Zone ${letter}  |  ${region}${totalCount > 0 ? `  |  ${totalCount}개` : ''}`;
+    } else if (zone === 'Zone8') {
+      titleText = `Zone ${letter}  |  ${region}`;
+    } else {
+      titleText = `Zone ${letter}  |  ${region}${totalCount > 0 ? `  |  ${totalCount}개` : ''}`;
+    }
+
     const rows = [
-      [`Zone ${letter}  |  ${region}`, '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
+      [titleText, '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
       [`  출발: ${DEPARTURE_ADDRESS}`, '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
       header,
     ];
@@ -9781,6 +9919,9 @@ function generateBatchTemplate(customers, items, orders) {
           .reduce((s, x) => s + (priceMap[x.itemName] || 0) * x.qty, 0);
         const needsShipping = !o.isPickup && customerTotal < SHIPPING_THRESHOLD;
 
+        // 배송비: 주문 값 우선, 없으면 자동 계산
+        const shippingFeeValue = o.shippingFee > 0 ? o.shippingFee : (needsShipping ? SHIPPING_FEE : '');
+
         rows.push([
           o.sequence || (idx + 1),
           o.arrivalTime || '',
@@ -9792,28 +9933,43 @@ function generateBatchTemplate(customers, items, orders) {
           '', // 수금액
           cols['4KG'], cols['4KG*2'], cols['4KG*3'],
           cols['총각'], cols['총긱2'], cols['혼합'],
-          needsShipping ? SHIPPING_FEE : '',
-          c.memo || (o.deliveryMemo || ''),
+          shippingFeeValue,
+          o.deliveryMemo || c.memo || '',
         ]);
       } else {
         // 빈 행 (배차 가능한 slot)
         rows.push([
-          idx + 1, '', '', '', '',
-          { f: `H${rowNum}*$H$62+I${rowNum}*$I$62+J${rowNum}*$J$62+K${rowNum}*$K$62+L${rowNum}*$L$62+M${rowNum}*$M$62` },
+          '', '', '', '', '',
+          '', // 빈 행은 가격 수식 없음
           '', '', '', '', '', '', '', '', ''
         ]);
       }
     }
 
-    // 행 62: 단가 정보
+    // 행 62: 단가 정보 (H~M: 70, 130, 180, 55, 100, 120)
     rows.push(['', '', '', '', '', '', '', 70, 130, 180, 55, 100, 120, '', '']);
 
     const ws = XLSX.utils.aoa_to_sheet(rows);
+
+    // 🎯 업로드 파일과 동일한 컬럼 너비
     ws['!cols'] = [
-      {wch:5},{wch:9},{wch:15},{wch:40},{wch:14},{wch:8},{wch:8},
-      {wch:6},{wch:6},{wch:6},{wch:6},{wch:6},{wch:6},
-      {wch:7},{wch:25}
+      {wch:5.85},   // A: 순번
+      {wch:9.85},   // B: 도착시간
+      {wch:15.85},  // C: 이름
+      {wch:40.85},  // D: 주소
+      {wch:14.85},  // E: 연락처
+      {wch:8.85},   // F: 가격
+      {wch:8},      // G: 수금액
+      {wch:6.85},   // H: 4KG
+      {wch:6},      // I: 4KG*2
+      {wch:6},      // J: 4KG*3
+      {wch:6},      // K: 총각
+      {wch:6},      // L: 총긱2
+      {wch:6},      // M: 혼합
+      {wch:7.85},   // N: 배송비
+      {wch:25.85},  // O: 비고
     ];
+
     XLSX.utils.book_append_sheet(wb, ws, `Zone ${letter}`);
   });
 
