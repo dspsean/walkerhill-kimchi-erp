@@ -8837,9 +8837,41 @@ function parseUploadedExcel(wb, customers, items, orders) {
   const noToCustomerId = (no) => `C${String(no).padStart(4, '0')}`;
 
   // 이름 → 기존 고객 찾기 (새 양식은 No. 컬럼이 없을 수 있음)
+  // 🆕 정규화된 이름으로 매칭 (공백/특수문자/한영 혼용 대응)
+  const normalizeName = (name) => {
+    if (!name) return '';
+    return String(name)
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, ' ')  // 연속 공백 → 단일 공백
+      .replace(/[·・•]/g, ' ')  // 특수 구분자 → 공백
+      .replace(/[()（）\[\]【】]/g, ' ')  // 괄호 → 공백
+      .replace(/\s+/g, ' ')
+      .trim();
+  };
+
   const customerByName = {};
+  const customerByNormalizedName = {};
   customers.forEach(c => {
-    if (c.name) customerByName[c.name.trim()] = c;
+    if (c.name) {
+      customerByName[c.name.trim()] = c;
+      const normalized = normalizeName(c.name);
+      if (normalized) {
+        customerByNormalizedName[normalized] = c;
+        // 괄호 안 이름도 매핑 (예: "Felicity(이정임)" → "이정임" 검색 가능)
+        const parenMatch = c.name.match(/[(（](.+?)[)）]/);
+        if (parenMatch) {
+          const insideParen = normalizeName(parenMatch[1]);
+          if (insideParen) customerByNormalizedName[insideParen] = c;
+        }
+        // 괄호 밖 이름도 매핑
+        const beforeParen = c.name.split(/[(（]/)[0].trim();
+        if (beforeParen && beforeParen !== c.name) {
+          const normalizedBefore = normalizeName(beforeParen);
+          if (normalizedBefore) customerByNormalizedName[normalizedBefore] = c;
+        }
+      }
+    }
   });
 
   // Zone별 시트 파싱
@@ -8863,8 +8895,27 @@ function parseUploadedExcel(wb, customers, items, orders) {
       if (typeof seq !== 'number') continue;
       if (!name) continue;  // 빈 slot 건너뛰기
 
-      // 이름으로 기존 고객 찾기
-      const existingCustomer = customerByName[name];
+      // 이름으로 기존 고객 찾기 (다단계 매칭)
+      let existingCustomer = customerByName[name];
+      if (!existingCustomer) {
+        // 🆕 정규화된 이름으로 재시도
+        const normalizedName = normalizeName(name);
+        if (normalizedName) {
+          existingCustomer = customerByNormalizedName[normalizedName];
+          // 괄호 안/밖 별도 매칭도 시도
+          if (!existingCustomer) {
+            const parenMatch = name.match(/[(（](.+?)[)）]/);
+            if (parenMatch) {
+              const insideParen = normalizeName(parenMatch[1]);
+              if (insideParen) existingCustomer = customerByNormalizedName[insideParen];
+            }
+            if (!existingCustomer) {
+              const beforeParen = normalizeName(name.split(/[(（]/)[0]);
+              if (beforeParen) existingCustomer = customerByNormalizedName[beforeParen];
+            }
+          }
+        }
+      }
 
       if (existingCustomer) {
         // 기존 고객의 모든 주문에 배정
@@ -8972,15 +9023,27 @@ function parseUploadedExcel(wb, customers, items, orders) {
     }
   }
 
-  // 배정받지 못한 주문 = 취소 (기존 취소/서비스 제외)
+  // 🆕 배정받지 못한 주문 = "엑셀에 없음" (배송 대상 주문만 검사)
+  // - 배송준비중/출고대기/배송중만 대상 (이미 완료/취소는 제외)
+  // - 서비스 주문 제외
+  // - 이미 Zone 배정된 주문 중 이번에 재배정 안 된 것만
   orders.forEach(o => {
-    if (!processedCustomerIds.has(o.customerId) && !orderUpdates[o.id] && o.shipStatus !== '취소' && !o.isService) {
-      cancelled.push({
-        orderId: o.id,
-        customerName: customers.find(c => c.id === o.customerId)?.name || o.customerId,
-        reason: '엑셀에서 제외됨',
-      });
-    }
+    // 이미 이번 업로드로 업데이트된 주문은 건너뜀
+    if (orderUpdates[o.id]) return;
+    // 고객이 엑셀에 있으면 건너뜀 (다른 주문이 업데이트됐을 수도)
+    if (processedCustomerIds.has(o.customerId)) return;
+    // 취소/서비스 주문 제외
+    if (o.shipStatus === '취소' || o.isService) return;
+    // 이미 완료된 주문 제외 (재배차 대상 아님)
+    if (o.shipStatus === '배송완료') return;
+    // 픽업 주문도 제외 (배차 대상 아님)
+    if (o.isPickup) return;
+
+    cancelled.push({
+      orderId: o.id,
+      customerName: customers.find(c => c.id === o.customerId)?.name || o.customerId,
+      reason: '엑셀에 없음',
+    });
   });
 
   return { orderUpdates, newCustomers, newOrders, cancelled };
