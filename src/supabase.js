@@ -47,14 +47,45 @@ export const TABLES = {
 // ============================================================
 
 /**
- * 테이블 전체 조회
+ * 테이블 전체 조회 (페이지네이션으로 1,000개 제한 우회)
+ * Supabase 기본 limit가 1,000이므로 range()로 나눠서 모두 가져옴
  */
 export async function fetchAll(tableName) {
   if (!supabase) return [];
   try {
-    const { data, error } = await supabase.from(tableName).select('*');
-    if (error) throw error;
-    return data || [];
+    const PAGE_SIZE = 1000;
+    let allData = [];
+    let from = 0;
+    let hasMore = true;
+
+    while (hasMore) {
+      const { data, error } = await supabase
+        .from(tableName)
+        .select('*')
+        .range(from, from + PAGE_SIZE - 1);
+
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        allData = allData.concat(data);
+        from += PAGE_SIZE;
+        hasMore = data.length === PAGE_SIZE;  // 풀 페이지면 다음 페이지 있음
+      } else {
+        hasMore = false;
+      }
+
+      // 안전장치: 최대 20,000행 (20 페이지)
+      if (from >= 20000) {
+        console.warn(`⚠️ ${tableName}: 20,000건 초과, 페이지네이션 중단`);
+        break;
+      }
+    }
+
+    if (allData.length > PAGE_SIZE) {
+      console.log(`✓ ${tableName}: 페이지네이션으로 ${allData.length}건 모두 로드`);
+    }
+
+    return allData;
   } catch (err) {
     console.error(`Error fetching ${tableName}:`, err);
     return [];
@@ -193,9 +224,10 @@ export async function saveBatch(tableName, rows) {
 
         console.log(`📤 ${tableName}: ${changedRows.length}/${rows.length}건 변경됨, 업로드 중...`);
 
-        // Supabase upsert: 100건씩 순차 업로드 + 딜레이 (리소스 오버플로우 방지)
-        const CHUNK_SIZE = 100;
-        const DELAY_MS = 200;
+        // Supabase upsert: 50건씩 순차 업로드 + 딜레이 (리소스 오버플로우 방지)
+        const CHUNK_SIZE = 50;
+        const DELAY_MS = 500;
+        const MAX_RETRIES = 3;
         const chunks = [];
         for (let i = 0; i < changedRows.length; i += CHUNK_SIZE) {
           chunks.push(changedRows.slice(i, i + CHUNK_SIZE));
@@ -204,18 +236,33 @@ export async function saveBatch(tableName, rows) {
         let uploadedCount = 0;
         for (let idx = 0; idx < chunks.length; idx++) {
           const chunk = chunks[idx];
-          try {
-            const { error } = await supabase.from(tableName).upsert(chunk);
-            if (error) throw error;
-            uploadedCount += chunk.length;
-            // 진행 로그 (10% 단위)
-            if (chunks.length > 5) {
-              console.log(`  ⏳ ${tableName}: ${uploadedCount}/${changedRows.length} (${Math.round(uploadedCount / changedRows.length * 100)}%)`);
+          let retries = 0;
+          let success = false;
+
+          while (!success && retries < MAX_RETRIES) {
+            try {
+              const { error } = await supabase.from(tableName).upsert(chunk);
+              if (error) throw error;
+              uploadedCount += chunk.length;
+              success = true;
+              // 진행 로그 (더 자주 표시)
+              if (chunks.length > 5 && idx % 5 === 0) {
+                console.log(`  ⏳ ${tableName}: ${uploadedCount}/${changedRows.length} (${Math.round(uploadedCount / changedRows.length * 100)}%)`);
+              }
+            } catch (err) {
+              retries++;
+              if (retries < MAX_RETRIES) {
+                // 재시도: 2초 대기 후
+                console.warn(`  ⚠️ ${tableName} 청크 ${idx + 1} 실패 (재시도 ${retries}/${MAX_RETRIES})`, err.message);
+                await new Promise(r => setTimeout(r, 2000));
+              } else {
+                console.error(`  ❌ ${tableName} 청크 ${idx + 1} 최종 실패:`, err);
+                // 실패해도 다음 청크 계속 진행 (throw 대신 skip)
+                break;
+              }
             }
-          } catch (err) {
-            console.error(`  ❌ ${tableName} 청크 ${idx + 1} 실패:`, err);
-            throw err;
           }
+
           // 마지막 청크가 아니면 딜레이
           if (idx < chunks.length - 1) {
             await new Promise(r => setTimeout(r, DELAY_MS));
@@ -223,7 +270,7 @@ export async function saveBatch(tableName, rows) {
         }
 
         _lastSavedRows[tableName] = currentMap;
-        console.log(`✓ ${tableName} ${changedRows.length}건 업로드 완료`);
+        console.log(`✓ ${tableName} ${uploadedCount}/${changedRows.length}건 업로드 완료`);
         resolve();
       } catch (err) {
         console.error(`Error batch saving ${tableName}:`, err);
