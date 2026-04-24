@@ -498,14 +498,51 @@ function importFromBackupExcel(wb) {
 }
 
 function calcAvailStock(items, orders) {
-  const totalBaechu = orders.reduce((s, o) => {
+  // 🔑 취소 주문은 재고 차감하지 않음 (서비스는 차감 = 실제 재고 나감)
+  const activeOrders = orders.filter(o => o.shipStatus !== '취소');
+
+  // 다품목 주문도 처리: items 배열이 있으면 그것을 사용, 없으면 단일 품목
+  const calcItemQty = (itemName) => {
+    let totalQty = 0;
+    activeOrders.forEach(o => {
+      if (o.items && Array.isArray(o.items) && o.items.length > 0) {
+        // 다품목 주문
+        o.items.forEach(subItem => {
+          if (subItem.itemName === itemName) {
+            totalQty += subItem.qty || 0;
+          }
+        });
+      } else if (o.itemName === itemName) {
+        totalQty += o.qty || 0;
+      }
+    });
+    return totalQty;
+  };
+
+  const totalBaechu = activeOrders.reduce((s, o) => {
+    // 다품목 주문: items 배열 순회
+    if (o.items && Array.isArray(o.items) && o.items.length > 0) {
+      return s + o.items.reduce((ss, si) => {
+        const it = items.find(i => i.name === si.itemName);
+        return ss + (it ? it.baechu * (si.qty || 0) : 0);
+      }, 0);
+    }
+    // 단일 품목
     const it = items.find(i => i.name === o.itemName);
     return s + (it ? it.baechu * o.qty : 0);
   }, 0);
-  const totalChonggak = orders.reduce((s, o) => {
+
+  const totalChonggak = activeOrders.reduce((s, o) => {
+    if (o.items && Array.isArray(o.items) && o.items.length > 0) {
+      return s + o.items.reduce((ss, si) => {
+        const it = items.find(i => i.name === si.itemName);
+        return ss + (it ? it.chonggak * (si.qty || 0) : 0);
+      }, 0);
+    }
     const it = items.find(i => i.name === o.itemName);
     return s + (it ? it.chonggak * o.qty : 0);
   }, 0);
+
   const baechuItem = items.find(i => i.code === 'P001');
   const chonggakItem = items.find(i => i.code === 'P002');
   const baechuAvail = (baechuItem?.realStock || 0) - totalBaechu;
@@ -2410,10 +2447,16 @@ function Dashboard({ customers, items, orders, gifts = [], setView }) {
 
   const itemStats = useMemo(() => {
     return items.map(it => {
-      const relevant = orders.filter(o => o.itemName === it.name && !o.isService);
-      const count = relevant.length;
-      const qty = relevant.reduce((s, o) => s + o.qty, 0);
-      const sales = qty * it.price;
+      // 해당 품목의 주문 (취소 제외, 서비스 포함)
+      const nonCancelled = orders.filter(o => o.itemName === it.name && o.shipStatus !== '취소');
+      // 수량: 서비스 포함 (실제 재고 나간 것 기준)
+      const qty = nonCancelled.reduce((s, o) => s + o.qty, 0);
+      // 주문 건수: 서비스 포함
+      const count = nonCancelled.length;
+      // 매출: 서비스 제외 (무료이므로 매출 아님)
+      const paidOnly = nonCancelled.filter(o => !o.isService);
+      const paidQty = paidOnly.reduce((s, o) => s + o.qty, 0);
+      const sales = paidQty * it.price;
       return { ...it, count, qty, sales };
     });
   }, [items, orders]);
@@ -3104,8 +3147,8 @@ function Orders({ customers, items, orders, setOrders, gifts, setGifts, showToas
     // 🆕 상품 필터 (단일 품목 또는 items 배열 내 포함)
     if (productFilter) {
       result = result.filter(o => {
-        // 취소/서비스는 상품 필터에서 제외
-        if (o.shipStatus === '취소' || o.isService) return false;
+        // 취소만 제외 (서비스는 실제 재고 차감이라 포함)
+        if (o.shipStatus === '취소') return false;
         // 다품목: items 배열 내 포함 여부
         if (o.items && Array.isArray(o.items) && o.items.length > 0) {
           return o.items.some(it => it.itemName === productFilter);
@@ -3192,8 +3235,8 @@ function Orders({ customers, items, orders, setOrders, gifts, setGifts, showToas
     }
 
     baseFiltered.forEach(o => {
-      // 취소/서비스 주문 제외
-      if (o.shipStatus === '취소' || o.isService) return;
+      // 취소 주문만 제외 (서비스는 실제 재고 나가므로 카운팅!)
+      if (o.shipStatus === '취소') return;
       // 다품목 주문 처리
       if (o.items && Array.isArray(o.items) && o.items.length > 0) {
         o.items.forEach(it => {
@@ -3292,7 +3335,7 @@ function Orders({ customers, items, orders, setOrders, gifts, setGifts, showToas
                   {productFilter} 주문자만 표시 중
                 </span>
               ) : (
-                '카드를 클릭하면 해당 상품 주문자만 필터링됩니다'
+                '서비스 포함 · 취소 제외 · 카드 클릭 시 해당 상품 주문자만 필터링'
               )}
             </div>
           </div>
