@@ -1675,14 +1675,39 @@ export default function App() {
   }
 
   const nav = [
-    { id: 'dashboard', label: '대시보드', icon: BarChart3 },
-    { id: 'orders', label: '주문관리', icon: ShoppingCart },
-    { id: 'customers', label: '고객관리', icon: Users },
-    { id: 'items', label: '품목/재고', icon: Package },
-    { id: 'gifts', label: '사은품', icon: Package },
-    { id: 'shipping', label: '배송관리', icon: Truck },
-    { id: 'drivers', label: '기사관리', icon: Truck },
+    { id: 'dashboard', label: '대시보드', icon: BarChart3, shortcut: '1' },
+    { id: 'orders', label: '주문관리', icon: ShoppingCart, shortcut: '2' },
+    { id: 'customers', label: '고객관리', icon: Users, shortcut: '3' },
+    { id: 'items', label: '품목/재고', icon: Package, shortcut: '4' },
+    { id: 'gifts', label: '사은품', icon: Package, shortcut: '5' },
+    { id: 'shipping', label: '배송관리', icon: Truck, shortcut: '6' },
+    { id: 'drivers', label: '기사관리', icon: Truck, shortcut: '7' },
   ];
+
+  // ⌨️ 키보드 단축키 (Alt + 숫자)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // 입력 중이면 단축키 비활성화
+      const tag = (e.target.tagName || '').toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable) return;
+
+      // Alt + 1~7: 메뉴 이동
+      if (e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
+        const num = parseInt(e.key);
+        if (num >= 1 && num <= nav.length) {
+          e.preventDefault();
+          setView(nav[num - 1].id);
+        }
+      }
+      // Esc: 대시보드로
+      if (e.key === 'Escape' && !e.altKey && !e.metaKey && !e.ctrlKey) {
+        const hasOpenModal = document.querySelector('.fixed.inset-0.bg-stone-900\\/50, .fixed.inset-0.bg-stone-900\\/40');
+        if (!hasOpenModal) setView('dashboard');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [nav]);
 
   const lowStockCount = itemsWithStock.filter(i => i.availStock <= 20).length;
 
@@ -1737,6 +1762,51 @@ export default function App() {
         .scrollbar-slim::-webkit-scrollbar { width: 6px; height: 6px; }
         .scrollbar-slim::-webkit-scrollbar-track { background: transparent; }
         .scrollbar-slim::-webkit-scrollbar-thumb { background: #D4C9B8; border-radius: 3px; }
+        .scrollbar-slim::-webkit-scrollbar-thumb:hover { background: #B8A990; }
+
+        /* 🎨 전역 스크롤바 (body) */
+        ::-webkit-scrollbar { width: 10px; height: 10px; }
+        ::-webkit-scrollbar-track { background: #FAF7F2; }
+        ::-webkit-scrollbar-thumb {
+          background: #D4C9B8;
+          border-radius: 5px;
+          border: 2px solid #FAF7F2;
+        }
+        ::-webkit-scrollbar-thumb:hover { background: #B8A990; }
+
+        /* ✨ 마이크로 애니메이션 */
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(-4px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes slideUp {
+          from { opacity: 0; transform: translateY(8px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes pulse-ring {
+          0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+          70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+          100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+        .animate-pulse-ring { animation: pulse-ring 2s ease-out infinite; }
+        .animate-slide-up { animation: slideUp 0.3s ease-out; }
+
+        /* 🖱️ 부드러운 전환 */
+        button, a {
+          transition: all 0.15s ease;
+        }
+
+        /* 🎯 포커스 스타일 개선 */
+        button:focus-visible, a:focus-visible, input:focus-visible {
+          outline: 2px solid #991B1B;
+          outline-offset: 2px;
+        }
+
+        /* 📐 선택 색상 */
+        ::selection {
+          background: #FEE2E2;
+          color: #7F1D1D;
+        }
       `}</style>
 
       <aside className="fixed left-0 top-0 h-full w-60 bg-white border-r border-stone-200 flex flex-col z-20">
@@ -1759,19 +1829,28 @@ export default function App() {
           </div>
         </button>
 
-        <nav className="flex-1 px-3 py-4 space-y-1">
-          {nav.map(({ id, label, icon: Icon }) => (
+        <nav className="flex-1 px-3 py-4 space-y-0.5">
+          {nav.map(({ id, label, icon: Icon, shortcut }) => (
             <button
               key={id}
               onClick={() => setView(id)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                view === id ? 'bg-red-50 text-red-800 ring-1 ring-red-100' : 'text-stone-600 hover:bg-stone-50'
+              className={`group w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                view === id
+                  ? 'bg-red-50 text-red-800 ring-1 ring-red-100 shadow-sm'
+                  : 'text-stone-600 hover:bg-stone-50 hover:text-stone-900'
               }`}
             >
-              <Icon size={17} />
-              <span>{label}</span>
+              <Icon size={17} className={view === id ? 'text-red-700' : 'text-stone-400 group-hover:text-stone-700 transition-colors'} />
+              <span className="flex-1 text-left">{label}</span>
               {id === 'items' && lowStockCount > 0 && (
-                <span className="ml-auto inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-bold rounded-full bg-red-600 text-white">{lowStockCount}</span>
+                <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-bold rounded-full bg-red-600 text-white">{lowStockCount}</span>
+              )}
+              {shortcut && (
+                <kbd className={`hidden group-hover:inline-flex items-center justify-center w-5 h-5 text-[9px] font-semibold rounded border ${
+                  view === id ? 'bg-white/60 border-red-200 text-red-700' : 'bg-stone-100 border-stone-200 text-stone-500'
+                }`}>
+                  {shortcut}
+                </kbd>
               )}
             </button>
           ))}
@@ -1857,38 +1936,63 @@ export default function App() {
       </aside>
 
       <main className="ml-60 min-h-screen">
-        <header className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-stone-200 px-8 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="font-serif-ko text-2xl font-bold text-stone-800">
-              {nav.find(n => n.id === view)?.label}
-            </h1>
-            <div className="text-xs text-stone-500 mt-0.5">
-              {view === 'dashboard' && '매출·주문·배송 현황을 한눈에'}
-              {view === 'orders' && '주문을 등록하고 카톡 메시지를 생성하세요'}
-              {view === 'customers' && '고객 정보를 관리하세요 (최대 5,000명)'}
-              {view === 'items' && '품목과 재고를 관리하세요'}
-              {view === 'gifts' && '사은품 이벤트와 자동 지급 기준을 관리하세요'}
-              {view === 'shipping' && '배송 상태를 업데이트하세요'}
-              {view === 'drivers' && '배송기사 계정을 관리하고 담당 Zone을 지정하세요'}
+        <header className="sticky top-0 z-10 bg-white/90 backdrop-blur-xl border-b border-stone-200/80 px-8 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            {/* 페이지 제목 + 아이콘 */}
+            <div className="flex items-center gap-3">
+              {(() => {
+                const currentNav = nav.find(n => n.id === view);
+                const Icon = currentNav?.icon;
+                return Icon && (
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-stone-100 to-stone-200 flex items-center justify-center text-stone-700">
+                    <Icon size={20} />
+                  </div>
+                );
+              })()}
+              <div>
+                <h1 className="font-serif-ko text-xl font-bold text-stone-800 leading-tight">
+                  {nav.find(n => n.id === view)?.label}
+                </h1>
+                <div className="text-xs text-stone-500 mt-0.5">
+                  {view === 'dashboard' && '매출·주문·배송 현황을 한눈에'}
+                  {view === 'orders' && '주문을 등록하고 카톡 메시지를 생성하세요'}
+                  {view === 'customers' && '고객 정보를 관리하세요'}
+                  {view === 'items' && '품목과 재고를 관리하세요'}
+                  {view === 'gifts' && '사은품 이벤트와 자동 지급 기준을 관리하세요'}
+                  {view === 'shipping' && '배송 상태를 업데이트하세요'}
+                  {view === 'drivers' && '배송기사 계정을 관리하고 담당 Zone을 지정하세요'}
+                </div>
+              </div>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+
+          <div className="flex items-center gap-2.5">
+            {/* 키보드 단축키 힌트 */}
+            <div className="hidden xl:flex items-center gap-1 text-[10px] text-stone-400 px-2 py-1 bg-stone-50 rounded-md border border-stone-200">
+              <kbd className="font-mono font-semibold">Alt</kbd>
+              <span>+</span>
+              <kbd className="font-mono font-semibold">1~7</kbd>
+              <span className="ml-1">이동</span>
+            </div>
+
             {/* 🔥 실시간 동기화 상태 */}
             {isSupabaseConfigured ? (
-              <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold ring-1 ${
+              <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold ring-1 transition-all ${
                 syncStatus === 'synced' ? 'bg-emerald-50 text-emerald-700 ring-emerald-200' :
                 syncStatus === 'connecting' ? 'bg-amber-50 text-amber-700 ring-amber-200' :
                 'bg-red-50 text-red-700 ring-red-200'
-              }`} title={syncStatus === 'synced' ? '실시간 동기화 중 (Firebase)' : syncStatus === 'connecting' ? '연결 중...' : '오프라인'}>
+              }`} title={syncStatus === 'synced' ? '실시간 동기화 중' : syncStatus === 'connecting' ? '연결 중...' : '오프라인'}>
                 {syncStatus === 'synced' ? (
                   <>
-                    <Cloud size={12} />
-                    <span className="tabular-nums">실시간 연결됨</span>
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    </span>
+                    <span>실시간 연결</span>
                   </>
                 ) : syncStatus === 'connecting' ? (
                   <>
-                    <Cloud size={12} />
+                    <Cloud size={12} className="animate-pulse" />
                     <span>연결 중...</span>
                   </>
                 ) : (
@@ -1899,20 +2003,30 @@ export default function App() {
                 )}
               </div>
             ) : (
-              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-stone-100 text-stone-600 ring-1 ring-stone-200" title="Firebase 미설정 - 로컬 저장 모드">
+              <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-stone-100 text-stone-600 ring-1 ring-stone-200">
                 <CloudOff size={12} />
                 <span>로컬 모드</span>
               </div>
             )}
+
             {lowStockCount > 0 && (
-              <button onClick={() => setView('items')} className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-700 rounded-lg text-xs font-medium ring-1 ring-amber-200 hover:bg-amber-100">
+              <button
+                onClick={() => setView('items')}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-700 rounded-lg text-xs font-medium ring-1 ring-amber-200 hover:bg-amber-100 transition-all animate-pulse-ring"
+              >
                 <Bell size={13} />
                 재고 경보 {lowStockCount}건
               </button>
             )}
-            <div className="text-right">
-              <div className="text-xs text-stone-500">오늘</div>
-              <div className="text-sm font-semibold text-stone-800">{new Date().toLocaleDateString('ko-KR')}</div>
+
+            {/* 오늘 날짜 */}
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-stone-50 rounded-lg border border-stone-200">
+              <div className="text-right">
+                <div className="text-[9px] text-stone-500 font-semibold tracking-wider uppercase">오늘</div>
+                <div className="text-xs font-bold text-stone-800 tabular-nums">
+                  {new Date().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })}
+                </div>
+              </div>
             </div>
           </div>
         </header>
@@ -2039,7 +2153,73 @@ function Dashboard({ customers, items, orders, gifts = [], setView }) {
   const recent = [...orders].slice(-5).reverse();
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
+      {/* ══════════════════════════════════════════════════ */}
+      {/* 👋 헤로 섹션 - 환영 메시지 + 오늘 날짜 */}
+      {/* ══════════════════════════════════════════════════ */}
+      {(() => {
+        const now = new Date();
+        const hour = now.getHours();
+        const greeting = hour < 6 ? '🌙 새벽입니다' :
+                        hour < 12 ? '☀️ 좋은 아침입니다' :
+                        hour < 18 ? '🍃 안녕하세요' :
+                        '🌆 수고하셨습니다';
+        const dateStr = `${now.getFullYear()}년 ${now.getMonth() + 1}월 ${now.getDate()}일`;
+        const dayStr = ['일', '월', '화', '수', '목', '금', '토'][now.getDay()];
+
+        // 오늘의 주요 숫자
+        const todayStr = now.toISOString().split('T')[0];
+        const todayOrders = orders.filter(o => o.date === todayStr);
+        const todayRevenue = todayOrders.reduce((s, o) => {
+          const priceMap = {};
+          items.forEach(i => { priceMap[i.name] = i.price || 0; });
+          return s + (priceMap[o.itemName] || 0) * o.qty;
+        }, 0);
+        const todayDelivered = orders.filter(o => o.shipStatus === '배송완료' && (o.shipDate === todayStr || o.arriveDate === todayStr)).length;
+
+        return (
+          <div className="bg-gradient-to-br from-stone-900 via-red-950 to-stone-900 rounded-3xl p-6 md:p-8 text-white shadow-lg overflow-hidden relative">
+            {/* 배경 장식 */}
+            <div className="absolute -right-20 -top-20 w-64 h-64 rounded-full bg-red-600/10 blur-3xl" />
+            <div className="absolute -left-10 -bottom-10 w-48 h-48 rounded-full bg-amber-500/10 blur-2xl" />
+
+            <div className="relative flex items-start justify-between gap-6 flex-wrap">
+              {/* 왼쪽: 환영 메시지 */}
+              <div>
+                <div className="text-[11px] text-red-300/80 font-semibold tracking-[0.2em] uppercase mb-2">
+                  {dateStr} ({dayStr})
+                </div>
+                <h1 className="font-serif-ko text-3xl md:text-4xl font-bold mb-1 leading-tight">
+                  {greeting}
+                </h1>
+                <p className="text-sm text-red-100/70 font-light">
+                  오늘의 워커힐김치 OMS 현황을 확인해보세요
+                </p>
+              </div>
+
+              {/* 오른쪽: 오늘의 지표 */}
+              <div className="flex gap-4 md:gap-6">
+                <div className="text-right">
+                  <div className="text-[10px] text-red-300/70 font-semibold tracking-wider uppercase mb-1">오늘 매출</div>
+                  <div className="text-2xl md:text-3xl font-bold tabular-nums">
+                    ${formatNum(todayRevenue)}
+                  </div>
+                  <div className="text-[10px] text-red-200/60 mt-0.5">{todayOrders.length}건 주문</div>
+                </div>
+                <div className="w-px bg-red-300/20" />
+                <div className="text-right">
+                  <div className="text-[10px] text-red-300/70 font-semibold tracking-wider uppercase mb-1">오늘 배송</div>
+                  <div className="text-2xl md:text-3xl font-bold tabular-nums text-emerald-300">
+                    {todayDelivered}
+                  </div>
+                  <div className="text-[10px] text-red-200/60 mt-0.5">완료 건수</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ══════════════════════════════════════════════════ */}
       {/* 🚨 섹션 1: 오늘 확인할 알림 (최우선) */}
       {/* ══════════════════════════════════════════════════ */}
@@ -2632,6 +2812,9 @@ function Orders({ customers, items, orders, setOrders, gifts, setGifts, showToas
   const [msgTarget, setMsgTarget] = useState(null);
   const [displayLimit, setDisplayLimit] = useState(50);
 
+  // 🆕 체크박스 선택 상태
+  const [selectedIds, setSelectedIds] = useState(new Set());
+
   const toggleSort = (key) => {
     if (sortKey === key) {
       setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
@@ -2639,6 +2822,54 @@ function Orders({ customers, items, orders, setOrders, gifts, setGifts, showToas
       setSortKey(key);
       setSortDir('desc');
     }
+  };
+
+  // 🆕 체크박스 함수들
+  const toggleSelect = (id) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const toggleSelectAll = (visibleIds) => {
+    const allSelected = visibleIds.every(id => selectedIds.has(id));
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (allSelected) {
+        visibleIds.forEach(id => next.delete(id));
+      } else {
+        visibleIds.forEach(id => next.add(id));
+      }
+      return next;
+    });
+  };
+  const clearSelection = () => setSelectedIds(new Set());
+
+  // 🆕 일괄 삭제
+  const handleBulkDelete = () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`선택한 ${selectedIds.size}건의 주문을 삭제할까요?\n이 작업은 되돌릴 수 없습니다.`)) return;
+    setOrders(orders.filter(o => !selectedIds.has(o.id)));
+    showToast(`✅ ${selectedIds.size}건 삭제 완료`);
+    clearSelection();
+  };
+
+  // 🆕 일괄 상태 변경
+  const handleBulkStatus = (status) => {
+    if (selectedIds.size === 0) return;
+    setOrders(orders.map(o => selectedIds.has(o.id) ? { ...o, shipStatus: status } : o));
+    showToast(`✅ ${selectedIds.size}건 → ${status}`);
+    clearSelection();
+  };
+
+  // 🆕 일괄 결제 상태 변경
+  const handleBulkPayment = (status) => {
+    if (selectedIds.size === 0) return;
+    setOrders(orders.map(o => selectedIds.has(o.id) ? { ...o, paymentStatus: status } : o));
+    showToast(`✅ ${selectedIds.size}건 결제 → ${status}`);
+    clearSelection();
   };
 
   // 성능 최적화: 고객ID → 고객 객체 맵
@@ -2810,6 +3041,47 @@ function Orders({ customers, items, orders, setOrders, gifts, setGifts, showToas
         </button>
       </div>
 
+      {/* 🆕 선택 액션 바 - 선택된 주문이 있을 때만 표시 */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-2 p-3 bg-gradient-to-r from-red-50 to-amber-50 border-2 border-red-300 rounded-xl shadow-sm animate-[fadeIn_0.2s]">
+          <div className="flex items-center gap-2 pr-3 border-r border-red-200">
+            <span className="text-sm font-bold text-red-900">
+              ✓ {selectedIds.size}건 선택됨
+            </span>
+            <button
+              onClick={clearSelection}
+              className="text-xs text-stone-500 hover:text-red-700 underline"
+            >
+              선택 해제
+            </button>
+          </div>
+
+          {/* 상태 변경 */}
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] text-stone-500 mr-1">배송:</span>
+            <button onClick={() => handleBulkStatus('배송준비중')} className="px-2 py-1 bg-white hover:bg-stone-100 border border-stone-300 rounded text-xs font-semibold">준비중</button>
+            <button onClick={() => handleBulkStatus('출고대기')} className="px-2 py-1 bg-white hover:bg-amber-50 border border-amber-300 text-amber-800 rounded text-xs font-semibold">출고대기</button>
+            <button onClick={() => handleBulkStatus('배송중')} className="px-2 py-1 bg-white hover:bg-blue-50 border border-blue-300 text-blue-800 rounded text-xs font-semibold">배송중</button>
+            <button onClick={() => handleBulkStatus('배송완료')} className="px-2 py-1 bg-white hover:bg-emerald-50 border border-emerald-300 text-emerald-800 rounded text-xs font-semibold">완료</button>
+          </div>
+
+          {/* 결제 상태 */}
+          <div className="flex items-center gap-1 pl-2 border-l border-red-200">
+            <span className="text-[10px] text-stone-500 mr-1">결제:</span>
+            <button onClick={() => handleBulkPayment('미결제')} className="px-2 py-1 bg-white hover:bg-red-50 border border-red-300 text-red-800 rounded text-xs font-semibold">미결제</button>
+            <button onClick={() => handleBulkPayment('결제완료')} className="px-2 py-1 bg-white hover:bg-emerald-50 border border-emerald-300 text-emerald-800 rounded text-xs font-semibold">완료</button>
+          </div>
+
+          {/* 삭제 */}
+          <button
+            onClick={handleBulkDelete}
+            className="ml-auto px-3 py-1.5 bg-red-700 hover:bg-red-800 text-white rounded-lg text-xs font-bold shadow-sm active:scale-95 transition-all"
+          >
+            🗑️ 선택 삭제
+          </button>
+        </div>
+      )}
+
       {/* 주문 유형 필터 탭 */}
       <div className="bg-white rounded-xl border border-stone-200 p-1 flex items-center gap-1 flex-wrap">
         {[
@@ -2898,6 +3170,15 @@ function Orders({ customers, items, orders, setOrders, gifts, setGifts, showToas
           <table className="w-full text-sm">
             <thead className="bg-stone-50 border-b border-stone-200">
               <tr>
+                <th className="w-10 px-3 py-3">
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4 rounded accent-red-700 cursor-pointer"
+                    checked={filtered.length > 0 && filtered.slice(0, displayLimit).every(o => selectedIds.has(o.id))}
+                    onChange={() => toggleSelectAll(filtered.slice(0, displayLimit).map(o => o.id))}
+                    title="전체 선택"
+                  />
+                </th>
                 <SortHeader label="주문번호" field="id" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="left" />
                 <SortHeader label="주문일" field="date" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="left" />
                 <SortHeader label="Zone" field="zone" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="center" />
@@ -2939,11 +3220,20 @@ function Orders({ customers, items, orders, setOrders, gifts, setGifts, showToas
                 const finalTotal = isServ ? 0 : total + (needsShipping ? SHIPPING_FEE : 0);
                 return (
                   <tr key={o.id} className={`border-b border-stone-100 hover:bg-stone-50 ${
+                    selectedIds.has(o.id) ? 'bg-red-50/50' :
                     isServ ? 'bg-amber-50/40' :
                     isWaitingStock ? 'bg-purple-50/40' :
                     isB2B_o ? 'bg-indigo-50/30' :
                     c?.agedCare ? 'bg-amber-50/20' : ''
                   }`}>
+                    <td className="px-3 py-3">
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 rounded accent-red-700 cursor-pointer"
+                        checked={selectedIds.has(o.id)}
+                        onChange={() => toggleSelect(o.id)}
+                      />
+                    </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="font-mono text-xs font-semibold text-red-800">{o.id}</span>
@@ -3894,6 +4184,53 @@ function Customers({ customers, setCustomers, items, orders, showToast }) {
   const [historyTarget, setHistoryTarget] = useState(null);
   const [displayLimit, setDisplayLimit] = useState(50);
 
+  // 🆕 체크박스
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const toggleSelect = (id) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const toggleSelectAll = (visibleIds) => {
+    const allSelected = visibleIds.every(id => selectedIds.has(id));
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (allSelected) visibleIds.forEach(id => next.delete(id));
+      else visibleIds.forEach(id => next.add(id));
+      return next;
+    });
+  };
+  const clearSelection = () => setSelectedIds(new Set());
+
+  const handleBulkDeleteCustomers = () => {
+    if (selectedIds.size === 0) return;
+    const hasOrders = [...selectedIds].some(cid => orders.some(o => o.customerId === cid));
+    if (hasOrders) {
+      if (!confirm(`⚠️ 주문 내역이 있는 고객이 포함되어 있습니다.\n선택한 ${selectedIds.size}명을 정말 삭제할까요?\n(주문은 유지되지만 고객 정보는 "삭제된 고객"으로 표시됩니다)`)) return;
+    } else {
+      if (!confirm(`선택한 ${selectedIds.size}명의 고객을 삭제할까요?`)) return;
+    }
+    setCustomers(customers.filter(c => !selectedIds.has(c.id)));
+    showToast(`✅ ${selectedIds.size}명 삭제 완료`);
+    clearSelection();
+  };
+
+  const handleBulkGrade = (grade) => {
+    if (selectedIds.size === 0) return;
+    setCustomers(customers.map(c => selectedIds.has(c.id) ? { ...c, grade } : c));
+    showToast(`✅ ${selectedIds.size}명 등급 → ${grade}`);
+    clearSelection();
+  };
+
+  const handleBulkAgedCare = (agedCare) => {
+    if (selectedIds.size === 0) return;
+    setCustomers(customers.map(c => selectedIds.has(c.id) ? { ...c, agedCare } : c));
+    showToast(`✅ ${selectedIds.size}명 Aged Care ${agedCare ? '설정' : '해제'}`);
+    clearSelection();
+  };
+
   // 🔍 검색 debounce 300ms (4000명+ 대용량 대응)
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -4078,11 +4415,60 @@ function Customers({ customers, setCustomers, items, orders, showToast }) {
         </button>
       </div>
 
+      {/* 🆕 선택 액션 바 */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-2 p-3 bg-gradient-to-r from-red-50 to-amber-50 border-2 border-red-300 rounded-xl shadow-sm">
+          <div className="flex items-center gap-2 pr-3 border-r border-red-200">
+            <span className="text-sm font-bold text-red-900">
+              ✓ {selectedIds.size}명 선택됨
+            </span>
+            <button
+              onClick={clearSelection}
+              className="text-xs text-stone-500 hover:text-red-700 underline"
+            >
+              선택 해제
+            </button>
+          </div>
+
+          {/* 등급 변경 */}
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] text-stone-500 mr-1">등급:</span>
+            <button onClick={() => handleBulkGrade('VIP')} className="px-2 py-1 bg-white hover:bg-red-50 border border-red-300 text-red-800 rounded text-xs font-semibold">VIP</button>
+            <button onClick={() => handleBulkGrade('우수')} className="px-2 py-1 bg-white hover:bg-amber-50 border border-amber-300 text-amber-800 rounded text-xs font-semibold">우수</button>
+            <button onClick={() => handleBulkGrade('일반')} className="px-2 py-1 bg-white hover:bg-stone-100 border border-stone-300 rounded text-xs font-semibold">일반</button>
+          </div>
+
+          {/* Aged Care */}
+          <div className="flex items-center gap-1 pl-2 border-l border-red-200">
+            <span className="text-[10px] text-stone-500 mr-1">Aged Care:</span>
+            <button onClick={() => handleBulkAgedCare(true)} className="px-2 py-1 bg-white hover:bg-amber-50 border border-amber-300 text-amber-800 rounded text-xs font-semibold">🏥 설정</button>
+            <button onClick={() => handleBulkAgedCare(false)} className="px-2 py-1 bg-white hover:bg-stone-100 border border-stone-300 rounded text-xs font-semibold">해제</button>
+          </div>
+
+          {/* 삭제 */}
+          <button
+            onClick={handleBulkDeleteCustomers}
+            className="ml-auto px-3 py-1.5 bg-red-700 hover:bg-red-800 text-white rounded-lg text-xs font-bold shadow-sm active:scale-95 transition-all"
+          >
+            🗑️ 선택 삭제
+          </button>
+        </div>
+      )}
+
       <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden">
         <div className="overflow-x-auto scrollbar-slim">
           <table className="w-full text-sm">
             <thead className="bg-stone-50 border-b border-stone-200">
               <tr>
+                <th className="w-10 px-3 py-3">
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4 rounded accent-red-700 cursor-pointer"
+                    checked={filtered.length > 0 && filtered.slice(0, displayLimit).every(c => selectedIds.has(c.id))}
+                    onChange={() => toggleSelectAll(filtered.slice(0, displayLimit).map(c => c.id))}
+                    title="전체 선택"
+                  />
+                </th>
                 <SortHeader label="고객ID" field="id" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="left" />
                 <SortHeader label="성함" field="name" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="left" />
                 <SortHeader label="연락처" field="phone" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="left" />
@@ -4103,7 +4489,15 @@ function Customers({ customers, setCustomers, items, orders, showToast }) {
                 const myOrders = custData.orders;
                 const autoGrade = custData.autoGrade;
                 return (
-                  <tr key={c.id} className={`border-b border-stone-100 hover:bg-stone-50 ${c.agedCare ? 'bg-amber-50/30' : ''}`}>
+                  <tr key={c.id} className={`border-b border-stone-100 hover:bg-stone-50 ${selectedIds.has(c.id) ? 'bg-red-50/50' : c.agedCare ? 'bg-amber-50/30' : ''}`}>
+                    <td className="px-3 py-3">
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 rounded accent-red-700 cursor-pointer"
+                        checked={selectedIds.has(c.id)}
+                        onChange={() => toggleSelect(c.id)}
+                      />
+                    </td>
                     <td className="px-4 py-3"><span className="font-mono text-xs font-semibold text-red-800">{c.id}</span></td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5">
@@ -5316,6 +5710,45 @@ function Shipping({ customers, orders, setOrders, showToast }) {
   const [editTarget, setEditTarget] = useState(null);
   const [displayLimit, setDisplayLimit] = useState(50);
 
+  // 🆕 체크박스
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const toggleSelect = (id) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const toggleSelectAll = (visibleIds) => {
+    const allSelected = visibleIds.every(id => selectedIds.has(id));
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (allSelected) visibleIds.forEach(id => next.delete(id));
+      else visibleIds.forEach(id => next.add(id));
+      return next;
+    });
+  };
+  const clearSelection = () => setSelectedIds(new Set());
+
+  const handleBulkStatus = (status) => {
+    if (selectedIds.size === 0) return;
+    setOrders(orders.map(o => selectedIds.has(o.id) ? { ...o, shipStatus: status } : o));
+    showToast(`✅ ${selectedIds.size}건 → ${status}`);
+    clearSelection();
+  };
+  const handleBulkPayment = (status) => {
+    if (selectedIds.size === 0) return;
+    setOrders(orders.map(o => selectedIds.has(o.id) ? { ...o, paymentStatus: status } : o));
+    showToast(`✅ ${selectedIds.size}건 결제 → ${status}`);
+    clearSelection();
+  };
+  const handleBulkZone = (zone) => {
+    if (selectedIds.size === 0) return;
+    setOrders(orders.map(o => selectedIds.has(o.id) ? { ...o, shippingGroup: zone } : o));
+    showToast(`✅ ${selectedIds.size}건 Zone → ${zone || '미배정'}`);
+    clearSelection();
+  };
+
   const toggleSort = (key) => {
     if (sortKey === key) setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
     else { setSortKey(key); setSortDir('desc'); }
@@ -5383,6 +5816,53 @@ function Shipping({ customers, orders, setOrders, showToast }) {
 
   return (
     <div className="space-y-4">
+      {/* 🆕 선택 액션 바 */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-2 p-3 bg-gradient-to-r from-red-50 to-amber-50 border-2 border-red-300 rounded-xl shadow-sm flex-wrap">
+          <div className="flex items-center gap-2 pr-3 border-r border-red-200">
+            <span className="text-sm font-bold text-red-900">
+              ✓ {selectedIds.size}건 선택됨
+            </span>
+            <button
+              onClick={clearSelection}
+              className="text-xs text-stone-500 hover:text-red-700 underline"
+            >
+              선택 해제
+            </button>
+          </div>
+
+          {/* 상태 변경 */}
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] text-stone-500 mr-1">배송:</span>
+            <button onClick={() => handleBulkStatus('출고대기')} className="px-2 py-1 bg-white hover:bg-amber-50 border border-amber-300 text-amber-800 rounded text-xs font-semibold">출고대기</button>
+            <button onClick={() => handleBulkStatus('배송중')} className="px-2 py-1 bg-white hover:bg-blue-50 border border-blue-300 text-blue-800 rounded text-xs font-semibold">배송중</button>
+            <button onClick={() => handleBulkStatus('배송완료')} className="px-2 py-1 bg-white hover:bg-emerald-50 border border-emerald-300 text-emerald-800 rounded text-xs font-semibold">완료</button>
+          </div>
+
+          {/* 결제 */}
+          <div className="flex items-center gap-1 pl-2 border-l border-red-200">
+            <span className="text-[10px] text-stone-500 mr-1">결제:</span>
+            <button onClick={() => handleBulkPayment('결제완료')} className="px-2 py-1 bg-white hover:bg-emerald-50 border border-emerald-300 text-emerald-800 rounded text-xs font-semibold">완료</button>
+            <button onClick={() => handleBulkPayment('미결제')} className="px-2 py-1 bg-white hover:bg-red-50 border border-red-300 text-red-800 rounded text-xs font-semibold">미결제</button>
+          </div>
+
+          {/* Zone 일괄 배정 */}
+          <div className="flex items-center gap-1 pl-2 border-l border-red-200">
+            <span className="text-[10px] text-stone-500 mr-1">Zone:</span>
+            {SHIPPING_ZONES.map(z => (
+              <button
+                key={z}
+                onClick={() => handleBulkZone(z)}
+                className={`px-1.5 py-1 ${ZONE_COLORS[z]} hover:opacity-80 rounded text-[10px] font-bold`}
+              >
+                {z.replace('Zone', 'Z')}
+              </button>
+            ))}
+            <button onClick={() => handleBulkZone('')} className="px-1.5 py-1 bg-white hover:bg-stone-100 border border-stone-300 rounded text-[10px] font-semibold">해제</button>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-4 gap-3">
         {Object.entries(statusCounts).map(([k, v]) => (
           <button key={k} onClick={() => setStatusFilter(statusFilter === k ? '' : k)}
@@ -5465,6 +5945,15 @@ function Shipping({ customers, orders, setOrders, showToast }) {
           <table className="w-full text-sm">
             <thead className="bg-stone-50 border-b border-stone-200">
               <tr>
+                <th className="w-10 px-3 py-3">
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4 rounded accent-red-700 cursor-pointer"
+                    checked={filtered.length > 0 && filtered.slice(0, displayLimit).every(o => selectedIds.has(o.id))}
+                    onChange={() => toggleSelectAll(filtered.slice(0, displayLimit).map(o => o.id))}
+                    title="전체 선택"
+                  />
+                </th>
                 <SortHeader label="주문번호" field="id" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="left" />
                 <SortHeader label="Zone" field="zone" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="center" />
                 <SortHeader label="고객" field="customer" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="left" />
@@ -5484,8 +5973,15 @@ function Shipping({ customers, orders, setOrders, showToast }) {
                 const c = customerMap[o.customerId];
                 const isServ = !!o.isService;
                 return (
-                  <tr key={o.id} className={`border-b border-stone-100 hover:bg-stone-50 ${isServ ? 'bg-amber-50/40' : o.isPickup ? 'bg-sky-50/40' : ''}`}>
-                    <td className="px-4 py-3">
+                  <tr key={o.id} className={`border-b border-stone-100 hover:bg-stone-50 ${selectedIds.has(o.id) ? 'bg-red-50/50' : isServ ? 'bg-amber-50/40' : o.isPickup ? 'bg-sky-50/40' : ''}`}>
+                    <td className="px-3 py-3">
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 rounded accent-red-700 cursor-pointer"
+                        checked={selectedIds.has(o.id)}
+                        onChange={() => toggleSelect(o.id)}
+                      />
+                    </td>                    <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5">
                         <span className="font-mono text-xs font-semibold text-red-800">{o.id}</span>
                         {isServ && <span className="text-[9px] px-1 py-0.5 rounded bg-amber-500 text-white font-bold">🎁</span>}
