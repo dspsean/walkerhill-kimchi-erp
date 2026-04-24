@@ -310,15 +310,15 @@ async function _saveBatchInternal(tableName, rows) {
 
   // 🚀 Diff 체크 - 정확한 비교로 불필요한 업로드 방지
   // ⚠️ 대용량(4000+건)도 JSON.stringify 비교 필수
-  // - updatedAt 기반 비교는 필드 없으면 작동 안 함!
-  // - 전체 JSON 비교가 느려도 정확함 (단, 효율적 구현)
   const prevMap = _lastSavedRows[tableName] || {};
   const currentMap = {};
   const changedRows = [];
+  const deletedIds = [];  // 🆕 삭제할 ID들
 
   // 🔑 첫 저장 여부 판단: 이전 맵이 비어있으면 초기 구독 전
   const isFirstSave = Object.keys(prevMap).length === 0;
 
+  // 1. 추가/수정 감지
   for (const row of normalizedRows) {
     if (!row.id) continue;
     const rowJson = JSON.stringify(row);
@@ -328,18 +328,66 @@ async function _saveBatchInternal(tableName, rows) {
     }
   }
 
-  if (changedRows.length === 0) {
+  // 2. 🆕 삭제 감지: 이전엔 있었는데 지금은 없는 ID
+  if (!isFirstSave) {
+    for (const id of Object.keys(prevMap)) {
+      if (!currentMap[id]) {
+        deletedIds.push(id);
+      }
+    }
+  }
+
+  if (changedRows.length === 0 && deletedIds.length === 0) {
     _lastSavedRows[tableName] = currentMap;
     _suppressFetchUntil[tableName] = 0;  // 즉시 해제
     return { success: true, saved: 0, total: rows.length };
   }
 
-  log(`📤 ${tableName}: ${changedRows.length}/${rows.length}건 변경됨, 업로드 중...`);
+  if (deletedIds.length > 0) {
+    log(`🗑️ ${tableName}: ${deletedIds.length}건 삭제 + ${changedRows.length}건 업로드 중...`);
+  } else {
+    log(`📤 ${tableName}: ${changedRows.length}/${rows.length}건 변경됨, 업로드 중...`);
+  }
 
   // 청크 업로드
   const CHUNK_SIZE = 50;
   const DELAY_MS = 300;
   const MAX_RETRIES = 3;
+
+  // 🆕 1. 먼저 삭제 처리 (IN 연산자로 배치 삭제)
+  if (deletedIds.length > 0) {
+    const DELETE_CHUNK = 500;  // 삭제는 한 번에 많이 처리 가능
+    for (let i = 0; i < deletedIds.length; i += DELETE_CHUNK) {
+      const chunkIds = deletedIds.slice(i, i + DELETE_CHUNK);
+      let retries = 0;
+      let success = false;
+
+      while (!success && retries < MAX_RETRIES) {
+        try {
+          const { error } = await supabase.from(tableName).delete().in('id', chunkIds);
+          if (error) throw error;
+          success = true;
+          _suppressFetchUntil[tableName] = Date.now() + 5000;
+          log(`  🗑️ ${tableName}: ${Math.min(i + DELETE_CHUNK, deletedIds.length)}/${deletedIds.length} 삭제 완료`);
+        } catch (err) {
+          retries++;
+          if (retries < MAX_RETRIES) {
+            warn(`  ⚠️ ${tableName} 삭제 청크 실패 (재시도 ${retries}/${MAX_RETRIES})`, err.message);
+            await new Promise(r => setTimeout(r, 2000));
+          } else {
+            console.error(`  ❌ ${tableName} 삭제 청크 최종 실패:`, err);
+            throw err;
+          }
+        }
+      }
+      if (i + DELETE_CHUNK < deletedIds.length) {
+        await new Promise(r => setTimeout(r, DELAY_MS));
+      }
+    }
+    log(`✓ ${tableName}: ${deletedIds.length}건 삭제 완료`);
+  }
+
+  // 2. 추가/수정 upsert
   const chunks = [];
   for (let i = 0; i < changedRows.length; i += CHUNK_SIZE) {
     chunks.push(changedRows.slice(i, i + CHUNK_SIZE));
@@ -386,10 +434,14 @@ async function _saveBatchInternal(tableName, rows) {
   }
 
   _lastSavedRows[tableName] = currentMap;
-  log(`✓ ${tableName} ${uploadedCount}/${changedRows.length}건 업로드 완료`);
+  if (deletedIds.length > 0) {
+    log(`✓ ${tableName} 업로드 ${uploadedCount}건 + 삭제 ${deletedIds.length}건 완료`);
+  } else {
+    log(`✓ ${tableName} ${uploadedCount}/${changedRows.length}건 업로드 완료`);
+  }
   _suppressFetchUntil[tableName] = Date.now() + 3000;
 
-  return { success: true, saved: uploadedCount, total: rows.length };
+  return { success: true, saved: uploadedCount, deleted: deletedIds.length, total: rows.length };
 }
 
 /**
