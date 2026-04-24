@@ -2934,6 +2934,36 @@ function Orders({ customers, items, orders, setOrders, gifts, setGifts, showToas
     return result;
   }, [orders, search, yearFilter, monthFilter, zoneFilter, orderTypeFilter, sortKey, sortDir, customerMap, priceMap]);
 
+  // 🆕 상품별 판매 수량 집계 (필터 반영 · 취소/서비스 제외)
+  const productCounts = useMemo(() => {
+    const counts = {
+      '배추김치 4KG': 0,
+      '배추김치 4KG - 2세트(할인)': 0,
+      '배추김치 4KG - 3세트(할인)': 0,
+      '총각김치 2KG': 0,
+      '총각김치 2KG - 2세트(할인)': 0,
+      '혼합세트 (배추4KG + 총각2KG)': 0,
+    };
+    filtered.forEach(o => {
+      // 취소/서비스 주문 제외
+      if (o.shipStatus === '취소' || o.isService) return;
+      // 다품목 주문 처리
+      if (o.items && Array.isArray(o.items) && o.items.length > 0) {
+        o.items.forEach(it => {
+          if (counts[it.itemName] !== undefined) {
+            counts[it.itemName] += it.qty || 0;
+          }
+        });
+      } else {
+        // 단일 품목
+        if (counts[o.itemName] !== undefined) {
+          counts[o.itemName] += o.qty || 0;
+        }
+      }
+    });
+    return counts;
+  }, [filtered]);
+
   useEffect(() => { setDisplayLimit(50); }, [search, yearFilter, monthFilter, zoneFilter, orderTypeFilter]);
 
   const nextOrderId = () => {
@@ -3003,6 +3033,40 @@ function Orders({ customers, items, orders, setOrders, gifts, setGifts, showToas
 
   return (
     <div className="space-y-4">
+      {/* 🆕 상품별 판매 수량 (필터 반영) */}
+      <div className="bg-white rounded-[12px] border border-[#E4E4E7] overflow-hidden">
+        <div className="px-5 py-3 border-b border-[#E4E4E7] flex items-center justify-between">
+          <div>
+            <div className="text-[13px] font-semibold text-[#09090B]">상품별 판매 수량</div>
+            <div className="text-[11px] text-[#71717A] mt-0.5">현재 필터 기준 · 취소/서비스 제외</div>
+          </div>
+          <div className="text-[11px] text-[#71717A]">
+            총 <span className="font-semibold text-[#09090B] tabular-nums">
+              {Object.values(productCounts).reduce((s, v) => s + v, 0)}
+            </span>개
+          </div>
+        </div>
+        <div className="grid grid-cols-6 divide-x divide-[#E4E4E7]">
+          {[
+            { name: '배추김치 4KG', label: '배추김치 4KG', short: '1세트' },
+            { name: '배추김치 4KG - 2세트(할인)', label: '배추김치 4KG', short: '2세트' },
+            { name: '배추김치 4KG - 3세트(할인)', label: '배추김치 4KG', short: '3세트' },
+            { name: '총각김치 2KG', label: '총각김치 2KG', short: '1세트' },
+            { name: '총각김치 2KG - 2세트(할인)', label: '총각김치 2KG', short: '2세트' },
+            { name: '혼합세트 (배추4KG + 총각2KG)', label: '혼합세트', short: '배추+총각' },
+          ].map(p => (
+            <div key={p.name} className="px-4 py-3">
+              <div className="text-[11px] font-medium text-[#71717A] mb-0.5">{p.label}</div>
+              <div className="text-[10px] text-[#A1A1AA] mb-1.5">{p.short}</div>
+              <div className="text-[22px] font-semibold text-[#09090B] tabular-nums tracking-tight">
+                {productCounts[p.name]}
+                <span className="text-[12px] text-[#71717A] ml-1 font-normal">개</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* 검색 + 새 주문 버튼 */}
       <div className="flex items-center gap-3">
         <div className="relative flex-1 max-w-md">
