@@ -1672,57 +1672,81 @@ export default function App() {
           ))}
         </nav>
 
-        <div className="px-3 py-3 border-t border-stone-100 space-y-2">
-          <button
-            onClick={() => {
-              try {
-                const filename = exportToExcel(customers, items, orders);
-                showToast(`${filename} 다운로드 완료!`);
-              } catch (e) {
-                console.error(e);
-                showToast('백업 실패. 다시 시도해주세요.', 'error');
-              }
-            }}
-            className="w-full flex items-center gap-2 px-3 py-2.5 bg-gradient-to-br from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white rounded-lg text-sm font-semibold shadow-sm transition-all"
-          >
-            <FileDown size={16} />
-            <span>엑셀 백업 다운로드</span>
-          </button>
+        <div className="px-3 py-3 border-t border-stone-100 space-y-3">
+          {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+          {/* 🗂️ 섹션 1: 전체 데이터 백업 */}
+          {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-1.5 px-1">
+              <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">💾 전체 데이터 백업</span>
+            </div>
+            <button
+              onClick={() => {
+                try {
+                  const filename = exportToExcel(customers, items, orders);
+                  showToast(`${filename} 다운로드 완료!`);
+                } catch (e) {
+                  console.error(e);
+                  showToast('백업 실패. 다시 시도해주세요.', 'error');
+                }
+              }}
+              className="w-full flex items-center gap-2 px-3 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-all"
+              title="고객·주문·품목 전체를 엑셀로 저장"
+            >
+              <FileDown size={14} />
+              <span className="flex-1 text-left">백업 내보내기</span>
+              <span className="text-[9px] opacity-80">.xlsx</span>
+            </button>
+            <BackupRestoreButton
+              setCustomers={setCustomers}
+              setItems={setItems}
+              setOrders={setOrders}
+              showToast={showToast}
+            />
+          </div>
 
-          {/* 📥 엑셀 백업 복원 버튼 */}
-          <BackupRestoreButton
-            setCustomers={setCustomers}
-            setItems={setItems}
-            setOrders={setOrders}
-            showToast={showToast}
-          />
+          {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+          {/* 🚚 섹션 2: 배차 관리 (통합) */}
+          {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-1.5 px-1">
+              <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider">🚚 배차 관리</span>
+            </div>
+            <ExcelUploadButton
+              customers={customers}
+              items={items}
+              orders={orders}
+              setCustomers={setCustomers}
+              setOrders={setOrders}
+              showToast={showToast}
+            />
+          </div>
 
-          {/* 📤 배차 엑셀 업로드 버튼 */}
-          <ExcelUploadButton
-            customers={customers}
-            items={items}
-            orders={orders}
-            setCustomers={setCustomers}
-            setOrders={setOrders}
-            showToast={showToast}
-          />
+          {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+          {/* ⚙️ 섹션 3: 계정 */}
+          {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+          <div className="space-y-1.5 pt-2 border-t border-stone-100">
+            <div className="flex items-center gap-1.5 px-1">
+              <span className="text-[10px] font-bold text-stone-500 uppercase tracking-wider">⚙️ 계정</span>
+            </div>
+            <button
+              onClick={() => setShowChangePassword(true)}
+              className="w-full flex items-center gap-2 px-3 py-2 bg-stone-50 hover:bg-stone-100 text-stone-600 rounded-lg text-xs font-medium transition-all"
+            >
+              <span className="text-sm">🔐</span>
+              <span className="flex-1 text-left">비밀번호 변경</span>
+            </button>
+            <button
+              onClick={handleLogout}
+              className="w-full flex items-center gap-2 px-3 py-2 bg-stone-50 hover:bg-red-50 hover:text-red-700 text-stone-500 rounded-lg text-xs font-medium transition-all"
+            >
+              <LogOut size={13} />
+              <span className="flex-1 text-left">로그아웃</span>
+            </button>
+          </div>
 
-          <button
-            onClick={() => setShowChangePassword(true)}
-            className="w-full flex items-center gap-2 px-3 py-2 bg-stone-50 hover:bg-indigo-50 hover:text-indigo-700 text-stone-500 rounded-lg text-xs font-medium transition-all border border-stone-100"
-          >
-            <span className="text-sm">🔐</span>
-            <span>비밀번호 변경</span>
-          </button>
-          <button
-            onClick={handleLogout}
-            className="w-full flex items-center gap-2 px-3 py-2 bg-stone-50 hover:bg-red-50 hover:text-red-700 text-stone-500 rounded-lg text-xs font-medium transition-all border border-stone-100"
-          >
-            <LogOut size={13} />
-            <span>로그아웃</span>
-          </button>
-          <div className="text-[10px] text-stone-500 leading-relaxed px-1">
-            💾 데이터가 자동 저장됩니다. 주 1회 백업을 권장해요.
+          <div className="text-[9px] text-stone-400 leading-relaxed px-1 pt-2 border-t border-stone-100">
+            💡 주 1회 '백업 내보내기' 권장
           </div>
         </div>
       </aside>
@@ -1908,293 +1932,380 @@ function Dashboard({ customers, items, orders, setView }) {
   const recent = [...orders].slice(-5).reverse();
 
   return (
-    <div className="space-y-6">
-      {/* 보조 통계 바: 서비스 + 배송료 + 픽업 */}
-      <div className="grid grid-cols-3 gap-4">
-        <div className="bg-gradient-to-br from-amber-50 to-white border-2 border-amber-200 rounded-2xl p-4 flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-1.5 mb-1">
-              <span className="text-lg">🎁</span>
-              <span className="text-xs font-bold text-amber-900">서비스 (매출 제외)</span>
-            </div>
-            <div className="text-[11px] text-amber-700">무료 제공한 주문 · 매출 미포함</div>
-          </div>
-          <div className="text-right">
-            <div className="text-2xl font-bold text-amber-800 tabular-nums">{stats.serviceCount}<span className="text-xs font-normal text-amber-600 ml-0.5">건</span></div>
-            <div className="text-xs text-amber-700 tabular-nums">환산 {formatWon(stats.serviceSales)}</div>
-          </div>
-        </div>
-        <div className="bg-gradient-to-br from-orange-50 to-white border-2 border-orange-200 rounded-2xl p-4 flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-1.5 mb-1">
-              <span className="text-lg">🚚</span>
-              <span className="text-xs font-bold text-orange-900">배송료 수입</span>
-            </div>
-            <div className="text-[11px] text-orange-700">$100 미만 · 주문당 $10</div>
-          </div>
-          <div className="text-right">
-            <div className="text-2xl font-bold text-orange-800 tabular-nums">{formatWon(stats.shippingFeeTotal)}</div>
-            <div className="text-xs text-orange-700 tabular-nums">{stats.shippingFeeCount}건 부과</div>
-          </div>
-        </div>
-        <div className="bg-gradient-to-br from-sky-50 to-white border-2 border-sky-200 rounded-2xl p-4 flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-1.5 mb-1">
-              <span className="text-lg">📍</span>
-              <span className="text-xs font-bold text-sky-900">픽업 주문</span>
-            </div>
-            <div className="text-[11px] text-sky-700">직접 픽업 · 배송료 면제</div>
-          </div>
-          <div className="text-right">
-            <div className="text-2xl font-bold text-sky-800 tabular-nums">{stats.pickupCount}<span className="text-xs font-normal text-sky-600 ml-0.5">건</span></div>
-            <div className="text-xs text-sky-700 tabular-nums">배송료 없음</div>
-          </div>
-        </div>
-      </div>
+    <div className="space-y-5">
+      {/* ══════════════════════════════════════════════════ */}
+      {/* 🚨 섹션 1: 오늘 확인할 알림 (최우선) */}
+      {/* ══════════════════════════════════════════════════ */}
+      {(() => {
+        const unpaidCount = orders.filter(o => o.paymentStatus === '미결제' && o.shipStatus !== '취소' && !o.isService).length;
+        const waitingCount = waitingStockCount;
+        const lowStockCount = stats.lowStock;
+        const prepareCount = orders.filter(o => o.shipStatus === '배송준비중').length;
+        const hasAlerts = unpaidCount > 0 || waitingCount > 0 || lowStockCount > 0 || prepareCount > 0;
 
-      <div className="grid grid-cols-6 gap-4">
-        <KpiCard label="총 주문수" value={stats.totalOrders} unit="건" accent="bg-red-800" icon={ShoppingCart} />
-        <KpiCard label="총 매출" value={formatNum(stats.totalSales)} unit="$" accent="bg-stone-800" icon={TrendingUp} big />
-        <KpiCard label="평균 주문액" value={formatNum(stats.avgOrder)} unit="$" accent="bg-stone-600" />
-        <KpiCard label="VIP 고객" value={stats.vipCount} unit="명" accent="bg-rose-700" />
-        <KpiCard label="배송 완료율" value={stats.deliveryRate.toFixed(1)} unit="%" accent="bg-emerald-700" />
-        <KpiCard label="재고 경보" value={stats.lowStock} unit="개" accent="bg-amber-600" warn={stats.lowStock > 0} />
-      </div>
-
-      <div className="grid grid-cols-3 gap-6">
-        <div className="col-span-2 bg-white rounded-2xl border border-stone-200 p-6">
-          <div className="flex items-center justify-between mb-5">
-            <div>
-              <h2 className="font-serif-ko text-lg font-bold text-stone-800">품목별 판매 현황</h2>
-              <p className="text-xs text-stone-500 mt-0.5">매출 기준 정렬 · 🥇🥈🥉 순위 표시</p>
+        if (!hasAlerts) {
+          return (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-center gap-3">
+              <span className="text-2xl">✅</span>
+              <div>
+                <div className="font-bold text-emerald-900 text-sm">모든 것이 순조롭습니다</div>
+                <div className="text-xs text-emerald-700">현재 처리할 긴급 사항이 없습니다</div>
+              </div>
             </div>
-            <button onClick={() => setView('items')} className="text-xs text-stone-500 hover:text-stone-800">자세히 →</button>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            {[...itemStats].sort((a, b) => b.sales - a.sales).map((it, idx) => {
-              const pct = totalItemSales > 0 ? (it.sales / totalItemSales) * 100 : 0;
-              const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : null;
-              const icon = it.name.includes('배추') && !it.name.includes('총각') && !it.name.includes('혼합') ? '🥬' :
-                           it.name.includes('총각') && !it.name.includes('배추') && !it.name.includes('혼합') ? '🥕' :
-                           it.name.includes('혼합') ? '🎁' : '📦';
+          );
+        }
 
-              return (
-                <div
-                  key={it.code}
-                  className={`relative p-4 rounded-xl border-2 transition-all hover:shadow-sm ${
-                    idx === 0 ? 'border-amber-300 bg-gradient-to-br from-amber-50 to-white' :
-                    it.isSet ? 'border-stone-200 bg-gradient-to-br from-orange-50/30 to-white' :
-                    'border-stone-200 bg-gradient-to-br from-red-50/30 to-white'
-                  }`}
+        return (
+          <div className="bg-gradient-to-r from-amber-50 via-red-50 to-amber-50 border-2 border-amber-200 rounded-2xl p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-lg">🔔</span>
+              <h3 className="font-bold text-stone-800 text-sm">확인이 필요한 항목</h3>
+              <span className="text-[10px] text-stone-500 ml-auto">클릭하여 이동</span>
+            </div>
+            <div className="grid grid-cols-4 gap-3">
+              {prepareCount > 0 && (
+                <button
+                  onClick={() => setView('shipping')}
+                  className="bg-white hover:bg-blue-50 border border-blue-200 rounded-xl p-3 text-left transition-all group"
                 >
-                  {/* 순위 메달 */}
-                  {medal && (
-                    <div className="absolute -top-2 -right-2 w-8 h-8 bg-white rounded-full shadow-md flex items-center justify-center text-lg">
-                      {medal}
-                    </div>
-                  )}
-
-                  {/* 상단: 아이콘 + 타입 배지 */}
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="text-2xl">{icon}</div>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${
-                      it.isSet ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
-                    }`}>
-                      {it.isSet ? '세트' : '기본'}
-                    </span>
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className="text-sm">📦</span>
+                    <span className="text-[10px] font-bold text-blue-700">배송 대기</span>
                   </div>
-
-                  {/* 품목명 */}
-                  <div className="font-semibold text-sm text-stone-800 leading-tight mb-2 min-h-[36px]">
-                    {it.name}
+                  <div className="text-2xl font-bold text-blue-900 tabular-nums">{prepareCount}<span className="text-xs text-blue-500 ml-0.5">건</span></div>
+                  <div className="text-[10px] text-blue-600 mt-0.5 group-hover:underline">→ 배송관리</div>
+                </button>
+              )}
+              {unpaidCount > 0 && (
+                <button
+                  onClick={() => setView('orders')}
+                  className="bg-white hover:bg-red-50 border border-red-200 rounded-xl p-3 text-left transition-all group"
+                >
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className="text-sm">💳</span>
+                    <span className="text-[10px] font-bold text-red-700">미결제</span>
                   </div>
-
-                  {/* 매출 강조 */}
-                  <div className="mb-2">
-                    <div className="text-xs text-stone-500 mb-0.5">매출</div>
-                    <div className="text-xl font-bold text-red-800 tabular-nums">{formatWon(it.sales)}</div>
+                  <div className="text-2xl font-bold text-red-900 tabular-nums">{unpaidCount}<span className="text-xs text-red-500 ml-0.5">건</span></div>
+                  <div className="text-[10px] text-red-600 mt-0.5 group-hover:underline">→ 수금 필요</div>
+                </button>
+              )}
+              {waitingCount > 0 && (
+                <button
+                  onClick={() => setView('orders')}
+                  className="bg-white hover:bg-purple-50 border border-purple-200 rounded-xl p-3 text-left transition-all group"
+                >
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className="text-sm">⏳</span>
+                    <span className="text-[10px] font-bold text-purple-700">입고대기</span>
                   </div>
-
-                  {/* 주문 건수 · 판매 수량 */}
-                  <div className="grid grid-cols-2 gap-2 pt-2 border-t border-stone-100">
-                    <div>
-                      <div className="text-[10px] text-stone-400 uppercase tracking-wider">주문</div>
-                      <div className="text-sm font-bold text-stone-700 tabular-nums">{it.count}<span className="text-xs font-normal text-stone-400 ml-0.5">건</span></div>
-                    </div>
-                    <div>
-                      <div className="text-[10px] text-stone-400 uppercase tracking-wider">수량</div>
-                      <div className="text-sm font-bold text-stone-700 tabular-nums">{it.qty}<span className="text-xs font-normal text-stone-400 ml-0.5">개</span></div>
-                    </div>
+                  <div className="text-2xl font-bold text-purple-900 tabular-nums">{waitingCount}<span className="text-xs text-purple-500 ml-0.5">건</span></div>
+                  <div className="text-[10px] text-purple-600 mt-0.5 group-hover:underline">→ 선주문</div>
+                </button>
+              )}
+              {lowStockCount > 0 && (
+                <button
+                  onClick={() => setView('items')}
+                  className="bg-white hover:bg-amber-50 border border-amber-200 rounded-xl p-3 text-left transition-all group"
+                >
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className="text-sm">⚠️</span>
+                    <span className="text-[10px] font-bold text-amber-700">재고 부족</span>
                   </div>
+                  <div className="text-2xl font-bold text-amber-900 tabular-nums">{lowStockCount}<span className="text-xs text-amber-500 ml-0.5">종</span></div>
+                  <div className="text-[10px] text-amber-600 mt-0.5 group-hover:underline">→ 입고 필요</div>
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
-                  {/* 비중 프로그레스 */}
-                  <div className="mt-3">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-[10px] text-stone-500">매출 비중</span>
-                      <span className="text-[10px] font-semibold text-stone-700">{pct.toFixed(1)}%</span>
-                    </div>
-                    <div className="h-1.5 bg-stone-100 rounded-full overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all ${
-                          idx === 0 ? 'bg-gradient-to-r from-amber-400 to-amber-500' :
-                          it.isSet ? 'bg-gradient-to-r from-orange-400 to-orange-500' :
-                          'bg-gradient-to-r from-red-700 to-red-800'
-                        }`}
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+      {/* ══════════════════════════════════════════════════ */}
+      {/* 📊 섹션 2: 핵심 KPI (매출/주문/완료율) */}
+      {/* ══════════════════════════════════════════════════ */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="font-bold text-stone-700 text-sm flex items-center gap-2">
+            <span>📊</span>
+            <span>핵심 실적</span>
+          </h2>
+          <div className="text-[10px] text-stone-400">전체 누적 기준 · 서비스/취소 제외</div>
+        </div>
+        <div className="grid grid-cols-4 gap-4">
+          {/* 총 매출 (가장 크게) */}
+          <div className="col-span-2 bg-gradient-to-br from-red-700 to-red-900 rounded-2xl p-5 text-white shadow-sm">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-1.5">
+                <TrendingUp size={14} className="opacity-80" />
+                <span className="text-xs font-semibold opacity-90">총 매출</span>
+              </div>
+              <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded font-semibold">실매출</span>
+            </div>
+            <div className="flex items-baseline gap-1">
+              <span className="text-3xl font-bold tabular-nums">${formatNum(stats.totalSales)}</span>
+            </div>
+            <div className="text-[11px] opacity-80 mt-2 flex items-center gap-3">
+              <span>주문 {stats.totalOrders}건</span>
+              <span className="opacity-40">|</span>
+              <span>평균 ${formatNum(stats.avgOrder)}</span>
+            </div>
           </div>
 
-          {/* 하단 요약 */}
-          <div className="mt-5 pt-4 border-t border-stone-100 grid grid-cols-3 gap-4">
-            <div className="text-center">
-              <div className="text-[10px] text-stone-500 uppercase tracking-wider mb-1">총 매출</div>
-              <div className="text-lg font-bold text-red-800 tabular-nums">{formatWon(totalItemSales)}</div>
+          {/* 배송 완료율 */}
+          <div className="bg-white border border-stone-200 rounded-2xl p-4">
+            <div className="flex items-center gap-1.5 mb-2">
+              <Truck size={13} className="text-emerald-600" />
+              <span className="text-xs font-semibold text-stone-600">배송 완료율</span>
             </div>
-            <div className="text-center border-x border-stone-100">
-              <div className="text-[10px] text-stone-500 uppercase tracking-wider mb-1">총 판매량</div>
-              <div className="text-lg font-bold text-stone-800 tabular-nums">
-                {itemStats.reduce((s, i) => s + i.qty, 0)}<span className="text-xs font-normal text-stone-400 ml-0.5">개</span>
-              </div>
+            <div className="flex items-baseline gap-1 mb-2">
+              <span className="text-2xl font-bold text-emerald-700 tabular-nums">{stats.deliveryRate.toFixed(1)}</span>
+              <span className="text-xs text-stone-400">%</span>
             </div>
-            <div className="text-center">
-              <div className="text-[10px] text-stone-500 uppercase tracking-wider mb-1">베스트셀러</div>
-              <div className="text-xs font-bold text-stone-800 truncate">
-                {[...itemStats].sort((a, b) => b.qty - a.qty)[0]?.name || '-'}
-              </div>
+            <div className="h-1.5 bg-stone-100 rounded-full overflow-hidden">
+              <div className="h-full bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-full" style={{width: `${stats.deliveryRate}%`}} />
+            </div>
+          </div>
+
+          {/* VIP 고객 */}
+          <div className="bg-white border border-stone-200 rounded-2xl p-4">
+            <div className="flex items-center gap-1.5 mb-2">
+              <Users size={13} className="text-rose-600" />
+              <span className="text-xs font-semibold text-stone-600">고객 현황</span>
+            </div>
+            <div className="flex items-baseline gap-1 mb-1">
+              <span className="text-2xl font-bold text-stone-800 tabular-nums">{customers.length}</span>
+              <span className="text-xs text-stone-400">명</span>
+            </div>
+            <div className="text-[10px] text-rose-700">
+              <span className="font-bold">VIP {stats.vipCount}</span>명
+              <span className="text-stone-400 mx-1">·</span>
+              <span>B2B {customers.filter(c => c.isB2B).length}곳</span>
             </div>
           </div>
         </div>
+      </div>
 
-        <div className="bg-white rounded-2xl border border-stone-200 p-6">
-          <div className="flex items-center justify-between mb-5">
-            <h2 className="font-serif-ko text-lg font-bold text-stone-800">배송 상태</h2>
-            {cancelCount > 0 && (
-              <span className="text-[10px] text-stone-400">
-                취소 {cancelCount}건 제외
-              </span>
-            )}
+      {/* ══════════════════════════════════════════════════ */}
+      {/* 🚚 섹션 3: 배송 현황 + Zone별 (실무 핵심) */}
+      {/* ══════════════════════════════════════════════════ */}
+      <div className="grid grid-cols-3 gap-4">
+        {/* 배송 상태 (2/3) */}
+        <div className="col-span-2 bg-white border border-stone-200 rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-bold text-stone-700 text-sm flex items-center gap-2">
+              <span>🚚</span>
+              <span>배송 현황</span>
+              {cancelCount > 0 && (
+                <span className="text-[10px] text-stone-400 font-normal">(취소 {cancelCount}건 제외)</span>
+              )}
+            </h2>
+            <button onClick={() => setView('shipping')} className="text-[11px] text-stone-500 hover:text-stone-800 font-medium">자세히 →</button>
           </div>
-          <div className="space-y-2.5">
+
+          {/* 4개 상태 한 줄로 */}
+          <div className="grid grid-cols-4 gap-2 mb-4">
             {shipStats.map(s => {
-              // 취소 제외한 활성 주문 대비 %
               const activeTotal = orders.filter(o => o.shipStatus !== '취소').length;
               const pct = activeTotal > 0 ? (s.count / activeTotal) * 100 : 0;
+              const colors = {
+                '배송준비중': 'bg-stone-50 border-stone-200 text-stone-800',
+                '출고대기': 'bg-amber-50 border-amber-200 text-amber-900',
+                '배송중': 'bg-blue-50 border-blue-200 text-blue-900',
+                '배송완료': 'bg-emerald-50 border-emerald-200 text-emerald-900',
+              };
               return (
-                <div key={s.status} className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-stone-50">
-                  <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${shipStatusStyle(s.status)}`}>
-                    {s.status}
-                  </span>
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs text-stone-400 tabular-nums w-10 text-right">{pct.toFixed(0)}%</span>
-                    <span className="text-sm font-bold text-stone-800 tabular-nums w-8 text-right">{s.count}</span>
-                  </div>
+                <div key={s.status} className={`p-3 rounded-xl border-2 ${colors[s.status]}`}>
+                  <div className="text-[10px] font-semibold opacity-80 mb-1">{s.status}</div>
+                  <div className="text-2xl font-bold tabular-nums leading-tight">{s.count}</div>
+                  <div className="text-[10px] opacity-60 mt-0.5">{pct.toFixed(0)}%</div>
                 </div>
               );
             })}
-            {cancelCount > 0 && (
-              <div className="flex items-center justify-between py-1.5 px-3 rounded-lg opacity-50">
-                <span className="inline-flex items-center gap-1 text-[10px] text-stone-400">
-                  <span>🗑️</span>
-                  <span>취소된 주문</span>
-                </span>
-                <span className="text-[10px] text-stone-400 tabular-nums">{cancelCount}건</span>
-              </div>
-            )}
           </div>
 
-          {/* Zone별 배송 현황 */}
-          <div className="mt-5 pt-4 border-t border-stone-100">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-bold text-stone-700">🚚 Zone별 배송 현황</h3>
-              <button onClick={() => setView('shipping')} className="text-[10px] text-stone-400 hover:text-stone-700">관리 →</button>
+          {/* Zone별 배송 */}
+          <div className="pt-3 border-t border-stone-100">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-[11px] font-bold text-stone-600">Zone별 배송 (취소 제외)</h3>
             </div>
-            <div className="grid grid-cols-4 gap-1.5">
+            <div className="grid grid-cols-8 gap-1.5">
               {SHIPPING_ZONES.map(z => {
-                // 취소 제외한 활성 주문만 카운트
                 const cnt = orders.filter(o => o.shippingGroup === z && o.shipStatus !== '취소').length;
                 return (
                   <div key={z} className={`px-2 py-2 rounded-lg text-center ${ZONE_COLORS[z]}`}>
-                    <div className="text-[10px] font-bold opacity-80">{z.replace('Zone', 'Zone ')}</div>
-                    <div className="text-sm font-bold tabular-nums">{cnt}</div>
+                    <div className="text-[9px] font-bold opacity-80">{z.replace('Zone', 'Z')}</div>
+                    <div className="text-sm font-bold tabular-nums leading-tight">{cnt}</div>
                   </div>
                 );
               })}
             </div>
           </div>
+        </div>
 
-          {/* 미납 경보 */}
-          {orders.filter(o => o.paymentStatus === '미결제' && o.shipStatus !== '취소' && !o.isService).length > 0 && (
-            <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center justify-between">
-              <span className="text-xs font-bold text-red-800">💳 미결제 주문</span>
-              <span className="text-sm font-bold text-red-800 tabular-nums">
-                {orders.filter(o => o.paymentStatus === '미결제' && o.shipStatus !== '취소' && !o.isService).length}건
-              </span>
-            </div>
-          )}
-
-          {/* 🏢 B2B 거래처 현황 */}
-          {customers.filter(c => c.isB2B).length > 0 && (
-            <div className="mt-4 p-3 bg-indigo-50 border border-indigo-200 rounded-lg">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold text-indigo-900 flex items-center gap-1">
-                  🏢 거래처 (B2B) 현황
-                </span>
-                <button onClick={() => setView('customers')} className="text-[10px] text-indigo-600 hover:underline">관리 →</button>
-              </div>
-              <div className="grid grid-cols-2 gap-2 text-[11px]">
-                <div className="bg-white rounded px-2 py-1.5">
-                  <div className="text-stone-500">거래처 수</div>
-                  <div className="font-bold text-indigo-900 text-sm tabular-nums">{customers.filter(c => c.isB2B).length}곳</div>
-                </div>
-                <div className="bg-white rounded px-2 py-1.5">
-                  <div className="text-stone-500">미수금 합계</div>
-                  <div className="font-bold text-red-800 text-sm tabular-nums">
-                    ${formatNum(customers.filter(c => c.isB2B).reduce((s, c) => s + calcB2BReceivable(c.id, orders, items), 0))}
-                  </div>
+        {/* B2B 현황 (1/3) */}
+        <div className="bg-white border border-stone-200 rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-bold text-stone-700 text-sm flex items-center gap-2">
+              <span>🏢</span>
+              <span>B2B 거래처</span>
+            </h2>
+            <button onClick={() => setView('customers')} className="text-[11px] text-stone-500 hover:text-stone-800 font-medium">관리 →</button>
+          </div>
+          {customers.filter(c => c.isB2B).length > 0 ? (
+            <div className="space-y-3">
+              <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3">
+                <div className="text-[10px] text-indigo-700 mb-0.5">거래처 수</div>
+                <div className="text-2xl font-bold text-indigo-900 tabular-nums">
+                  {customers.filter(c => c.isB2B).length}<span className="text-xs font-normal text-indigo-500 ml-0.5">곳</span>
                 </div>
               </div>
+              <div className="bg-red-50 border border-red-200 rounded-xl p-3">
+                <div className="text-[10px] text-red-700 mb-0.5">미수금 합계</div>
+                <div className="text-xl font-bold text-red-800 tabular-nums">
+                  ${formatNum(customers.filter(c => c.isB2B).reduce((s, c) => s + calcB2BReceivable(c.id, orders, items), 0))}
+                </div>
+              </div>
+              <div className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-3">
+                <div className="text-[10px] text-indigo-700 mb-0.5">B2B 주문</div>
+                <div className="text-xl font-bold text-indigo-900 tabular-nums">
+                  {orders.filter(o => customers.find(c => c.id === o.customerId)?.isB2B && o.shipStatus !== '취소').length}<span className="text-xs font-normal text-indigo-500 ml-0.5">건</span>
+                </div>
+              </div>
             </div>
-          )}
-
-          {/* ⏳ 입고대기 주문 경보 */}
-          {orders.filter(o => o.shipStatus === '입고대기').length > 0 && (
-            <div className="mt-4 p-3 bg-purple-50 border border-purple-200 rounded-lg flex items-center justify-between">
-              <span className="text-xs font-bold text-purple-800">⏳ 입고대기 (선주문)</span>
-              <span className="text-sm font-bold text-purple-800 tabular-nums">
-                {orders.filter(o => o.shipStatus === '입고대기').length}건
-              </span>
+          ) : (
+            <div className="flex flex-col items-center justify-center h-40 text-center">
+              <span className="text-4xl mb-2 opacity-30">🏢</span>
+              <div className="text-xs text-stone-400 mb-3">등록된 거래처가 없습니다</div>
+              <button
+                onClick={() => setView('customers')}
+                className="text-[11px] text-indigo-600 hover:text-indigo-800 font-semibold bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg"
+              >
+                거래처 등록하기
+              </button>
             </div>
           )}
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-6">
-        <div className="col-span-2 bg-white rounded-2xl border border-stone-200 p-6">
-          <div className="flex items-center justify-between mb-5">
-            <h2 className="font-serif-ko text-lg font-bold text-stone-800">최근 주문</h2>
-            <button onClick={() => setView('orders')} className="text-xs text-stone-500 hover:text-stone-800">전체 보기 →</button>
+      {/* ══════════════════════════════════════════════════ */}
+      {/* 📦 섹션 4: 품목별 판매 분석 */}
+      {/* ══════════════════════════════════════════════════ */}
+      <div className="bg-white rounded-2xl border border-stone-200 p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="font-bold text-stone-700 text-sm flex items-center gap-2">
+              <span>📦</span>
+              <span>품목별 판매 현황</span>
+            </h2>
+            <p className="text-[11px] text-stone-500 mt-0.5">매출 기준 정렬 · 🥇🥈🥉 순위 표시</p>
           </div>
-          <div className="space-y-2">
+          <button onClick={() => setView('items')} className="text-[11px] text-stone-500 hover:text-stone-800 font-medium">자세히 →</button>
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          {[...itemStats].sort((a, b) => b.sales - a.sales).map((it, idx) => {
+            const pct = totalItemSales > 0 ? (it.sales / totalItemSales) * 100 : 0;
+            const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : null;
+            const icon = it.name.includes('배추') && !it.name.includes('총각') && !it.name.includes('혼합') ? '🥬' :
+                         it.name.includes('총각') && !it.name.includes('배추') && !it.name.includes('혼합') ? '🥕' :
+                         it.name.includes('혼합') ? '🎁' : '📦';
+
+            return (
+              <div
+                key={it.code}
+                className={`relative p-4 rounded-xl border-2 transition-all hover:shadow-sm ${
+                  idx === 0 ? 'border-amber-300 bg-gradient-to-br from-amber-50 to-white' :
+                  it.isSet ? 'border-stone-200 bg-gradient-to-br from-orange-50/30 to-white' :
+                  'border-stone-200 bg-gradient-to-br from-red-50/30 to-white'
+                }`}
+              >
+                {medal && (
+                  <div className="absolute -top-2 -right-2 w-8 h-8 bg-white rounded-full shadow-md flex items-center justify-center text-lg">
+                    {medal}
+                  </div>
+                )}
+
+                <div className="flex items-start justify-between mb-2">
+                  <div className="text-2xl">{icon}</div>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${
+                    it.isSet ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
+                  }`}>
+                    {it.isSet ? '세트' : '기본'}
+                  </span>
+                </div>
+
+                <div className="font-semibold text-sm text-stone-800 leading-tight mb-2 min-h-[36px]">
+                  {it.name}
+                </div>
+
+                <div className="mb-2">
+                  <div className="text-[10px] text-stone-500">매출</div>
+                  <div className="text-lg font-bold text-red-800 tabular-nums">{formatWon(it.sales)}</div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-stone-100">
+                  <div>
+                    <div className="text-[10px] text-stone-400 uppercase tracking-wider">주문</div>
+                    <div className="text-xs font-bold text-stone-700 tabular-nums">{it.count}<span className="text-[10px] font-normal text-stone-400 ml-0.5">건</span></div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-stone-400 uppercase tracking-wider">수량</div>
+                    <div className="text-xs font-bold text-stone-700 tabular-nums">{it.qty}<span className="text-[10px] font-normal text-stone-400 ml-0.5">개</span></div>
+                  </div>
+                </div>
+
+                <div className="mt-2">
+                  <div className="flex items-center justify-between mb-0.5">
+                    <span className="text-[10px] text-stone-500">비중</span>
+                    <span className="text-[10px] font-semibold text-stone-700">{pct.toFixed(1)}%</span>
+                  </div>
+                  <div className="h-1 bg-stone-100 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full ${
+                        idx === 0 ? 'bg-gradient-to-r from-amber-400 to-amber-500' :
+                        it.isSet ? 'bg-gradient-to-r from-orange-400 to-orange-500' :
+                        'bg-gradient-to-r from-red-700 to-red-800'
+                      }`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ══════════════════════════════════════════════════ */}
+      {/* 👥 섹션 5: 최근 주문 + 고객 등급 */}
+      {/* ══════════════════════════════════════════════════ */}
+      <div className="grid grid-cols-3 gap-4">
+        <div className="col-span-2 bg-white rounded-2xl border border-stone-200 p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-bold text-stone-700 text-sm flex items-center gap-2">
+              <span>🕐</span>
+              <span>최근 주문</span>
+            </h2>
+            <button onClick={() => setView('orders')} className="text-[11px] text-stone-500 hover:text-stone-800 font-medium">전체 보기 →</button>
+          </div>
+          <div className="space-y-1.5">
             {recent.map(o => {
               const cust = customers.find(c => c.id === o.customerId);
               const it = items.find(i => i.name === o.itemName);
               return (
-                <div key={o.id} className="flex items-center justify-between px-4 py-3 rounded-xl bg-stone-50 hover:bg-stone-100">
-                  <div className="flex items-center gap-4">
-                    <div className="text-xs font-mono text-stone-500">{o.id}</div>
-                    <div>
-                      <div className="font-medium text-sm text-stone-800">{cust?.name || '-'}</div>
-                      <div className="text-xs text-stone-500">{o.itemName} × {o.qty}</div>
+                <div key={o.id} className="flex items-center justify-between px-3 py-2 rounded-lg bg-stone-50 hover:bg-stone-100">
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <div className="text-[10px] font-mono text-stone-400 w-16 shrink-0">{o.id}</div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-medium text-xs text-stone-800 truncate">{cust?.name || '-'}</span>
+                        {cust?.isB2B && <span className="text-[9px] px-1 py-0.5 rounded bg-indigo-600 text-white font-bold shrink-0">B2B</span>}
+                      </div>
+                      <div className="text-[10px] text-stone-500 truncate">{o.itemName} × {o.qty}</div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-4">
-                    <span className={`text-xs px-2 py-0.5 rounded ${shipStatusStyle(o.shipStatus)}`}>{o.shipStatus}</span>
-                    <span className="text-sm font-bold text-stone-800 tabular-nums">{formatWon((it?.price || 0) * o.qty)}</span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded ${shipStatusStyle(o.shipStatus)}`}>{o.shipStatus}</span>
+                    <span className="text-xs font-bold text-stone-800 tabular-nums w-16 text-right">{formatWon((it?.price || 0) * o.qty)}</span>
                   </div>
                 </div>
               );
@@ -2202,16 +2313,19 @@ function Dashboard({ customers, items, orders, setView }) {
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl border border-stone-200 p-6">
-          <h2 className="font-serif-ko text-lg font-bold text-stone-800 mb-5">고객 등급 분포</h2>
-          <div className="space-y-3">
+        <div className="bg-white rounded-2xl border border-stone-200 p-5">
+          <h2 className="font-bold text-stone-700 text-sm flex items-center gap-2 mb-4">
+            <span>🎖️</span>
+            <span>고객 등급 분포</span>
+          </h2>
+          <div className="space-y-2.5">
             {gradeStats.map(g => {
               const pct = customers.length > 0 ? (g.count / customers.length) * 100 : 0;
               return (
                 <div key={g.grade}>
-                  <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center justify-between mb-1">
                     <span className={`text-xs px-2 py-0.5 rounded font-medium ${gradeStyle(g.grade)}`}>{g.grade}</span>
-                    <span className="text-sm font-bold text-stone-800 tabular-nums">{g.count}명</span>
+                    <span className="text-xs font-bold text-stone-800 tabular-nums">{g.count}명</span>
                   </div>
                   <div className="h-1.5 bg-stone-100 rounded-full overflow-hidden">
                     <div className="h-full bg-stone-700 rounded-full" style={{ width: `${pct}%` }} />
@@ -2220,9 +2334,66 @@ function Dashboard({ customers, items, orders, setView }) {
               );
             })}
           </div>
-          <div className="mt-5 pt-5 border-t border-stone-100">
-            <div className="text-xs text-stone-500 mb-1">총 고객수</div>
-            <div className="text-2xl font-bold text-stone-800 tabular-nums">{customers.length}<span className="text-sm text-stone-400 ml-1">명</span></div>
+          <div className="mt-4 pt-3 border-t border-stone-100 grid grid-cols-2 gap-2">
+            <div>
+              <div className="text-[10px] text-stone-500">전체 고객</div>
+              <div className="text-lg font-bold text-stone-800 tabular-nums">{customers.length}<span className="text-[10px] text-stone-400 ml-0.5">명</span></div>
+            </div>
+            <div>
+              <div className="text-[10px] text-indigo-700">B2B 거래처</div>
+              <div className="text-lg font-bold text-indigo-900 tabular-nums">{customers.filter(c => c.isB2B).length}<span className="text-[10px] text-indigo-500 ml-0.5">곳</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ══════════════════════════════════════════════════ */}
+      {/* 📎 섹션 6: 부가 지표 (맨 아래, 작게) */}
+      {/* ══════════════════════════════════════════════════ */}
+      <div>
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-xs font-bold text-stone-500">📎 부가 지표</span>
+          <span className="text-[10px] text-stone-400">참고용</span>
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <div className="bg-white border border-stone-200 rounded-xl p-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-base">🎁</span>
+              <div>
+                <div className="text-[11px] font-semibold text-stone-700">서비스 증정</div>
+                <div className="text-[10px] text-stone-400">매출 제외</div>
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-base font-bold text-stone-800 tabular-nums">{stats.serviceCount}<span className="text-[10px] font-normal text-stone-400 ml-0.5">건</span></div>
+              <div className="text-[10px] text-stone-500">환산 {formatWon(stats.serviceSales)}</div>
+            </div>
+          </div>
+          <div className="bg-white border border-stone-200 rounded-xl p-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-base">🚚</span>
+              <div>
+                <div className="text-[11px] font-semibold text-stone-700">배송료 수입</div>
+                <div className="text-[10px] text-stone-400">$100 미만 · $10/건</div>
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-base font-bold text-stone-800 tabular-nums">{formatWon(stats.shippingFeeTotal)}</div>
+              <div className="text-[10px] text-stone-500">{stats.shippingFeeCount}건 부과</div>
+            </div>
+          </div>
+          <div className="bg-white border border-stone-200 rounded-xl p-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-base">📍</span>
+              <div>
+                <div className="text-[11px] font-semibold text-stone-700">픽업 주문</div>
+                <div className="text-[10px] text-stone-400">배송료 면제</div>
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-base font-bold text-stone-800 tabular-nums">{stats.pickupCount}<span className="text-[10px] font-normal text-stone-400 ml-0.5">건</span></div>
+              <div className="text-[10px] text-stone-500">직접 픽업</div>
+            </div>
           </div>
         </div>
       </div>
@@ -6321,10 +6492,12 @@ function BackupRestoreButton({ setCustomers, setItems, setOrders, showToast }) {
       <button
         onClick={() => fileInputRef.current?.click()}
         disabled={parsing}
-        className="w-full flex items-center gap-2 px-3 py-2.5 bg-gradient-to-br from-sky-600 to-sky-700 hover:from-sky-700 hover:to-sky-800 text-white rounded-lg text-sm font-semibold shadow-sm transition-all disabled:opacity-60"
+        className="w-full flex items-center gap-2 px-3 py-2.5 bg-white hover:bg-emerald-50 border-2 border-emerald-600 text-emerald-700 rounded-lg text-xs font-semibold transition-all disabled:opacity-60"
+        title="백업 엑셀 파일에서 데이터 복원"
       >
-        <span className="text-base">📥</span>
-        <span>{parsing ? '읽는 중...' : '엑셀 백업 복원'}</span>
+        <span className="text-sm">📥</span>
+        <span className="flex-1 text-left">{parsing ? '읽는 중...' : '백업 복원하기'}</span>
+        <span className="text-[9px] opacity-60">.xlsx</span>
       </button>
 
       {/* 미리보기 모달 */}
@@ -6542,29 +6715,33 @@ function ExcelUploadButton({ customers, items, orders, setCustomers, setOrders, 
       {/* 1. 양식 다운로드 */}
       <button
         onClick={handleDownloadTemplate}
-        className="w-full flex items-center gap-2 px-3 py-2.5 bg-gradient-to-br from-indigo-500 to-indigo-700 hover:from-indigo-600 hover:to-indigo-800 text-white rounded-lg text-sm font-semibold shadow-sm transition-all"
+        className="w-full flex items-center gap-2 px-3 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-all"
+        title="현재 주문 데이터로 배차 엑셀 양식 생성"
       >
-        <FileDown size={16} />
-        <span>📥 배차 양식 다운로드</span>
+        <FileDown size={14} />
+        <span className="flex-1 text-left">양식 다운로드</span>
+        <span className="text-[9px] opacity-80">.xlsx</span>
       </button>
 
       {/* 2. 엑셀 업로드 */}
       <button
         onClick={() => fileInputRef.current?.click()}
         disabled={parsing}
-        className="w-full flex items-center gap-2 px-3 py-2.5 bg-gradient-to-br from-sky-600 to-sky-700 hover:from-sky-700 hover:to-sky-800 disabled:from-stone-300 disabled:to-stone-400 text-white rounded-lg text-sm font-semibold shadow-sm transition-all"
+        className="w-full flex items-center gap-2 px-3 py-2.5 bg-white hover:bg-indigo-50 border-2 border-indigo-600 text-indigo-700 rounded-lg text-xs font-semibold transition-all disabled:opacity-60"
+        title="수정한 배차 엑셀을 업로드하여 배송 정보 적용"
       >
-        <Download size={16} className="rotate-180" />
-        <span>{parsing ? '분석 중...' : '📤 엑셀 업로드 (배차 적용)'}</span>
+        <Download size={14} className="rotate-180" />
+        <span className="flex-1 text-left">{parsing ? '분석 중...' : '배차 업로드'}</span>
+        <span className="text-[9px] opacity-60">.xlsx</span>
       </button>
 
       {/* 3. 도움말 */}
       <button
         onClick={() => setShowHelp(true)}
-        className="w-full flex items-center gap-1.5 px-3 py-1.5 text-[11px] text-stone-500 hover:text-stone-800 hover:bg-stone-50 rounded-lg transition-all"
+        className="w-full flex items-center gap-1.5 px-3 py-1 text-[10px] text-stone-500 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg transition-all"
       >
         <span>❓</span>
-        <span>엑셀 업로드 사용법 보기</span>
+        <span>배차 업로드 사용법</span>
       </button>
 
       {showHelp && <ExcelHelpModal onClose={() => setShowHelp(false)} />}
