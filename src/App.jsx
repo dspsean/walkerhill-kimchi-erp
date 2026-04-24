@@ -2100,7 +2100,7 @@ export default function App() {
         <div className="p-8 max-w-[1600px]">
           {view === 'dashboard' && <Dashboard customers={customers} items={itemsWithStock} orders={orders} gifts={gifts} setView={setView} />}
           {view === 'orders' && <Orders customers={customers} items={itemsWithStock} orders={orders} setOrders={setOrders} gifts={gifts} setGifts={saveGifts} showToast={showToast} />}
-          {view === 'customers' && <Customers customers={customers} setCustomers={setCustomers} items={itemsWithStock} orders={orders} showToast={showToast} />}
+          {view === 'customers' && <Customers customers={customers} setCustomers={setCustomers} items={itemsWithStock} orders={orders} setOrders={setOrders} showToast={showToast} />}
           {view === 'items' && <Items items={itemsWithStock} setItems={setItems} showToast={showToast} />}
           {view === 'gifts' && <Gifts gifts={gifts} setGifts={saveGifts} orders={orders} setOrders={setOrders} customers={customers} items={itemsWithStock} showToast={showToast} setView={setView} />}
           {view === 'shipping' && <Shipping customers={customers} orders={orders} setOrders={setOrders} showToast={showToast} />}
@@ -4146,7 +4146,7 @@ function MsgBlock({ title, msg, onCopy, copied }) {
   );
 }
 
-function Customers({ customers, setCustomers, items, orders, showToast }) {
+function Customers({ customers, setCustomers, items, orders, showToast, setOrders }) {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [gradeFilter, setGradeFilter] = useState('');
@@ -4158,6 +4158,7 @@ function Customers({ customers, setCustomers, items, orders, showToast }) {
   const [editTarget, setEditTarget] = useState(null);
   const [historyTarget, setHistoryTarget] = useState(null);
   const [displayLimit, setDisplayLimit] = useState(50);
+  const [showDuplicates, setShowDuplicates] = useState(false);  // 🆕 중복 찾기 모달
 
   // 🆕 체크박스
   const [selectedIds, setSelectedIds] = useState(new Set());
@@ -4329,7 +4330,7 @@ function Customers({ customers, setCustomers, items, orders, showToast }) {
 
   return (
     <div className="space-y-4">
-      {/* 검색 + 고객 추가 */}
+      {/* 검색 + 고객 추가 + 중복 찾기 */}
       <div className="flex items-center gap-3">
         <div className="relative flex-1 max-w-md">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#A1A1AA]" />
@@ -4340,6 +4341,31 @@ function Customers({ customers, setCustomers, items, orders, showToast }) {
             className="w-full pl-9 pr-4 py-2 bg-white border border-[#E4E4E7] rounded-[8px] text-[14px] placeholder:text-[#A1A1AA] focus:outline-none focus:border-[#09090B] transition-colors"
           />
         </div>
+
+        {/* 중복 찾기 버튼 */}
+        {(() => {
+          // 전화번호 기준 중복 개수 계산
+          const phoneGroups = {};
+          customers.forEach(c => {
+            const normPhone = String(c.phone || '').replace(/\D/g, '');
+            if (normPhone && normPhone.length >= 8) {
+              if (!phoneGroups[normPhone]) phoneGroups[normPhone] = [];
+              phoneGroups[normPhone].push(c);
+            }
+          });
+          const dupCount = Object.values(phoneGroups).filter(g => g.length > 1).reduce((s, g) => s + g.length - 1, 0);
+
+          return dupCount > 0 ? (
+            <button
+              onClick={() => setShowDuplicates(true)}
+              className="flex items-center gap-2 px-3 py-2 bg-white hover:bg-[#FFFBEB] border border-[#FDE68A] text-[#B45309] rounded-[8px] text-[13px] font-medium transition-colors"
+            >
+              <AlertTriangle size={14} />
+              중복 연락처 <span className="tabular-nums">{dupCount}건</span>
+            </button>
+          ) : null;
+        })()}
+
         <button
           onClick={() => { setEditTarget(null); setShowForm(true); }}
           className="flex items-center gap-2 px-4 py-2 bg-[#09090B] hover:bg-black text-white rounded-[8px] text-[14px] font-medium transition-colors"
@@ -4599,6 +4625,291 @@ function Customers({ customers, setCustomers, items, orders, showToast }) {
           onClose={() => setHistoryTarget(null)}
         />
       )}
+
+      {showDuplicates && (
+        <DuplicateCustomersModal
+          customers={customers}
+          setCustomers={setCustomers}
+          orders={orders}
+          setOrders={setOrders}
+          showToast={showToast}
+          onClose={() => setShowDuplicates(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// 🔍 중복 고객 찾기 + 병합 삭제 모달
+// ═══════════════════════════════════════════════════════════
+function DuplicateCustomersModal({ customers, setCustomers, orders, setOrders, showToast, onClose }) {
+  // 중복 그룹 찾기 (전화번호 기준)
+  const duplicateGroups = useMemo(() => {
+    const phoneGroups = {};
+    customers.forEach(c => {
+      const normPhone = String(c.phone || '').replace(/\D/g, '');
+      if (normPhone && normPhone.length >= 8) {
+        if (!phoneGroups[normPhone]) phoneGroups[normPhone] = [];
+        phoneGroups[normPhone].push(c);
+      }
+    });
+
+    // 중복만 필터 + 각 고객의 주문 수 계산
+    const dups = Object.entries(phoneGroups)
+      .filter(([_, group]) => group.length > 1)
+      .map(([phone, group]) => ({
+        phone,
+        customers: group.map(c => {
+          const orderCount = orders.filter(o => o.customerId === c.id && o.shipStatus !== '취소' && !o.isService).length;
+          const totalSpent = orders
+            .filter(o => o.customerId === c.id && o.shipStatus !== '취소' && !o.isService)
+            .reduce((s, o) => s + (o.qty || 0), 0);
+          return { ...c, _orderCount: orderCount, _totalSpent: totalSpent };
+        }).sort((a, b) => {
+          // 주문 많은 순 → 구매 많은 순 → ID 작은 순
+          if (b._orderCount !== a._orderCount) return b._orderCount - a._orderCount;
+          if (b._totalSpent !== a._totalSpent) return b._totalSpent - a._totalSpent;
+          return a.id.localeCompare(b.id);
+        }),
+      }));
+
+    return dups;
+  }, [customers, orders]);
+
+  // 각 그룹별 "유지할 고객 ID" (기본값: 주문 가장 많은 고객)
+  const [keepIds, setKeepIds] = useState(() => {
+    const initial = {};
+    duplicateGroups.forEach(g => {
+      initial[g.phone] = g.customers[0].id;  // 첫번째 = 주문 많은 순 1등
+    });
+    return initial;
+  });
+
+  const [selectedGroups, setSelectedGroups] = useState(() => {
+    // 기본: 모든 그룹 선택
+    return new Set(duplicateGroups.map(g => g.phone));
+  });
+
+  const toggleGroup = (phone) => {
+    setSelectedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(phone)) next.delete(phone);
+      else next.add(phone);
+      return next;
+    });
+  };
+
+  const toggleAllGroups = () => {
+    if (selectedGroups.size === duplicateGroups.length) {
+      setSelectedGroups(new Set());
+    } else {
+      setSelectedGroups(new Set(duplicateGroups.map(g => g.phone)));
+    }
+  };
+
+  // 병합 + 삭제 실행
+  const handleMerge = () => {
+    if (selectedGroups.size === 0) {
+      alert('처리할 그룹을 선택하세요');
+      return;
+    }
+
+    // 삭제 대상 계산
+    const toDelete = new Set();
+    const idRemap = {};  // 삭제될 ID → 유지될 ID
+
+    duplicateGroups.forEach(g => {
+      if (!selectedGroups.has(g.phone)) return;
+      const keepId = keepIds[g.phone];
+      g.customers.forEach(c => {
+        if (c.id !== keepId) {
+          toDelete.add(c.id);
+          idRemap[c.id] = keepId;
+        }
+      });
+    });
+
+    if (toDelete.size === 0) {
+      alert('삭제할 고객이 없습니다');
+      return;
+    }
+
+    if (!confirm(
+      `${selectedGroups.size}개 그룹에서 중복 고객 ${toDelete.size}명을 병합 삭제합니다.\n\n` +
+      `- 삭제되는 고객의 주문은 유지되는 고객에게 이전됩니다\n` +
+      `- 이 작업은 되돌릴 수 없습니다\n\n` +
+      `계속할까요?`
+    )) return;
+
+    // ① 주문의 customerId를 유지되는 고객으로 변경
+    const updatedOrders = orders.map(o => {
+      if (idRemap[o.customerId]) {
+        return { ...o, customerId: idRemap[o.customerId] };
+      }
+      return o;
+    });
+
+    // ② 고객 삭제
+    const updatedCustomers = customers.filter(c => !toDelete.has(c.id));
+
+    setOrders(updatedOrders);
+    setCustomers(updatedCustomers);
+    showToast(`✓ 중복 ${toDelete.size}명 병합 완료 · 주문 ${Object.values(idRemap).length}건 이전`);
+    onClose();
+  };
+
+  const totalDuplicates = duplicateGroups.reduce((s, g) => s + g.customers.length - 1, 0);
+  const selectedDupCount = duplicateGroups
+    .filter(g => selectedGroups.has(g.phone))
+    .reduce((s, g) => s + g.customers.length - 1, 0);
+
+  return (
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-[16px] shadow-2xl w-full max-w-4xl max-h-[88vh] overflow-y-auto scrollbar-slim" onClick={e => e.stopPropagation()}>
+        {/* 헤더 */}
+        <div className="sticky top-0 bg-white px-6 py-4 border-b border-[#E4E4E7] flex items-center justify-between z-10">
+          <div>
+            <h2 className="text-[18px] font-semibold text-[#09090B] tracking-tight">중복 연락처 정리</h2>
+            <div className="text-[13px] text-[#71717A] mt-0.5">
+              {duplicateGroups.length}개 그룹 · 중복 {totalDuplicates}명 발견
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 hover:bg-[#F4F4F5] rounded-[6px] transition-colors">
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* 안내 */}
+        <div className="p-6 space-y-4">
+          <div className="p-3 bg-[#EFF6FF] border border-[#BFDBFE] rounded-[10px]">
+            <div className="flex items-start gap-2">
+              <AlertTriangle size={14} className="text-[#1D4ED8] mt-0.5 flex-shrink-0" />
+              <div className="text-[12px] text-[#1E3A8A] leading-relaxed">
+                <div className="font-semibold mb-1">병합 방식</div>
+                <div>• <strong>유지</strong> 선택된 고객의 정보만 남고, 나머지는 삭제됩니다</div>
+                <div>• 삭제되는 고객의 <strong>모든 주문은 유지되는 고객에게 자동 이전</strong>됩니다</div>
+                <div>• 기본적으로 <strong>주문이 가장 많은 고객</strong>이 유지되도록 선택됩니다</div>
+                <div className="text-[11px] text-[#3B82F6] mt-1">※ 이 작업은 되돌릴 수 없습니다</div>
+              </div>
+            </div>
+          </div>
+
+          {/* 전체 선택 */}
+          <div className="flex items-center justify-between">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                className="w-4 h-4 rounded accent-[#09090B] cursor-pointer"
+                checked={selectedGroups.size === duplicateGroups.length && duplicateGroups.length > 0}
+                onChange={toggleAllGroups}
+              />
+              <span className="text-[13px] font-medium text-[#09090B]">전체 그룹 선택</span>
+              <span className="text-[12px] text-[#71717A]">
+                ({selectedGroups.size} / {duplicateGroups.length} 그룹 선택됨 · 중복 {selectedDupCount}명 삭제)
+              </span>
+            </label>
+          </div>
+
+          {/* 중복 그룹 리스트 */}
+          <div className="space-y-3">
+            {duplicateGroups.map(group => (
+              <div
+                key={group.phone}
+                className={`border rounded-[12px] overflow-hidden transition-colors ${
+                  selectedGroups.has(group.phone) ? 'border-[#09090B]' : 'border-[#E4E4E7]'
+                }`}
+              >
+                <div className="flex items-center gap-2 px-4 py-2.5 bg-[#FAFAFA] border-b border-[#E4E4E7]">
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4 rounded accent-[#09090B] cursor-pointer"
+                    checked={selectedGroups.has(group.phone)}
+                    onChange={() => toggleGroup(group.phone)}
+                  />
+                  <span className="text-[13px] font-semibold text-[#09090B] tabular-nums">
+                    {group.phone.replace(/(\d{4})(\d{3,4})(\d{4})/, '$1 $2 $3')}
+                  </span>
+                  <span className="text-[12px] text-[#71717A]">
+                    · {group.customers.length}명 중복
+                  </span>
+                </div>
+
+                <div className="divide-y divide-[#E4E4E7]">
+                  {group.customers.map((c, idx) => {
+                    const isKeep = keepIds[group.phone] === c.id;
+                    return (
+                      <label
+                        key={c.id}
+                        className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors ${
+                          isKeep ? 'bg-[#F0FDF4]' : 'hover:bg-[#FAFAFA]'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name={`keep-${group.phone}`}
+                          className="w-4 h-4 accent-[#15803D] cursor-pointer"
+                          checked={isKeep}
+                          onChange={() => setKeepIds(prev => ({ ...prev, [group.phone]: c.id }))}
+                        />
+                        <div className="flex-1 grid grid-cols-12 gap-2 items-center text-[13px]">
+                          <div className="col-span-1 font-mono text-[11px] text-[#71717A]">{c.id}</div>
+                          <div className="col-span-2 font-medium text-[#09090B] truncate">{c.name}</div>
+                          <div className="col-span-4 text-[#52525B] truncate">{c.address || '-'}</div>
+                          <div className="col-span-2 text-[#71717A] text-[12px]">{c.grade || '일반'}</div>
+                          <div className="col-span-1 text-right tabular-nums text-[#09090B] font-medium">{c._orderCount}건</div>
+                          <div className="col-span-2 text-right">
+                            {isKeep ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#15803D] text-white rounded-[4px] text-[11px] font-medium">
+                                <Check size={10} strokeWidth={3} />
+                                유지
+                              </span>
+                            ) : (
+                              <span className="text-[11px] text-[#B91C1C] font-medium">삭제</span>
+                            )}
+                          </div>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {duplicateGroups.length === 0 && (
+            <div className="text-center py-12 text-[#71717A] text-[14px]">
+              중복된 연락처가 없습니다
+            </div>
+          )}
+        </div>
+
+        {/* 하단 버튼 */}
+        <div className="sticky bottom-0 bg-white px-6 py-4 border-t border-[#E4E4E7] flex items-center justify-between gap-2">
+          <div className="text-[12px] text-[#71717A]">
+            {selectedDupCount > 0 && (
+              <span>
+                <strong className="text-[#09090B]">{selectedDupCount}명</strong> 삭제 · 주문은 유지 고객에게 이전됩니다
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-[13px] font-medium text-[#52525B] hover:bg-[#F4F4F5] rounded-[8px] transition-colors"
+            >
+              취소
+            </button>
+            <button
+              onClick={handleMerge}
+              disabled={selectedGroups.size === 0}
+              className="px-5 py-2 bg-[#09090B] hover:bg-black text-white rounded-[8px] text-[13px] font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              병합 삭제 ({selectedDupCount}명)
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
