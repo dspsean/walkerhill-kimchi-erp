@@ -1870,7 +1870,7 @@ export default function App() {
           {view === 'orders' && <Orders customers={customers} items={itemsWithStock} orders={orders} setOrders={setOrders} gifts={gifts} setGifts={saveGifts} showToast={showToast} />}
           {view === 'customers' && <Customers customers={customers} setCustomers={setCustomers} items={itemsWithStock} orders={orders} showToast={showToast} />}
           {view === 'items' && <Items items={itemsWithStock} setItems={setItems} showToast={showToast} />}
-          {view === 'gifts' && <Gifts gifts={gifts} setGifts={saveGifts} orders={orders} customers={customers} items={itemsWithStock} showToast={showToast} setView={setView} />}
+          {view === 'gifts' && <Gifts gifts={gifts} setGifts={saveGifts} orders={orders} setOrders={setOrders} customers={customers} items={itemsWithStock} showToast={showToast} setView={setView} />}
           {view === 'shipping' && <Shipping customers={customers} orders={orders} setOrders={setOrders} showToast={showToast} />}
           {view === 'drivers' && <DriversManagement drivers={drivers} setDrivers={setDrivers} orders={orders} showToast={showToast} />}
         </div>
@@ -5161,7 +5161,14 @@ function Shipping({ customers, orders, setOrders, showToast }) {
                         {c?.agedCare && <span className="text-[9px] px-1 py-0.5 rounded bg-amber-200 text-amber-900 font-bold">🏥</span>}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-stone-700 text-xs">{o.itemName} × {o.qty}</td>
+                    <td className="px-4 py-3 text-stone-700 text-xs">
+                      <div>{o.itemName} × {o.qty}</div>
+                      {o.giftQty > 0 && (
+                        <div className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 bg-pink-100 text-pink-800 rounded text-[10px] font-bold border border-pink-300">
+                          🎁 {o.giftName || '사은품'} × {o.giftQty}개
+                        </div>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-stone-600 text-xs max-w-[180px] truncate" title={c?.address}>{c?.address || '-'}</td>
                     <td className="px-4 py-3 text-center text-xs">
                       {o.shipDate ? (
@@ -5322,6 +5329,27 @@ function ShippingModal({ order, customer, onSave, onClose }) {
             <div>📦 {order.itemName} × {order.qty}</div>
             <div className="mt-1">📍 {customer?.address || '-'}</div>
           </div>
+
+          {/* 🎁 사은품 알림 (크게 강조 - 배송기사 시각 확인) */}
+          {order.giftQty > 0 && (
+            <div className="p-4 bg-gradient-to-br from-pink-100 to-rose-100 border-2 border-pink-400 rounded-xl shadow-sm">
+              <div className="flex items-center gap-3">
+                <div className="text-4xl">🎁</div>
+                <div className="flex-1">
+                  <div className="text-[10px] font-bold text-pink-700 uppercase tracking-wider">사은품 전달 필수!</div>
+                  <div className="text-base font-bold text-pink-900 leading-tight mt-0.5">
+                    {order.giftName || '사은품'}
+                  </div>
+                  <div className="text-3xl font-bold text-pink-700 tabular-nums mt-1">
+                    {order.giftQty}<span className="text-sm font-normal text-pink-500 ml-1">개 전달</span>
+                  </div>
+                </div>
+              </div>
+              <div className="mt-2 pt-2 border-t border-pink-200 text-[10px] text-pink-800 font-semibold">
+                💡 고객에게 김치와 함께 <strong>{order.giftQty}개</strong>를 꼭 전달해주세요
+              </div>
+            </div>
+          )}
           <div>
             <label className="block text-xs font-semibold text-stone-600 mb-1.5">배송상태</label>
             <select value={form.shipStatus} onChange={e => setForm({...form, shipStatus: e.target.value})}
@@ -5492,9 +5520,10 @@ function ShippingModal({ order, customer, onSave, onClose }) {
 // ============================================================
 // 🎁 사은품 이벤트 관리 탭
 // ============================================================
-function Gifts({ gifts, setGifts, orders, customers, items, showToast, setView }) {
+function Gifts({ gifts, setGifts, orders, setOrders, customers, items, showToast, setView }) {
   const [showForm, setShowForm] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
+  const [showApplyConfirm, setShowApplyConfirm] = useState(null); // 소급 적용 확인
 
   // 각 이벤트별 지급 현황 계산
   const giftStats = useMemo(() => {
@@ -5514,6 +5543,100 @@ function Gifts({ gifts, setGifts, orders, customers, items, showToast, setView }
 
   const activeGifts = giftStats.filter(g => g.active);
   const inactiveGifts = giftStats.filter(g => !g.active);
+
+  // 🎁 기존 주문에 사은품 소급 적용 계산 (미리보기)
+  const calcRetroactiveApply = (gift) => {
+    if (!gift || !gift.active) return null;
+    const tiers = gift.tiers || DEFAULT_GIFT_TIERS;
+    const priceMap = {};
+    items.forEach(i => { priceMap[i.name] = i.price || 0; });
+
+    // 고객별 총 주문액 계산 (취소/서비스 제외)
+    const customerTotals = {};
+    orders.forEach(o => {
+      if (o.shipStatus === '취소' || o.isService) return;
+      const total = (priceMap[o.itemName] || 0) * o.qty;
+      customerTotals[o.customerId] = (customerTotals[o.customerId] || 0) + total;
+    });
+
+    // 각 고객별 받아야 할 사은품 수량
+    const toApply = [];
+    Object.entries(customerTotals).forEach(([cid, total]) => {
+      const targetQty = calcGiftQtyByAmount(total, tiers);
+      if (targetQty === 0) return;
+
+      // 해당 고객의 이 사은품 이벤트 주문들
+      const customerGiftOrders = orders.filter(o =>
+        o.customerId === cid &&
+        o.shipStatus !== '취소' &&
+        !o.isService
+      );
+
+      // 이미 지급된 수량 (이 이벤트)
+      const alreadyGiven = customerGiftOrders
+        .filter(o => o.giftId === gift.id)
+        .reduce((s, o) => s + (o.giftQty || 0), 0);
+
+      // 부족한 수량만큼 추가
+      const needMore = targetQty - alreadyGiven;
+      if (needMore > 0 && customerGiftOrders.length > 0) {
+        // 가장 최근 주문 하나에 추가
+        const targetOrder = customerGiftOrders[customerGiftOrders.length - 1];
+        toApply.push({
+          orderId: targetOrder.id,
+          customerId: cid,
+          customerName: customers.find(c => c.id === cid)?.name || cid,
+          customerTotal: total,
+          currentQty: alreadyGiven,
+          targetQty,
+          addQty: needMore,
+        });
+      }
+    });
+
+    return toApply;
+  };
+
+  // 🎁 사은품 소급 적용 실행
+  const handleRetroactiveApply = (gift) => {
+    if (!setOrders) {
+      showToast('주문 데이터 수정 권한이 없습니다', 'error');
+      return;
+    }
+
+    const toApply = calcRetroactiveApply(gift);
+    if (!toApply || toApply.length === 0) {
+      showToast('추가로 지급할 대상이 없습니다');
+      return;
+    }
+
+    // 재고 체크
+    const totalNeeded = toApply.reduce((s, t) => s + t.addQty, 0);
+    if (totalNeeded > gift.remaining) {
+      showToast(`재고 부족! 필요: ${totalNeeded}개, 남음: ${gift.remaining}개`, 'error');
+      return;
+    }
+
+    // 주문 업데이트
+    const updateMap = {};
+    toApply.forEach(t => {
+      updateMap[t.orderId] = { addQty: t.addQty, giftId: gift.id, giftName: gift.name };
+    });
+
+    setOrders(prevOrders => prevOrders.map(o => {
+      const update = updateMap[o.id];
+      if (!update) return o;
+      return {
+        ...o,
+        giftId: update.giftId,
+        giftName: update.giftName,
+        giftQty: (o.giftQty || 0) + update.addQty,
+      };
+    }));
+
+    showToast(`✨ ${toApply.length}개 주문에 사은품 ${totalNeeded}개 소급 적용!`);
+    setShowApplyConfirm(null);
+  };
 
   const handleSave = (gift) => {
     if (editTarget) {
@@ -5571,9 +5694,22 @@ function Gifts({ gifts, setGifts, orders, customers, items, showToast, setView }
       {/* 🟢 활성 이벤트 */}
       {activeGifts.length > 0 && (
         <div>
-          <div className="flex items-center gap-2 mb-3">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span className="text-xs font-bold text-emerald-700 uppercase tracking-wider">진행 중</span>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span className="text-xs font-bold text-emerald-700 uppercase tracking-wider">진행 중</span>
+            </div>
+            {/* 🎁 소급 적용 버튼 */}
+            {activeGifts.length > 0 && (
+              <button
+                onClick={() => setShowApplyConfirm(activeGifts[0])}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-800 rounded-lg text-xs font-bold border border-amber-300 transition-all"
+                title="기존 $100+ 주문에 사은품 자동 지급"
+              >
+                <span>⚡</span>
+                <span>기존 주문에 소급 적용</span>
+              </button>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-4">
             {activeGifts.map(g => (
@@ -5588,6 +5724,115 @@ function Gifts({ gifts, setGifts, orders, customers, items, showToast, setView }
           </div>
         </div>
       )}
+
+      {/* 🎁 소급 적용 확인 모달 */}
+      {showApplyConfirm && (() => {
+        const toApply = calcRetroactiveApply(showApplyConfirm);
+        const totalNeeded = toApply ? toApply.reduce((s, t) => s + t.addQty, 0) : 0;
+        const canApply = toApply && toApply.length > 0 && totalNeeded <= showApplyConfirm.remaining;
+
+        return (
+          <div className="fixed inset-0 bg-stone-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowApplyConfirm(null)}>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+              <div className="px-6 py-4 border-b border-stone-200 flex items-center justify-between">
+                <div>
+                  <h2 className="font-serif-ko text-lg font-bold text-stone-800">⚡ 사은품 소급 적용</h2>
+                  <p className="text-xs text-stone-500 mt-0.5">{showApplyConfirm.name}</p>
+                </div>
+                <button onClick={() => setShowApplyConfirm(null)} className="p-1.5 hover:bg-stone-100 rounded-lg"><X size={18} /></button>
+              </div>
+
+              <div className="p-6 overflow-y-auto flex-1">
+                <div className="mb-4 p-3 bg-indigo-50 border border-indigo-200 rounded-xl">
+                  <div className="text-xs font-bold text-indigo-900 mb-1">📋 자동 지급 기준</div>
+                  {(showApplyConfirm.tiers || DEFAULT_GIFT_TIERS).sort((a, b) => a.minAmount - b.minAmount).map((t, i) => (
+                    <div key={i} className="text-xs text-indigo-800">${t.minAmount} 이상 → {t.qty}개</div>
+                  ))}
+                </div>
+
+                {toApply && toApply.length > 0 ? (
+                  <>
+                    <div className="grid grid-cols-3 gap-3 mb-4">
+                      <div className="p-3 bg-pink-50 border border-pink-200 rounded-xl">
+                        <div className="text-[10px] text-pink-700 mb-0.5">대상 주문</div>
+                        <div className="text-xl font-bold text-pink-900 tabular-nums">{toApply.length}<span className="text-xs font-normal ml-0.5">건</span></div>
+                      </div>
+                      <div className="p-3 bg-pink-50 border border-pink-200 rounded-xl">
+                        <div className="text-[10px] text-pink-700 mb-0.5">지급 수량</div>
+                        <div className="text-xl font-bold text-pink-900 tabular-nums">{totalNeeded}<span className="text-xs font-normal ml-0.5">개</span></div>
+                      </div>
+                      <div className={`p-3 rounded-xl border ${canApply ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
+                        <div className={`text-[10px] mb-0.5 ${canApply ? 'text-emerald-700' : 'text-red-700'}`}>재고 상태</div>
+                        <div className={`text-xl font-bold tabular-nums ${canApply ? 'text-emerald-900' : 'text-red-900'}`}>
+                          {showApplyConfirm.remaining}<span className="text-xs font-normal ml-0.5">개</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="border border-stone-200 rounded-xl overflow-hidden">
+                      <div className="bg-stone-50 px-3 py-2 border-b border-stone-200">
+                        <div className="text-xs font-bold text-stone-700">적용 대상 목록 ({toApply.length}건)</div>
+                      </div>
+                      <div className="max-h-64 overflow-y-auto">
+                        <table className="w-full text-xs">
+                          <thead className="bg-stone-50 sticky top-0">
+                            <tr>
+                              <th className="px-3 py-1.5 text-left font-semibold text-stone-600">고객</th>
+                              <th className="px-3 py-1.5 text-right font-semibold text-stone-600">총 주문액</th>
+                              <th className="px-3 py-1.5 text-center font-semibold text-stone-600">기존</th>
+                              <th className="px-3 py-1.5 text-center font-semibold text-stone-600">→ 목표</th>
+                              <th className="px-3 py-1.5 text-right font-semibold text-pink-700">추가</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {toApply.slice(0, 100).map((t, i) => (
+                              <tr key={i} className="border-t border-stone-100 hover:bg-pink-50/30">
+                                <td className="px-3 py-1.5 font-medium truncate max-w-[160px]">{t.customerName}</td>
+                                <td className="px-3 py-1.5 text-right tabular-nums text-stone-600">{formatWon(t.customerTotal)}</td>
+                                <td className="px-3 py-1.5 text-center tabular-nums text-stone-400">{t.currentQty}</td>
+                                <td className="px-3 py-1.5 text-center tabular-nums font-semibold">{t.targetQty}</td>
+                                <td className="px-3 py-1.5 text-right tabular-nums font-bold text-pink-700">+{t.addQty}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                        {toApply.length > 100 && (
+                          <div className="text-center text-xs text-stone-500 py-2">... 외 {toApply.length - 100}건</div>
+                        )}
+                      </div>
+                    </div>
+
+                    {!canApply && (
+                      <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-800 font-semibold">
+                        ⚠️ 재고 부족! {totalNeeded}개 필요한데 {showApplyConfirm.remaining}개만 남음
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="p-8 text-center">
+                    <div className="text-4xl mb-2">✅</div>
+                    <div className="text-sm font-bold text-stone-700">모든 주문에 사은품이 이미 지급되었습니다</div>
+                    <div className="text-xs text-stone-500 mt-1">추가로 지급할 대상이 없습니다</div>
+                  </div>
+                )}
+              </div>
+
+              <div className="px-6 py-4 border-t border-stone-200 flex items-center justify-end gap-2">
+                <button onClick={() => setShowApplyConfirm(null)} className="px-4 py-2 text-sm text-stone-600 hover:bg-stone-100 rounded-lg">취소</button>
+                {toApply && toApply.length > 0 && (
+                  <button
+                    onClick={() => handleRetroactiveApply(showApplyConfirm)}
+                    disabled={!canApply}
+                    className="px-5 py-2 bg-pink-600 hover:bg-pink-700 text-white rounded-lg text-sm font-bold active:scale-95 transition-all disabled:bg-stone-300 disabled:cursor-not-allowed"
+                  >
+                    ⚡ {toApply.length}건에 적용하기
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* 빈 상태 */}
       {gifts.length === 0 && (
@@ -6808,6 +7053,30 @@ function DriverDeliveryGroupCard({ group, customer, items, onGroupUpdate, onEdit
               <span className="font-mono tabular-nums text-stone-700">${group.shippingFee}</span>
             </div>
           )}
+
+          {/* 🎁 사은품 알림 (배송기사가 꼭 확인) */}
+          {(() => {
+            const totalGiftQty = group.orders.reduce((s, o) => s + (o.giftQty || 0), 0);
+            const giftNames = [...new Set(group.orders.filter(o => o.giftQty > 0).map(o => o.giftName || '사은품'))];
+            if (totalGiftQty === 0) return null;
+            return (
+              <div className="mt-2 p-2.5 bg-gradient-to-r from-pink-100 to-rose-100 border-2 border-pink-400 rounded-lg shadow-sm">
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl">🎁</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[10px] font-bold text-pink-700 uppercase">사은품 전달</div>
+                    <div className="text-xs font-bold text-pink-900 truncate">
+                      {giftNames.join(', ')}
+                    </div>
+                  </div>
+                  <div className="text-2xl font-bold text-pink-700 tabular-nums">
+                    {totalGiftQty}<span className="text-xs font-normal text-pink-500 ml-0.5">개</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
           <div className="flex items-center justify-between pt-1.5 border-t-2 border-stone-200">
             <span className="text-sm font-bold text-stone-800">💰 총액</span>
             <span className="text-base font-bold text-red-800 font-mono tabular-nums">${group.finalTotal}</span>
