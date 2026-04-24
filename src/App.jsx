@@ -1632,6 +1632,8 @@ export default function App() {
     const resolved = typeof newValue === 'function' ? newValue(customers) : newValue;
     _setCustomersInternal(resolved);
     saveData(STORAGE_KEYS.customers, resolved);
+    // 🛡️ Firebase에서 받은 데이터이면 다시 업로드 안 함 (에코 방지)
+    if (isReceivingFromFirebaseRef.current) return;
     if (isSupabaseConfigured && initialSyncDoneRef.current) {
       suppressRealtimeEcho(TABLES.customers, 3000);
       setSaveState('saving');
@@ -1658,6 +1660,7 @@ export default function App() {
     });
     _setItemsInternal(cleaned);
     saveData(STORAGE_KEYS.items, cleaned);
+    if (isReceivingFromFirebaseRef.current) return;
     if (isSupabaseConfigured && initialSyncDoneRef.current) {
       suppressRealtimeEcho(TABLES.items, 3000);
       setSaveState('saving');
@@ -1679,6 +1682,7 @@ export default function App() {
     const resolved = typeof newValue === 'function' ? newValue(orders) : newValue;
     _setOrdersInternal(resolved);
     saveData(STORAGE_KEYS.orders, resolved);
+    if (isReceivingFromFirebaseRef.current) return;
     if (isSupabaseConfigured && initialSyncDoneRef.current) {
       suppressRealtimeEcho(TABLES.orders, 3000);
       setSaveState('saving');
@@ -1700,6 +1704,7 @@ export default function App() {
     const resolved = typeof newValue === 'function' ? newValue(drivers) : newValue;
     _setDriversInternal(resolved);
     saveData(DRIVERS_KEY, resolved);
+    if (isReceivingFromFirebaseRef.current) return;
     if (isSupabaseConfigured && initialSyncDoneRef.current) {
       suppressRealtimeEcho(TABLES.drivers, 3000);
       setSaveState('saving');
