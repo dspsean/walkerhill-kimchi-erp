@@ -1556,7 +1556,11 @@ export default function App() {
       setSaveState('saving');
       saveBatch(TABLES.customers, resolved)
         .then(result => {
-          log(`✓ customers 저장됨: ${result?.saved || 0}건`);
+          const saved = result?.saved || 0;
+          const deleted = result?.deleted || 0;
+          if (saved > 0 || deleted > 0) {
+            log(`✓ customers 저장됨: ${saved}건 업로드${deleted > 0 ? ` + ${deleted}건 삭제` : ''}`);
+          }
           setSaveState('saved');
           setLastSaveTime(Date.now());
         })
