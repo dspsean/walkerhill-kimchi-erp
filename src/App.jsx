@@ -8542,6 +8542,8 @@ function ExcelUploadButton({ customers, items, orders, setCustomers, setOrders, 
   const handleApply = () => {
     if (!preview) return;
 
+    // 🆕 완전 교체 방식
+    // ① 신규 고객 추가
     let updatedCustomers = [...customers];
     preview.newCustomers.forEach(nc => {
       if (!updatedCustomers.find(c => c.id === nc.id)) {
@@ -8549,26 +8551,40 @@ function ExcelUploadButton({ customers, items, orders, setCustomers, setOrders, 
       }
     });
 
+    // ② 주문 처리 (완전 교체)
     let updatedOrders = orders.map(o => {
       const update = preview.orderUpdates[o.id];
+
+      // [A] 엑셀에 있는 주문 → 새 Zone/순번/도착시간으로 업데이트
       if (update) {
         return { ...o, ...update };
       }
-      // 🆕 매칭 안 된 주문은 취소하지 않고 미배정(Zone 제거)만 처리
-      // - 이미 취소/서비스/완료된 주문은 그대로
-      // - 사용자가 선택한 경우에만 취소 처리
-      const cancel = preview.cancelled.find(c => c.orderId === o.id);
-      if (cancel && preview.cancelMode === 'cancel') {
-        return { ...o, shipStatus: '취소', shippingGroup: '' };
+
+      // [B] 엑셀에 없는 주문 중 "배차 대상" → 배차 해제 (완전 교체!)
+      //  - 배송 완료/취소는 그대로 유지 (과거 기록)
+      //  - 서비스/픽업도 그대로 유지 (배차 대상 아님)
+      //  - 배송준비중/출고대기/배송중은 배차 해제 (재배차 대기)
+      const isAssignableState =
+        o.shipStatus !== '취소' &&
+        o.shipStatus !== '배송완료' &&
+        !o.isService &&
+        !o.isPickup;
+
+      if (isAssignableState && (o.shippingGroup || o.sequence)) {
+        // 기존에 배차되어 있었는데 이번 엑셀에 없음 → 배차 해제
+        return {
+          ...o,
+          shippingGroup: '',
+          sequence: null,
+          arrivalTime: '',
+        };
       }
-      if (cancel && preview.cancelMode === 'unassign') {
-        // Zone만 해제하고 상태는 유지 (배송준비중으로 되돌림)
-        return { ...o, shippingGroup: '', sequence: null, arrivalTime: '' };
-      }
-      // cancel 모드가 'keep'이면 기존 상태 그대로 (아무것도 안 함)
+
+      // [C] 그 외 모두 그대로 (완료/취소/서비스/픽업)
       return o;
     });
 
+    // ③ 신규 주문 추가
     preview.newOrders.forEach(no => {
       if (!updatedOrders.find(o => o.id === no.id)) {
         updatedOrders.push(no);
@@ -8577,11 +8593,19 @@ function ExcelUploadButton({ customers, items, orders, setCustomers, setOrders, 
 
     setCustomers(updatedCustomers);
     setOrders(updatedOrders);
-    const mode = preview.cancelMode || 'keep';
-    const cancelInfo = mode === 'cancel' ? `취소 ${preview.cancelled.length}건` :
-                      mode === 'unassign' ? `미배정 ${preview.cancelled.length}건` :
-                      `제외 유지 ${preview.cancelled.length}건`;
-    showToast(`✓ 업데이트: 주문 ${Object.keys(preview.orderUpdates).length}건 · ${cancelInfo} · 신규 ${preview.newOrders.length}건`);
+
+    // 배차 해제된 주문 수 계산
+    const unassignedCount = orders.filter(o => {
+      if (preview.orderUpdates[o.id]) return false;
+      const isAssignable = o.shipStatus !== '취소' && o.shipStatus !== '배송완료' && !o.isService && !o.isPickup;
+      return isAssignable && (o.shippingGroup || o.sequence);
+    }).length;
+
+    showToast(
+      `✓ 배차 완료: ${Object.keys(preview.orderUpdates).length}건 배정` +
+      (unassignedCount > 0 ? ` · ${unassignedCount}건 배차해제` : '') +
+      (preview.newOrders.length > 0 ? ` · 신규 ${preview.newOrders.length}건` : '')
+    );
     setPreview(null);
   };
 
@@ -8653,57 +8677,72 @@ function ExcelUploadButton({ customers, items, orders, setCustomers, setOrders, 
 
 function ExcelUploadPreviewModal({ preview, onApply, onCancel }) {
   const totalUpdates = Object.keys(preview.orderUpdates).length;
-  // 🆕 매칭 안 된 주문 처리 방식: keep(유지) / unassign(Zone만 해제) / cancel(취소)
-  const [cancelMode, setCancelMode] = useState('keep');
-
-  const handleApplyWithMode = () => {
-    onApply({ ...preview, cancelMode });
-  };
 
   return (
-    <div className="fixed inset-0 bg-stone-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onCancel}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="sticky top-0 bg-white px-6 py-5 border-b border-stone-200 flex items-center justify-between">
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onCancel}>
+      <div className="bg-white rounded-[16px] shadow-2xl w-full max-w-3xl max-h-[88vh] overflow-y-auto scrollbar-slim" onClick={e => e.stopPropagation()}>
+        <div className="sticky top-0 bg-white px-6 py-4 border-b border-[#E4E4E7] flex items-center justify-between z-10">
           <div>
-            <h2 className="font-serif-ko text-xl font-bold text-stone-800">📤 엑셀 업로드 미리보기</h2>
-            <div className="text-xs text-stone-500 mt-0.5">변경 내역을 확인하고 적용하세요</div>
+            <h2 className="text-[18px] font-semibold text-[#09090B] tracking-tight">배차 업로드 미리보기</h2>
+            <div className="text-[13px] text-[#71717A] mt-0.5">변경 내역을 확인하고 적용하세요</div>
           </div>
-          <button onClick={onCancel} className="p-1.5 hover:bg-stone-100 rounded-lg"><X size={18} /></button>
+          <button onClick={onCancel} className="p-1.5 hover:bg-[#F4F4F5] rounded-[6px] transition-colors"><X size={18} /></button>
         </div>
 
-        <div className="p-6 space-y-4">
+        <div className="p-6 space-y-5">
           {/* 요약 카드 */}
           <div className="grid grid-cols-4 gap-3">
-            <div className="bg-blue-50 rounded-xl p-3 text-center">
-              <div className="text-2xl font-bold text-blue-800 tabular-nums">{totalUpdates}</div>
-              <div className="text-[10px] font-semibold text-blue-700">주문 업데이트</div>
+            <div className="bg-white border border-[#E4E4E7] rounded-[12px] p-4">
+              <div className="text-[12px] font-medium text-[#71717A] mb-2">배차 업데이트</div>
+              <div className="text-[24px] font-semibold text-[#09090B] tabular-nums tracking-tight">{totalUpdates}</div>
             </div>
-            <div className="bg-emerald-50 rounded-xl p-3 text-center">
-              <div className="text-2xl font-bold text-emerald-800 tabular-nums">{preview.newCustomers.length}</div>
-              <div className="text-[10px] font-semibold text-emerald-700">신규 고객</div>
+            <div className="bg-white border border-[#E4E4E7] rounded-[12px] p-4">
+              <div className="text-[12px] font-medium text-[#71717A] mb-2">신규 고객</div>
+              <div className="text-[24px] font-semibold text-[#09090B] tabular-nums tracking-tight">{preview.newCustomers.length}</div>
             </div>
-            <div className="bg-amber-50 rounded-xl p-3 text-center">
-              <div className="text-2xl font-bold text-amber-800 tabular-nums">{preview.newOrders.length}</div>
-              <div className="text-[10px] font-semibold text-amber-700">신규 주문</div>
+            <div className="bg-white border border-[#E4E4E7] rounded-[12px] p-4">
+              <div className="text-[12px] font-medium text-[#71717A] mb-2">신규 주문</div>
+              <div className="text-[24px] font-semibold text-[#09090B] tabular-nums tracking-tight">{preview.newOrders.length}</div>
             </div>
-            <div className="bg-red-50 rounded-xl p-3 text-center">
-              <div className="text-2xl font-bold text-red-800 tabular-nums">{preview.cancelled.length}</div>
-              <div className="text-[10px] font-semibold text-red-700">엑셀에 없음</div>
+            <div className="bg-white border border-[#E4E4E7] rounded-[12px] p-4">
+              <div className="text-[12px] font-medium text-[#71717A] mb-2">엑셀에 없음</div>
+              <div className="text-[24px] font-semibold text-[#09090B] tabular-nums tracking-tight">{preview.cancelled.length}</div>
             </div>
           </div>
 
-          {/* 차량별 배정 요약 */}
+          {/* ⚠️ 매칭 실패 정보 (디버깅) */}
+          {preview.unmatchedNames && preview.unmatchedNames.length > 0 && (
+            <div className="bg-[#FFFBEB] border border-[#FDE68A] rounded-[12px] p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <AlertTriangle size={15} className="text-[#B45309]" />
+                <div className="text-[13px] font-semibold text-[#92400E]">
+                  매칭 실패 {preview.unmatchedNames.length}건
+                </div>
+                <span className="text-[11px] text-[#B45309]">
+                  엑셀의 이름이 기존 고객과 매칭되지 않아 신규 고객으로 추가됩니다
+                </span>
+              </div>
+              <div className="bg-white rounded-[8px] p-2.5 space-y-1 max-h-32 overflow-y-auto scrollbar-slim">
+                {preview.unmatchedNames.map((u, i) => (
+                  <div key={i} className="text-[12px] flex items-center justify-between">
+                    <span className="font-medium text-[#09090B]">{u.name}</span>
+                    <span className="text-[11px] text-[#71717A]">{u.sheetName}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Zone별 배정 현황 */}
           <div>
-            <div className="text-sm font-bold text-stone-700 mb-2">🗺️ Zone별 배정 현황</div>
+            <div className="text-[13px] font-semibold text-[#09090B] mb-2">Zone별 배정 현황</div>
             <div className="grid grid-cols-4 gap-2">
               {SHIPPING_ZONES.map(z => {
                 const count = Object.values(preview.orderUpdates).filter(u => u.shippingGroup === z).length;
                 return (
-                  <div key={z} className={`p-2.5 rounded-lg ${ZONE_COLORS[z]} flex items-center justify-between`}>
-                    <div>
-                      <div className="text-[11px] font-bold opacity-90">{z.replace('Zone', 'Zone ')}</div>
-                    </div>
-                    <div className="text-lg font-bold tabular-nums">{count}</div>
+                  <div key={z} className="bg-white border border-[#E4E4E7] rounded-[8px] px-3 py-2 flex items-center justify-between">
+                    <div className="text-[12px] font-medium text-[#52525B]">Z{z.replace('Zone', '')}</div>
+                    <div className="text-[16px] font-semibold text-[#09090B] tabular-nums">{count}</div>
                   </div>
                 );
               })}
@@ -8713,111 +8752,47 @@ function ExcelUploadPreviewModal({ preview, onApply, onCancel }) {
           {/* 신규 고객 */}
           {preview.newCustomers.length > 0 && (
             <div>
-              <div className="text-sm font-bold text-emerald-700 mb-2">✨ 신규 고객</div>
-              <div className="bg-emerald-50 rounded-xl p-3 space-y-1 max-h-40 overflow-y-auto">
+              <div className="text-[13px] font-semibold text-[#09090B] mb-2">신규 고객 {preview.newCustomers.length}명</div>
+              <div className="bg-white border border-[#E4E4E7] rounded-[10px] p-3 space-y-1.5 max-h-32 overflow-y-auto scrollbar-slim">
                 {preview.newCustomers.map(c => (
-                  <div key={c.id} className="text-xs flex items-center justify-between">
-                    <span className="font-bold text-emerald-900">{c.name}</span>
-                    <span className="text-emerald-600 text-[10px]">{c.address}</span>
+                  <div key={c.id} className="text-[12px] flex items-center justify-between">
+                    <span className="font-medium text-[#09090B]">{c.name}</span>
+                    <span className="text-[11px] text-[#71717A] truncate max-w-xs ml-2">{c.address}</span>
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          {/* 🆕 제외된 주문 (엑셀에 없는 주문) - 처리 방식 선택 */}
+          {/* 🆕 제외된 주문 (엑셀에 없는 주문) - 자동 배차 해제 */}
           {preview.cancelled.length > 0 && (
             <div>
               <div className="flex items-center justify-between mb-2">
-                <div className="text-sm font-bold text-stone-700">
-                  ⚠️ 엑셀에 없는 기존 주문 <span className="text-red-700 tabular-nums">{preview.cancelled.length}건</span>
+                <div className="text-[13px] font-semibold text-[#09090B]">
+                  배차 해제 예정 <span className="text-[#71717A] ml-1 tabular-nums">{preview.cancelled.length}건</span>
                 </div>
               </div>
 
-              {/* 처리 방식 선택 */}
-              <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-xl">
-                <div className="text-[11px] font-bold text-amber-900 mb-2">🤔 이 주문들을 어떻게 처리할까요?</div>
-                <div className="grid grid-cols-3 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setCancelMode('keep')}
-                    className={`p-2.5 rounded-lg border-2 text-left transition-all ${
-                      cancelMode === 'keep'
-                        ? 'bg-white border-emerald-500 shadow-sm'
-                        : 'bg-white/50 border-stone-200 hover:border-stone-300'
-                    }`}
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-base">✅</span>
-                      <span className="text-xs font-bold text-stone-800">그대로 유지</span>
-                      {cancelMode === 'keep' && <span className="ml-auto text-emerald-600 text-xs">●</span>}
+              {/* 안내 메시지 */}
+              <div className="mb-2 p-3 bg-[#EFF6FF] border border-[#BFDBFE] rounded-[10px]">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle size={14} className="text-[#1D4ED8] mt-0.5 flex-shrink-0" />
+                  <div className="text-[12px] text-[#1E3A8A] leading-relaxed">
+                    <span className="font-semibold">완전 교체 방식</span>으로 적용됩니다.
+                    엑셀에 없는 기존 배차 주문은 <strong>Zone/순번이 초기화</strong>되어 미배정 상태로 돌아갑니다.
+                    <div className="text-[11px] text-[#3B82F6] mt-1">
+                      ※ 배송완료 · 취소 · 픽업 주문은 영향받지 않습니다
                     </div>
-                    <div className="text-[10px] text-stone-500 mt-1 leading-tight">
-                      Zone/순번 변경 없이<br/>기존 상태 유지
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setCancelMode('unassign')}
-                    className={`p-2.5 rounded-lg border-2 text-left transition-all ${
-                      cancelMode === 'unassign'
-                        ? 'bg-white border-amber-500 shadow-sm'
-                        : 'bg-white/50 border-stone-200 hover:border-stone-300'
-                    }`}
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-base">🔄</span>
-                      <span className="text-xs font-bold text-stone-800">Zone 해제</span>
-                      {cancelMode === 'unassign' && <span className="ml-auto text-amber-600 text-xs">●</span>}
-                    </div>
-                    <div className="text-[10px] text-stone-500 mt-1 leading-tight">
-                      Zone만 빼고<br/>미배정 상태로
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setCancelMode('cancel')}
-                    className={`p-2.5 rounded-lg border-2 text-left transition-all ${
-                      cancelMode === 'cancel'
-                        ? 'bg-white border-red-500 shadow-sm'
-                        : 'bg-white/50 border-stone-200 hover:border-stone-300'
-                    }`}
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-base">❌</span>
-                      <span className="text-xs font-bold text-stone-800">취소 처리</span>
-                      {cancelMode === 'cancel' && <span className="ml-auto text-red-600 text-xs">●</span>}
-                    </div>
-                    <div className="text-[10px] text-stone-500 mt-1 leading-tight">
-                      주문 상태를<br/>"취소"로 변경
-                    </div>
-                  </button>
-                </div>
-                <div className="mt-2 text-[10px] text-amber-800 font-semibold">
-                  💡 기본: <strong>그대로 유지</strong> (안전) · 엑셀에 주소가 없거나 매칭 안 된 주문도 보존됨
+                  </div>
                 </div>
               </div>
 
               {/* 대상 주문 리스트 */}
-              <div className={`rounded-xl p-3 space-y-1 max-h-40 overflow-y-auto ${
-                cancelMode === 'cancel' ? 'bg-red-50' :
-                cancelMode === 'unassign' ? 'bg-amber-50' :
-                'bg-stone-50'
-              }`}>
+              <div className="bg-white border border-[#E4E4E7] rounded-[10px] p-3 space-y-1 max-h-40 overflow-y-auto scrollbar-slim">
                 {preview.cancelled.map((c, i) => (
-                  <div key={i} className="text-xs flex items-center justify-between">
-                    <span className={`font-bold ${
-                      cancelMode === 'cancel' ? 'text-red-900' :
-                      cancelMode === 'unassign' ? 'text-amber-900' :
-                      'text-stone-800'
-                    }`}>{c.customerName || c.orderId}</span>
-                    <span className={`text-[10px] ${
-                      cancelMode === 'cancel' ? 'text-red-600' :
-                      cancelMode === 'unassign' ? 'text-amber-600' :
-                      'text-stone-500'
-                    }`}>{c.reason || '엑셀에 없음'}</span>
+                  <div key={i} className="text-[12px] flex items-center justify-between">
+                    <span className="font-medium text-[#09090B]">{c.customerName || c.orderId}</span>
+                    <span className="text-[11px] text-[#71717A]">{c.reason || '엑셀에 없음'}</span>
                   </div>
                 ))}
               </div>
@@ -8825,9 +8800,18 @@ function ExcelUploadPreviewModal({ preview, onApply, onCancel }) {
           )}
         </div>
 
-        <div className="sticky bottom-0 bg-white px-6 py-4 border-t border-stone-200 flex items-center justify-end gap-2">
-          <button onClick={onCancel} className="px-4 py-2 text-sm text-stone-600 hover:bg-stone-100 rounded-lg">취소</button>
-          <button onClick={handleApplyWithMode} className="px-5 py-2 bg-sky-700 hover:bg-sky-800 text-white rounded-lg text-sm font-semibold">
+        {/* 하단 버튼 - 모던 스타일 */}
+        <div className="sticky bottom-0 bg-white px-6 py-4 border-t border-[#E4E4E7] flex items-center justify-end gap-2">
+          <button
+            onClick={onCancel}
+            className="px-4 py-2 text-[13px] font-medium text-[#52525B] hover:bg-[#F4F4F5] rounded-[8px] transition-colors"
+          >
+            취소
+          </button>
+          <button
+            onClick={onApply}
+            className="px-5 py-2 bg-[#09090B] hover:bg-black text-white rounded-[8px] text-[13px] font-medium transition-colors"
+          >
             적용하기
           </button>
         </div>
@@ -8871,6 +8855,8 @@ function parseUploadedExcel(wb, customers, items, orders) {
 
   const customerByName = {};
   const customerByNormalizedName = {};
+  const customerByAddress = {};  // 🆕 주소 기반 fallback 매칭용
+  const customerByPhone = {};  // 🆕 전화번호 기반 매칭
   customers.forEach(c => {
     if (c.name) {
       customerByName[c.name.trim()] = c;
@@ -8891,7 +8877,20 @@ function parseUploadedExcel(wb, customers, items, orders) {
         }
       }
     }
+    // 주소 정규화 (공백/대소문자 무시)
+    if (c.address) {
+      const normAddr = String(c.address).trim().toLowerCase().replace(/\s+/g, ' ').replace(/[,.]/g, '');
+      if (normAddr) customerByAddress[normAddr] = c;
+    }
+    // 전화번호 (숫자만)
+    if (c.phone) {
+      const normPhone = String(c.phone).replace(/\D/g, '');
+      if (normPhone) customerByPhone[normPhone] = c;
+    }
   });
+
+  // 🔍 매칭 실패한 이름 추적 (디버깅용)
+  const unmatchedNames = [];
 
   // Zone별 시트 파싱
   const processedCustomerIds = new Set();
@@ -8903,51 +8902,150 @@ function parseUploadedExcel(wb, customers, items, orders) {
     // 새 양식: 행 0: 제목, 행 1: 출발지, 행 2: 헤더, 행 3+: 데이터
     // 구 양식: 행 0: 제목, 행 1: 출발 정보, 행 2: 헤더, 행 3+: 데이터
     // 컬럼: [순번, 도착시간, 이름, 주소, 연락처, ...]
+    let sheetProcessed = 0;
+    let sheetSkipped = 0;
     for (let i = 3; i < rows.length; i++) {
       const row = rows[i];
-      if (!row || row.length === 0) continue;
+      if (!row || row.length === 0) { sheetSkipped++; continue; }
       const seq = row[0];
       const arrivalTime = row[1];
       const name = row[2] ? String(row[2]).trim() : '';
 
-      // 순번이 있고 이름이 있는 행만 처리
-      if (typeof seq !== 'number') continue;
-      if (!name) continue;  // 빈 slot 건너뛰기
+      // 🆕 순번은 숫자 또는 숫자로 변환 가능한 문자열
+      const seqNum = typeof seq === 'number' ? seq : (typeof seq === 'string' ? parseInt(seq, 10) : NaN);
+      if (isNaN(seqNum)) { sheetSkipped++; continue; }
+      if (!name) { sheetSkipped++; continue; }  // 빈 slot 건너뛰기
+      sheetProcessed++;
 
       // 이름으로 기존 고객 찾기 (다단계 매칭)
       let existingCustomer = customerByName[name];
+      let matchMethod = 'exact';
+
       if (!existingCustomer) {
-        // 🆕 정규화된 이름으로 재시도
+        // 1단계: 정규화된 이름으로 재시도
         const normalizedName = normalizeName(name);
         if (normalizedName) {
           existingCustomer = customerByNormalizedName[normalizedName];
-          // 괄호 안/밖 별도 매칭도 시도
-          if (!existingCustomer) {
-            const parenMatch = name.match(/[(（](.+?)[)）]/);
-            if (parenMatch) {
-              const insideParen = normalizeName(parenMatch[1]);
-              if (insideParen) existingCustomer = customerByNormalizedName[insideParen];
-            }
-            if (!existingCustomer) {
-              const beforeParen = normalizeName(name.split(/[(（]/)[0]);
-              if (beforeParen) existingCustomer = customerByNormalizedName[beforeParen];
-            }
+          if (existingCustomer) matchMethod = 'normalized';
+        }
+      }
+      if (!existingCustomer) {
+        // 2단계: 괄호 안 이름 매칭
+        const parenMatch = name.match(/[(（](.+?)[)）]/);
+        if (parenMatch) {
+          const insideParen = normalizeName(parenMatch[1]);
+          if (insideParen) {
+            existingCustomer = customerByNormalizedName[insideParen];
+            if (existingCustomer) matchMethod = 'inside-paren';
           }
         }
       }
+      if (!existingCustomer) {
+        // 3단계: 괄호 밖 이름 매칭
+        const beforeParen = normalizeName(name.split(/[(（]/)[0]);
+        if (beforeParen) {
+          existingCustomer = customerByNormalizedName[beforeParen];
+          if (existingCustomer) matchMethod = 'before-paren';
+        }
+      }
+      if (!existingCustomer) {
+        // 4단계: 전화번호 매칭 (가장 확실)
+        const phone = String(row[4] || '').replace(/\D/g, '');
+        if (phone && phone.length >= 8) {
+          existingCustomer = customerByPhone[phone];
+          if (existingCustomer) matchMethod = 'phone';
+        }
+      }
+      if (!existingCustomer) {
+        // 5단계: 주소 매칭 (주소만 같아도)
+        const address = String(row[3] || '').trim().toLowerCase().replace(/\s+/g, ' ').replace(/[,.]/g, '');
+        if (address && address.length > 10) {
+          existingCustomer = customerByAddress[address];
+          if (existingCustomer) matchMethod = 'address';
+        }
+      }
+
+      // 🔍 매칭 실패 기록
+      if (!existingCustomer) {
+        unmatchedNames.push({ name, zone, sheetName });
+      }
 
       if (existingCustomer) {
-        // 기존 고객의 모든 주문에 배정
+        // 🎯 배차 가능한 주문만 업데이트 (이미 완료/취소 제외, 서비스 제외)
         processedCustomerIds.add(existingCustomer.id);
-        const custOrders = orders.filter(o => o.customerId === existingCustomer.id && !o.isService);
-        if (custOrders.length > 0) {
-          custOrders.forEach(o => {
+        const assignableOrders = orders.filter(o =>
+          o.customerId === existingCustomer.id &&
+          !o.isService &&
+          o.shipStatus !== '취소' &&
+          o.shipStatus !== '배송완료' &&
+          !o.isPickup  // 픽업 주문은 배차 제외
+        );
+
+        if (assignableOrders.length > 0) {
+          // 배차 가능한 주문에만 Zone/순번 배정
+          assignableOrders.forEach(o => {
             orderUpdates[o.id] = {
               shippingGroup: zone,
-              sequence: Math.floor(seq),
+              sequence: seqNum,
               arrivalTime: String(arrivalTime || ''),
             };
           });
+        } else {
+          // 기존 고객인데 배차할 주문이 없음 → 신규 주문 생성 옵션
+          // 엑셀에 수량이 있으면 새 주문으로 생성
+          const qty4KG = Number(row[7]) || 0;
+          const qty4KG2 = Number(row[8]) || 0;
+          const qty4KG3 = Number(row[9]) || 0;
+          const qtyChonggak = Number(row[10]) || 0;
+          const qtyChonggak2 = Number(row[11]) || 0;
+          const qtyMix = Number(row[12]) || 0;
+          const hasQty = qty4KG || qty4KG2 || qty4KG3 || qtyChonggak || qtyChonggak2 || qtyMix;
+
+          if (hasQty) {
+            // 기존 고객에게 신규 주문 생성
+            const maxOrderNum = orders.reduce((max, o) => {
+              const n = parseInt(o.id.replace('ORD-', ''), 10);
+              return isNaN(n) ? max : Math.max(max, n);
+            }, newOrders.reduce((m, o) => {
+              const n = parseInt(o.id.replace('ORD-', ''), 10);
+              return isNaN(n) ? m : Math.max(m, n);
+            }, 0));
+
+            const today = new Date().toISOString().slice(0, 10);
+            const itemsArr = [];
+            if (qty4KG) itemsArr.push({ itemName: '배추김치 4KG', qty: qty4KG, perBox: 10 });
+            if (qty4KG2) itemsArr.push({ itemName: '배추김치 4KG - 2세트(할인)', qty: qty4KG2, perBox: 10 });
+            if (qty4KG3) itemsArr.push({ itemName: '배추김치 4KG - 3세트(할인)', qty: qty4KG3, perBox: 10 });
+            if (qtyChonggak) itemsArr.push({ itemName: '총각김치 2KG', qty: qtyChonggak, perBox: 10 });
+            if (qtyChonggak2) itemsArr.push({ itemName: '총각김치 2KG - 2세트(할인)', qty: qtyChonggak2, perBox: 10 });
+            if (qtyMix) itemsArr.push({ itemName: '혼합세트 (배추4KG + 총각2KG)', qty: qtyMix, perBox: 10 });
+
+            if (itemsArr.length > 0) {
+              const first = itemsArr[0];
+              newOrders.push({
+                id: `ORD-${String(maxOrderNum + 1).padStart(4, '0')}`,
+                date: today,
+                customerId: existingCustomer.id,
+                itemName: first.itemName,
+                qty: first.qty,
+                perBox: first.perBox,
+                items: itemsArr.length > 1 ? itemsArr : null,
+                shipStatus: '배송준비중',
+                deliveryMethod: '',
+                paymentType: '',
+                paymentStatus: '미결제',
+                deliveryMemo: '',
+                shipDate: '',
+                arriveDate: '',
+                shippingGroup: zone,
+                sequence: seqNum,
+                arrivalTime: String(arrivalTime || ''),
+                isService: false,
+                isPickup: false,
+                cashReceived: 0,
+              });
+            }
+          }
         }
       } else {
         // 신규 고객 + 신규 주문
@@ -9011,7 +9109,7 @@ function parseUploadedExcel(wb, customers, items, orders) {
             shippingGroup: zone,
             isService: false,
             isPickup: false,
-            sequence: Math.floor(seq),
+            sequence: seqNum,
             arrivalTime: String(arrivalTime || ''),
           });
         } else {
@@ -9033,14 +9131,23 @@ function parseUploadedExcel(wb, customers, items, orders) {
               shippingGroup: zone,
               isService: false,
               isPickup: false,
-              sequence: Math.floor(seq),
+              sequence: seqNum,
               arrivalTime: String(arrivalTime || ''),
             });
           });
         }
       }
     }
+    // 🔍 시트별 처리 통계 (F12 콘솔에서 확인)
+    console.log(`[배차업로드] ${sheetName}(${zone}): 처리 ${sheetProcessed}명, 건너뜀 ${sheetSkipped}행`);
   }
+
+  // 🔍 전체 통계 요약
+  console.log('[배차업로드] ━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log(`[배차업로드] 주문 업데이트: ${Object.keys(orderUpdates).length}건`);
+  console.log(`[배차업로드] 신규 고객: ${newCustomers.length}명`);
+  console.log(`[배차업로드] 신규 주문: ${newOrders.length}건`);
+  console.log(`[배차업로드] 매칭 실패: ${unmatchedNames.length}명`, unmatchedNames);
 
   // 🆕 배정받지 못한 주문 = "엑셀에 없음" (배송 대상 주문만 검사)
   // - 배송준비중/출고대기/배송중만 대상 (이미 완료/취소는 제외)
@@ -9065,7 +9172,7 @@ function parseUploadedExcel(wb, customers, items, orders) {
     });
   });
 
-  return { orderUpdates, newCustomers, newOrders, cancelled };
+  return { orderUpdates, newCustomers, newOrders, cancelled, unmatchedNames };
 }
 
 // ============================================================
