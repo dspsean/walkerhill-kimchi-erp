@@ -2755,7 +2755,7 @@ function Dashboard({ customers, items, orders, gifts = [], setView }) {
         if (!activeGift) return null;
 
         // 🎁 공통 계산 함수 사용 (사은품 페이지와 동일 로직)
-        const { givenQty, recipientCount, reservedQty, totalUsed, remaining } = calcGiftStats(activeGift, orders);
+        const { givenQty, recipientCount, reservedQty, reservedCount, totalUsed, remaining } = calcGiftStats(activeGift, orders);
         const pct = activeGift.totalStock > 0 ? (totalUsed / activeGift.totalStock) * 100 : 0;
 
         return (
@@ -7673,13 +7673,15 @@ function Gifts({ gifts, setGifts, orders, setOrders, customers, items, showToast
   // 각 이벤트별 지급 현황 계산 (공통 함수 사용)
   const giftStats = useMemo(() => {
     return gifts.map(g => {
-      const { givenQty, recipientCount, reservedQty, totalUsed, remaining } = calcGiftStats(g, orders);
+      const { givenQty, recipientCount, reservedQty, reservedCount, totalUsed, totalRecipients, remaining } = calcGiftStats(g, orders);
       return {
         ...g,
         givenQty,
         recipientCount,
         reservedQty,
+        reservedCount,
         totalUsed,
+        totalRecipients,
         remaining,
       };
     });
