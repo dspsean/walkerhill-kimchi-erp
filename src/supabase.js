@@ -49,6 +49,7 @@ export const TABLES = {
   items: 'items',
   orders: 'orders',
   drivers: 'drivers',
+  auditLogs: 'audit_logs',  // 🆕 변경 이력 추적
 };
 
 // ============================================================
@@ -401,5 +402,63 @@ export async function deleteRow(tableName, id) {
     if (error) throw error;
   } catch (err) {
     console.error(`Error deleting ${tableName}/${id}:`, err);
+  }
+}
+
+// ============================================================
+// 📋 변경 이력 (Audit Log) 전용 함수
+// ============================================================
+// - saveBatch와 분리된 즉시 저장 (debounce 없음)
+// - "누가 언제 뭘 바꿨나" 추적
+// ============================================================
+
+/**
+ * 감사 로그 기록 (저장 실패해도 앱 동작에 영향 없음)
+ */
+export async function logAudit(entry) {
+  if (!supabase) return;
+  try {
+    const logEntry = {
+      id: entry.id || `log_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      user_name: entry.userName || 'unknown',
+      timestamp: entry.timestamp || new Date().toISOString(),
+      action: entry.action || 'update',  // create/update/delete/bulk
+      entity_type: entry.entityType || 'unknown',  // order/customer/item/driver/gift/batch
+      entity_id: entry.entityId || null,
+      entity_name: entry.entityName || null,
+      description: entry.description || '',
+      changes: entry.changes || null,  // JSONB
+    };
+    const { error } = await supabase.from(TABLES.auditLogs).insert(logEntry);
+    if (error) throw error;
+    log(`📋 이력 기록: ${logEntry.description}`);
+  } catch (err) {
+    // 감사 로그 실패는 조용히 (앱 동작 방해 X)
+    console.error('Audit log error:', err.message);
+  }
+}
+
+/**
+ * 감사 로그 조회 (최근순)
+ */
+export async function fetchAuditLogs({ limit = 100, userName, entityType, fromDate } = {}) {
+  if (!supabase) return [];
+  try {
+    let query = supabase
+      .from(TABLES.auditLogs)
+      .select('*')
+      .order('timestamp', { ascending: false })
+      .limit(limit);
+
+    if (userName) query = query.eq('user_name', userName);
+    if (entityType) query = query.eq('entity_type', entityType);
+    if (fromDate) query = query.gte('timestamp', fromDate);
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return data || [];
+  } catch (err) {
+    console.error('Fetch audit logs error:', err);
+    return [];
   }
 }
