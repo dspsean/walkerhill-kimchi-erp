@@ -2732,52 +2732,54 @@ function Orders({ customers, items, orders, setOrders, gifts, setGifts, showToas
   };
 
   const handleSave = (orderOrArray) => {
-    // 다품목인 경우 배열로 전달됨
-    if (Array.isArray(orderOrArray)) {
-      // 여러 주문 생성 (다품목)
-      const baseId = Date.now();
-      const existingIds = new Set(orders.map(o => o.id));
-      let counter = 0;
-      const newOrders = orderOrArray.map((o) => {
-        let newId = nextOrderId();
-        while (existingIds.has(newId)) {
-          counter += 1;
-          const nums = [...orders, ...orderOrArray.slice(0, counter)].map(x => parseInt(x.id?.replace('ORD-','') || '0'));
-          const max = Math.max(0, ...nums);
-          newId = `ORD-${String(max + 1).padStart(4, '0')}`;
-        }
-        existingIds.add(newId);
-        return {
-          id: newId,
-          shipStatus: '배송준비중',
-          deliveryMethod: '',
-          paymentType: '',
-          paymentStatus: '미결제',
-          deliveryMemo: '',
-          shipDate: '',
-          arriveDate: '',
-          shippingGroup: '',
-          isService: false,
-          isPickup: false,
-          cashReceived: 0,
-          ...o,
-        };
-      });
-      setOrders([...orders, ...newOrders]);
-      showToast(`✅ ${newOrders.length}개 품목 주문이 등록되었습니다`);
-    } else {
-      // 단일 주문 (기존 방식)
-      const order = orderOrArray;
-      if (editTarget) {
-        setOrders(orders.map(o => o.id === editTarget.id ? { ...o, ...order, id: editTarget.id } : o));
-        showToast('주문이 수정되었습니다');
-      } else {
-        setOrders([...orders, { id: nextOrderId(), shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: '', isService: false, isPickup: false, cashReceived: 0, ...order }]);
-        showToast('주문이 등록되었습니다');
-      }
-    }
+    // 🚀 모달 먼저 닫기 (UI 반응성 향상)
     setShowForm(false);
     setEditTarget(null);
+
+    // 🚀 저장 로직은 다음 tick에서 실행 (UI 블로킹 방지)
+    setTimeout(() => {
+      // 다품목인 경우 배열로 전달됨
+      if (Array.isArray(orderOrArray)) {
+        // 안전한 ID 생성: 현재 최대 번호 찾아서 순차적으로 부여
+        const allNums = orders.map(o => {
+          const match = o.id?.match(/ORD-(\d+)/);
+          return match ? parseInt(match[1]) : 0;
+        });
+        let maxNum = allNums.length > 0 ? Math.max(...allNums) : 0;
+
+        const newOrders = orderOrArray.map((o) => {
+          maxNum += 1;
+          const newId = `ORD-${String(maxNum).padStart(4, '0')}`;
+          return {
+            id: newId,
+            shipStatus: '배송준비중',
+            deliveryMethod: '',
+            paymentType: '',
+            paymentStatus: '미결제',
+            deliveryMemo: '',
+            shipDate: '',
+            arriveDate: '',
+            shippingGroup: '',
+            isService: false,
+            isPickup: false,
+            cashReceived: 0,
+            ...o,
+          };
+        });
+        setOrders([...orders, ...newOrders]);
+        showToast(`✅ ${newOrders.length}개 품목 주문이 등록되었습니다`);
+      } else {
+        // 단일 주문
+        const order = orderOrArray;
+        if (editTarget) {
+          setOrders(orders.map(o => o.id === editTarget.id ? { ...o, ...order, id: editTarget.id } : o));
+          showToast('주문이 수정되었습니다');
+        } else {
+          setOrders([...orders, { id: nextOrderId(), shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: '', isService: false, isPickup: false, cashReceived: 0, ...order }]);
+          showToast('주문이 등록되었습니다');
+        }
+      }
+    }, 50);
   };
 
   // ⏳ 입고대기 → 배송준비중 전환 (재고 입고 시)
