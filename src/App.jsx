@@ -1705,149 +1705,247 @@ export default function App() {
   const lowStockCount = itemsWithStock.filter(i => i.availStock <= 20).length;
 
   return (
-    <div className="min-h-screen bg-[#FAF7F2]" style={{ fontFamily: "'Pretendard', 'Pretendard Variable', -apple-system, BlinkMacSystemFont, system-ui, 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif", WebkitFontSmoothing: 'antialiased', MozOsxFontSmoothing: 'grayscale' }}>
+    <div className="min-h-screen bg-white" style={{ fontFamily: "'Pretendard Variable', 'Pretendard', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', system-ui, sans-serif", WebkitFontSmoothing: 'antialiased', MozOsxFontSmoothing: 'grayscale' }}>
       <style>{`
         @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/variable/pretendardvariable.css');
-        @import url('https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&display=swap');
 
-        /* 🎨 전역 폰트 정의 */
-        html, body, #root, button, input, textarea, select, div {
-          font-family: 'Pretendard Variable', 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
-          -webkit-font-smoothing: antialiased;
-          -moz-osx-font-smoothing: grayscale;
+        /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+        /* 🎨 디자인 토큰 (Modern SaaS Trend)    */
+        /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+        :root {
+          /* 🎨 컬러 - 단일 accent + 무채색 */
+          --accent: #1A1A1A;
+          --accent-hover: #000000;
+          --accent-soft: #F4F4F5;
+
+          /* 텍스트 */
+          --text-primary: #09090B;
+          --text-secondary: #52525B;
+          --text-tertiary: #A1A1AA;
+          --text-disabled: #D4D4D8;
+
+          /* 배경 */
+          --bg-base: #FFFFFF;
+          --bg-subtle: #FAFAFA;
+          --bg-muted: #F4F4F5;
+
+          /* 보더 */
+          --border-subtle: #E4E4E7;
+          --border-default: #D4D4D8;
+          --border-strong: #A1A1AA;
+
+          /* 시맨틱 (최소화) */
+          --success: #15803D;
+          --success-soft: #F0FDF4;
+          --warning: #B45309;
+          --warning-soft: #FFFBEB;
+          --danger: #B91C1C;
+          --danger-soft: #FEF2F2;
+          --info: #1D4ED8;
+          --info-soft: #EFF6FF;
+
+          /* 그림자 (미니멀) */
+          --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.03);
+          --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.04);
+          --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.06), 0 2px 4px -2px rgb(0 0 0 / 0.04);
+
+          /* 반경 */
+          --radius-sm: 6px;
+          --radius: 8px;
+          --radius-md: 10px;
+          --radius-lg: 12px;
+          --radius-xl: 16px;
         }
 
-        /* 🔡 한글 장식 폰트 (제목용) */
+        /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+        /* 🔡 타이포그래피 시스템                */
+        /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+        html, body, #root, button, input, textarea, select, div {
+          font-family: 'Pretendard Variable', 'Pretendard', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', system-ui, sans-serif;
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
+          text-rendering: optimizeLegibility;
+        }
+
+        body {
+          font-size: 14px;
+          line-height: 1.5;
+          color: var(--text-primary);
+          letter-spacing: -0.011em;
+        }
+
+        /* 제목 시스템 - 명확한 위계 */
+        h1 { font-size: 24px; font-weight: 600; letter-spacing: -0.025em; line-height: 1.3; color: var(--text-primary); }
+        h2 { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.4; color: var(--text-primary); }
+        h3 { font-size: 15px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.5; color: var(--text-primary); }
+
+        /* 한글 장식 제거 - Pretendard 통일 */
         .font-serif-ko {
-          font-family: 'Gowun Batang', 'Pretendard Variable', serif;
+          font-family: 'Pretendard Variable', 'Pretendard', system-ui, sans-serif;
+          font-weight: 600;
+          letter-spacing: -0.025em;
+        }
+
+        /* 📝 입력 폼 (가독성 우선) */
+        input, select, textarea {
+          font-feature-settings: "tnum" 1, "cv11" 1;
+          font-variant-numeric: tabular-nums;
+        }
+        input[type="text"], input[type="number"], input[type="date"], input[type="tel"], input[type="password"], select, textarea {
+          font-size: 14px;
+          line-height: 1.5;
+          letter-spacing: -0.011em;
+          color: var(--text-primary);
+        }
+        input::placeholder, textarea::placeholder {
+          color: var(--text-tertiary);
+        }
+
+        /* 📱 버튼 */
+        button {
+          -webkit-tap-highlight-color: transparent;
+          letter-spacing: -0.011em;
+          font-feature-settings: "cv11" 1;
+        }
+
+        /* 🎯 숫자 표시 - SF Pro 느낌 */
+        .tabular-nums {
+          font-variant-numeric: tabular-nums;
+          font-feature-settings: "tnum" 1, "cv11" 1;
           letter-spacing: -0.02em;
         }
 
-        /* 📝 입력 폼 최적화 (가독성 + 터치 친화적) */
-        input, select, textarea {
-          font-feature-settings: "tnum" 1;
-          font-variant-numeric: tabular-nums;
-        }
-        input[type="text"], input[type="number"], input[type="date"], input[type="tel"], select, textarea {
-          font-size: 14px;
-          line-height: 1.5;
-          letter-spacing: -0.01em;
-        }
-
-        /* 📱 모바일 터치 대응 */
-        button {
-          -webkit-tap-highlight-color: transparent;
-          letter-spacing: -0.01em;
-        }
-
-        /* 🎯 숫자 표시 */
-        .tabular-nums {
-          font-variant-numeric: tabular-nums;
-          font-feature-settings: "tnum" 1;
-        }
-
-        /* 📋 모달 내부 폰트 통일 (Portal 밖에서도 적용) */
+        /* 📋 모달 내부 폰트 통일 */
         .fixed input, .fixed select, .fixed textarea, .fixed button, .fixed div, .fixed span, .fixed label {
-          font-family: 'Pretendard Variable', 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+          font-family: 'Pretendard Variable', 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
         }
 
-        /* 스크롤바 */
-        .scrollbar-slim::-webkit-scrollbar { width: 6px; height: 6px; }
+        /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+        /* 🖼️ 스크롤바 (미니멀)                  */
+        /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+        .scrollbar-slim::-webkit-scrollbar { width: 8px; height: 8px; }
         .scrollbar-slim::-webkit-scrollbar-track { background: transparent; }
-        .scrollbar-slim::-webkit-scrollbar-thumb { background: #D4C9B8; border-radius: 3px; }
-        .scrollbar-slim::-webkit-scrollbar-thumb:hover { background: #B8A990; }
+        .scrollbar-slim::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 4px; }
+        .scrollbar-slim::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }
 
-        /* 🎨 전역 스크롤바 (body) */
-        ::-webkit-scrollbar { width: 10px; height: 10px; }
-        ::-webkit-scrollbar-track { background: #FAF7F2; }
+        ::-webkit-scrollbar { width: 12px; height: 12px; }
+        ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb {
-          background: #D4C9B8;
-          border-radius: 5px;
-          border: 2px solid #FAF7F2;
+          background: var(--border-default);
+          border-radius: 6px;
+          border: 3px solid transparent;
+          background-clip: padding-box;
         }
-        ::-webkit-scrollbar-thumb:hover { background: #B8A990; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--border-strong); background-clip: padding-box; border: 3px solid transparent; }
 
-        /* ✨ 마이크로 애니메이션 */
+        /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+        /* ✨ 애니메이션                         */
+        /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
         @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(-4px); }
+          from { opacity: 0; transform: translateY(-2px); }
           to { opacity: 1; transform: translateY(0); }
         }
         @keyframes slideUp {
-          from { opacity: 0; transform: translateY(8px); }
+          from { opacity: 0; transform: translateY(6px); }
           to { opacity: 1; transform: translateY(0); }
         }
-        @keyframes pulse-ring {
-          0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
-          70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
-          100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
-        }
-        .animate-pulse-ring { animation: pulse-ring 2s ease-out infinite; }
-        .animate-slide-up { animation: slideUp 0.3s ease-out; }
+        .animate-slide-up { animation: slideUp 0.2s ease-out; }
 
         /* 🖱️ 부드러운 전환 */
         button, a {
-          transition: all 0.15s ease;
+          transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
         }
 
-        /* 🎯 포커스 스타일 개선 */
-        button:focus-visible, a:focus-visible, input:focus-visible {
-          outline: 2px solid #991B1B;
+        /* 🎯 포커스 - 깔끔한 ring */
+        button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
+          outline: 2px solid var(--accent);
           outline-offset: 2px;
+          border-radius: var(--radius-sm);
         }
 
-        /* 📐 선택 색상 */
+        /* 📐 선택 */
         ::selection {
-          background: #FEE2E2;
-          color: #7F1D1D;
+          background: var(--accent);
+          color: white;
         }
+
+        /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+        /* 🎨 유틸리티 클래스                    */
+        /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+        .card-modern {
+          background: var(--bg-base);
+          border: 1px solid var(--border-subtle);
+          border-radius: var(--radius-lg);
+        }
+        .card-modern:hover {
+          border-color: var(--border-default);
+        }
+
+        .btn-primary {
+          background: var(--accent);
+          color: white;
+          font-weight: 500;
+        }
+        .btn-primary:hover { background: var(--accent-hover); }
+
+        .btn-secondary {
+          background: var(--bg-base);
+          color: var(--text-primary);
+          border: 1px solid var(--border-subtle);
+          font-weight: 500;
+        }
+        .btn-secondary:hover { background: var(--bg-muted); border-color: var(--border-default); }
       `}</style>
 
-      <aside className="fixed left-0 top-0 h-full w-60 bg-white border-r border-stone-200 flex flex-col z-20">
+      <aside className="fixed left-0 top-0 h-full w-64 bg-white border-r border-[#E4E4E7] flex flex-col z-20">
+        {/* 로고 섹션 - 미니멀 */}
         <button
           onClick={() => {
-            // 대시보드로 이동 후 페이지 새로고침
             setView('dashboard');
-            // 짧은 지연 후 새로고침 (view 전환이 먼저 반영되도록)
             setTimeout(() => window.location.reload(), 50);
           }}
-          className="px-5 pt-6 pb-4 border-b border-stone-100 hover:bg-stone-50 active:bg-stone-100 transition-all group text-left w-full"
-          title="대시보드로 이동 + 새로고침"
+          className="px-5 pt-6 pb-5 border-b border-[#E4E4E7] hover:bg-[#FAFAFA] transition-colors text-left w-full"
+          title="대시보드로 이동"
         >
-          <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-red-700 to-red-900 flex items-center justify-center text-white text-lg group-hover:scale-105 group-active:scale-95 transition-transform">🥬</div>
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-[#09090B] flex items-center justify-center text-white text-[14px] font-semibold">W</div>
             <div>
-              <div className="font-serif-ko text-lg font-bold text-stone-800 leading-tight group-hover:text-red-800 transition-colors">워커힐김치</div>
-              <div className="text-xs tracking-[0.4em] text-stone-400 font-semibold pl-1">OMS</div>
+              <div className="text-[15px] font-semibold text-[#09090B] leading-tight">Walkerhill</div>
+              <div className="text-[11px] text-[#71717A] mt-0.5 font-medium">Kimchi OMS</div>
             </div>
           </div>
         </button>
 
-        <nav className="flex-1 px-3 py-4 space-y-0.5">
-          {nav.map(({ id, label, icon: Icon, shortcut }) => (
-            <button
-              key={id}
-              onClick={() => setView(id)}
-              className={`group w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                view === id
-                  ? 'bg-red-50 text-red-800 ring-1 ring-red-100 shadow-sm'
-                  : 'text-stone-600 hover:bg-stone-50 hover:text-stone-900'
-              }`}
-            >
-              <Icon size={17} className={view === id ? 'text-red-700' : 'text-stone-400 group-hover:text-stone-700 transition-colors'} />
-              <span className="flex-1 text-left">{label}</span>
-              {id === 'items' && lowStockCount > 0 && (
-                <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-bold rounded-full bg-red-600 text-white">{lowStockCount}</span>
-              )}
-              {shortcut && (
-                <kbd className={`hidden group-hover:inline-flex items-center justify-center w-5 h-5 text-[9px] font-semibold rounded border ${
-                  view === id ? 'bg-white/60 border-red-200 text-red-700' : 'bg-stone-100 border-stone-200 text-stone-500'
-                }`}>
-                  {shortcut}
-                </kbd>
-              )}
-            </button>
-          ))}
-        </nav>
+        {/* 메뉴 섹션 */}
+        <div className="px-3 py-4 flex-1 overflow-y-auto scrollbar-slim">
+          <div className="text-[10px] font-semibold text-[#A1A1AA] uppercase tracking-wider px-3 mb-2">메뉴</div>
+          <nav className="space-y-0.5">
+            {nav.map(({ id, label, icon: Icon, shortcut }) => (
+              <button
+                key={id}
+                onClick={() => setView(id)}
+                className={`group w-full flex items-center gap-2.5 px-3 py-2 rounded-[8px] text-[14px] transition-colors ${
+                  view === id
+                    ? 'bg-[#09090B] text-white'
+                    : 'text-[#52525B] hover:bg-[#F4F4F5] hover:text-[#09090B]'
+                }`}
+              >
+                <Icon size={16} strokeWidth={2} />
+                <span className="flex-1 text-left font-medium">{label}</span>
+                {id === 'items' && lowStockCount > 0 && (
+                  <span className={`inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[10px] font-semibold rounded-full ${
+                    view === id ? 'bg-white/20 text-white' : 'bg-[#FEF2F2] text-[#B91C1C]'
+                  }`}>{lowStockCount}</span>
+                )}
+                {shortcut && view !== id && (
+                  <kbd className="hidden group-hover:inline-flex items-center justify-center min-w-[20px] h-5 px-1 text-[10px] font-mono font-medium rounded bg-white border border-[#E4E4E7] text-[#71717A]">
+                    {shortcut}
+                  </kbd>
+                )}
+              </button>
+            ))}
+          </nav>
+        </div>
 
         <div className="px-3 py-3 border-t border-stone-100 space-y-3">
           {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
@@ -1928,65 +2026,43 @@ export default function App() {
         </div>
       </aside>
 
-      <main className="ml-60 min-h-screen">
-        <header className="sticky top-0 z-10 bg-white/90 backdrop-blur-xl border-b border-stone-200/80 px-8 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            {/* 페이지 제목 + 아이콘 */}
-            <div className="flex items-center gap-3">
-              {(() => {
-                const currentNav = nav.find(n => n.id === view);
-                const Icon = currentNav?.icon;
-                return Icon && (
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-stone-100 to-stone-200 flex items-center justify-center text-stone-700">
-                    <Icon size={20} />
-                  </div>
-                );
-              })()}
-              <div>
-                <h1 className="font-serif-ko text-xl font-bold text-stone-800 leading-tight">
-                  {nav.find(n => n.id === view)?.label}
-                </h1>
-                <div className="text-xs text-stone-500 mt-0.5">
-                  {view === 'dashboard' && '매출·주문·배송 현황을 한눈에'}
-                  {view === 'orders' && '주문을 등록하고 카톡 메시지를 생성하세요'}
-                  {view === 'customers' && '고객 정보를 관리하세요'}
-                  {view === 'items' && '품목과 재고를 관리하세요'}
-                  {view === 'gifts' && '사은품 이벤트와 자동 지급 기준을 관리하세요'}
-                  {view === 'shipping' && '배송 상태를 업데이트하세요'}
-                  {view === 'drivers' && '배송기사 계정을 관리하고 담당 Zone을 지정하세요'}
-                </div>
-              </div>
+      <main className="ml-64 min-h-screen bg-[#FAFAFA]">
+        <header className="sticky top-0 z-10 bg-white border-b border-[#E4E4E7] px-8 py-4 flex items-center justify-between">
+          <div>
+            <h1 className="text-[20px] font-semibold text-[#09090B] tracking-tight leading-tight">
+              {nav.find(n => n.id === view)?.label}
+            </h1>
+            <div className="text-[13px] text-[#71717A] mt-0.5">
+              {view === 'dashboard' && '매출 · 주문 · 배송 현황을 한눈에 확인하세요'}
+              {view === 'orders' && '주문을 등록하고 관리하세요'}
+              {view === 'customers' && '고객 정보를 관리하세요'}
+              {view === 'items' && '품목과 재고를 관리하세요'}
+              {view === 'gifts' && '사은품 이벤트를 관리하세요'}
+              {view === 'shipping' && '배송 상태를 업데이트하세요'}
+              {view === 'drivers' && '배송기사 계정을 관리하세요'}
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5">
-            {/* 키보드 단축키 힌트 */}
-            <div className="hidden xl:flex items-center gap-1 text-[10px] text-stone-400 px-2 py-1 bg-stone-50 rounded-md border border-stone-200">
-              <kbd className="font-mono font-semibold">Alt</kbd>
-              <span>+</span>
-              <kbd className="font-mono font-semibold">1~7</kbd>
-              <span className="ml-1">이동</span>
-            </div>
-
-            {/* 🔥 실시간 동기화 상태 */}
+          <div className="flex items-center gap-2">
+            {/* 실시간 동기화 상태 */}
             {isSupabaseConfigured ? (
-              <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold ring-1 transition-all ${
-                syncStatus === 'synced' ? 'bg-emerald-50 text-emerald-700 ring-emerald-200' :
-                syncStatus === 'connecting' ? 'bg-amber-50 text-amber-700 ring-amber-200' :
-                'bg-red-50 text-red-700 ring-red-200'
-              }`} title={syncStatus === 'synced' ? '실시간 동기화 중' : syncStatus === 'connecting' ? '연결 중...' : '오프라인'}>
+              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-[8px] text-[12px] font-medium border ${
+                syncStatus === 'synced' ? 'bg-white text-[#15803D] border-[#BBF7D0]' :
+                syncStatus === 'connecting' ? 'bg-white text-[#B45309] border-[#FEF3C7]' :
+                'bg-white text-[#B91C1C] border-[#FECACA]'
+              }`}>
                 {syncStatus === 'synced' ? (
                   <>
-                    <span className="relative flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    <span className="relative flex h-1.5 w-1.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#22C55E] opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-[#16A34A]"></span>
                     </span>
                     <span>실시간 연결</span>
                   </>
                 ) : syncStatus === 'connecting' ? (
                   <>
                     <Cloud size={12} className="animate-pulse" />
-                    <span>연결 중...</span>
+                    <span>연결 중</span>
                   </>
                 ) : (
                   <>
@@ -1996,7 +2072,7 @@ export default function App() {
                 )}
               </div>
             ) : (
-              <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-stone-100 text-stone-600 ring-1 ring-stone-200">
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-[8px] text-[12px] font-medium bg-white text-[#71717A] border border-[#E4E4E7]">
                 <CloudOff size={12} />
                 <span>로컬 모드</span>
               </div>
@@ -2005,26 +2081,23 @@ export default function App() {
             {lowStockCount > 0 && (
               <button
                 onClick={() => setView('items')}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-700 rounded-lg text-xs font-medium ring-1 ring-amber-200 hover:bg-amber-100 transition-all animate-pulse-ring"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-[#B45309] rounded-[8px] text-[12px] font-medium border border-[#FDE68A] hover:bg-[#FFFBEB] transition-colors"
               >
-                <Bell size={13} />
-                재고 경보 {lowStockCount}건
+                <Bell size={12} />
+                재고 경보 {lowStockCount}
               </button>
             )}
 
             {/* 오늘 날짜 */}
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-stone-50 rounded-lg border border-stone-200">
-              <div className="text-right">
-                <div className="text-[9px] text-stone-500 font-semibold tracking-wider uppercase">오늘</div>
-                <div className="text-xs font-bold text-stone-800 tabular-nums">
-                  {new Date().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })}
-                </div>
+            <div className="px-3 py-1.5 bg-white rounded-[8px] border border-[#E4E4E7]">
+              <div className="text-[12px] font-medium text-[#09090B] tabular-nums">
+                {new Date().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })}
               </div>
             </div>
           </div>
         </header>
 
-        <div className="p-8">
+        <div className="p-8 max-w-[1600px]">
           {view === 'dashboard' && <Dashboard customers={customers} items={itemsWithStock} orders={orders} gifts={gifts} setView={setView} />}
           {view === 'orders' && <Orders customers={customers} items={itemsWithStock} orders={orders} setOrders={setOrders} gifts={gifts} setGifts={saveGifts} showToast={showToast} />}
           {view === 'customers' && <Customers customers={customers} setCustomers={setCustomers} items={itemsWithStock} orders={orders} showToast={showToast} />}
@@ -2036,8 +2109,8 @@ export default function App() {
       </main>
 
       {toast && (
-        <div className={`fixed bottom-6 right-6 px-5 py-3 rounded-xl shadow-lg text-sm font-medium z-50 ${
-          toast.type === 'success' ? 'bg-stone-900 text-white' : 'bg-red-600 text-white'
+        <div className={`fixed bottom-6 right-6 px-5 py-3 rounded-[10px] shadow-lg text-[13px] font-medium z-50 animate-slide-up ${
+          toast.type === 'success' ? 'bg-[#09090B] text-white' : 'bg-[#B91C1C] text-white'
         }`}>
           {toast.msg}
         </div>
@@ -2147,274 +2220,179 @@ function Dashboard({ customers, items, orders, gifts = [], setView }) {
 
   return (
     <div className="space-y-6">
-      {/* ══════════════════════════════════════════════════ */}
-      {/* 👋 헤로 섹션 - 환영 메시지 + 오늘 날짜 */}
-      {/* ══════════════════════════════════════════════════ */}
+      {/* ═══════════════════════════════════════════════ */}
+      {/* 📊 오늘의 핵심 지표                            */}
+      {/* ═══════════════════════════════════════════════ */}
       {(() => {
         const now = new Date();
-        const hour = now.getHours();
-        const greeting = hour < 6 ? '🌙 새벽입니다' :
-                        hour < 12 ? '☀️ 좋은 아침입니다' :
-                        hour < 18 ? '🍃 안녕하세요' :
-                        '🌆 수고하셨습니다';
-        const dateStr = `${now.getFullYear()}년 ${now.getMonth() + 1}월 ${now.getDate()}일`;
-        const dayStr = ['일', '월', '화', '수', '목', '금', '토'][now.getDay()];
-
-        // 오늘의 주요 숫자
         const todayStr = now.toISOString().split('T')[0];
+        const priceMap = {};
+        items.forEach(i => { priceMap[i.name] = i.price || 0; });
         const todayOrders = orders.filter(o => o.date === todayStr);
-        const todayRevenue = todayOrders.reduce((s, o) => {
-          const priceMap = {};
-          items.forEach(i => { priceMap[i.name] = i.price || 0; });
-          return s + (priceMap[o.itemName] || 0) * o.qty;
-        }, 0);
+        const todayRevenue = todayOrders.reduce((s, o) => s + (priceMap[o.itemName] || 0) * o.qty, 0);
         const todayDelivered = orders.filter(o => o.shipStatus === '배송완료' && (o.shipDate === todayStr || o.arriveDate === todayStr)).length;
 
         return (
-          <div className="bg-gradient-to-br from-stone-900 via-red-950 to-stone-900 rounded-3xl p-6 md:p-8 text-white shadow-lg overflow-hidden relative">
-            {/* 배경 장식 */}
-            <div className="absolute -right-20 -top-20 w-64 h-64 rounded-full bg-red-600/10 blur-3xl" />
-            <div className="absolute -left-10 -bottom-10 w-48 h-48 rounded-full bg-amber-500/10 blur-2xl" />
-
-            <div className="relative flex items-start justify-between gap-6 flex-wrap">
-              {/* 왼쪽: 환영 메시지 */}
-              <div>
-                <div className="text-[11px] text-red-300/80 font-semibold tracking-[0.2em] uppercase mb-2">
-                  {dateStr} ({dayStr})
-                </div>
-                <h1 className="font-serif-ko text-3xl md:text-4xl font-bold mb-1 leading-tight">
-                  {greeting}
-                </h1>
-                <p className="text-sm text-red-100/70 font-light">
-                  오늘의 워커힐김치 OMS 현황을 확인해보세요
-                </p>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="bg-white border border-[#E4E4E7] rounded-[12px] p-5">
+              <div className="text-[12px] font-medium text-[#71717A] mb-2">오늘 매출</div>
+              <div className="text-[28px] font-semibold text-[#09090B] tabular-nums tracking-tight">
+                ${formatNum(todayRevenue)}
               </div>
-
-              {/* 오른쪽: 오늘의 지표 */}
-              <div className="flex gap-4 md:gap-6">
-                <div className="text-right">
-                  <div className="text-[10px] text-red-300/70 font-semibold tracking-wider uppercase mb-1">오늘 매출</div>
-                  <div className="text-2xl md:text-3xl font-bold tabular-nums">
-                    ${formatNum(todayRevenue)}
-                  </div>
-                  <div className="text-[10px] text-red-200/60 mt-0.5">{todayOrders.length}건 주문</div>
-                </div>
-                <div className="w-px bg-red-300/20" />
-                <div className="text-right">
-                  <div className="text-[10px] text-red-300/70 font-semibold tracking-wider uppercase mb-1">오늘 배송</div>
-                  <div className="text-2xl md:text-3xl font-bold tabular-nums text-emerald-300">
-                    {todayDelivered}
-                  </div>
-                  <div className="text-[10px] text-red-200/60 mt-0.5">완료 건수</div>
-                </div>
+            </div>
+            <div className="bg-white border border-[#E4E4E7] rounded-[12px] p-5">
+              <div className="text-[12px] font-medium text-[#71717A] mb-2">오늘 주문</div>
+              <div className="text-[28px] font-semibold text-[#09090B] tabular-nums tracking-tight">
+                {todayOrders.length}<span className="text-[16px] text-[#71717A] ml-1 font-normal">건</span>
+              </div>
+            </div>
+            <div className="bg-white border border-[#E4E4E7] rounded-[12px] p-5">
+              <div className="text-[12px] font-medium text-[#71717A] mb-2">오늘 배송</div>
+              <div className="text-[28px] font-semibold text-[#09090B] tabular-nums tracking-tight">
+                {todayDelivered}<span className="text-[16px] text-[#71717A] ml-1 font-normal">건</span>
               </div>
             </div>
           </div>
         );
       })()}
 
-      {/* ══════════════════════════════════════════════════ */}
-      {/* 🚨 섹션 1: 오늘 확인할 알림 (최우선) */}
-      {/* ══════════════════════════════════════════════════ */}
+      {/* ═══════════════════════════════════════════════ */}
+      {/* 🔔 알림 (조용한 디자인)                        */}
+      {/* ═══════════════════════════════════════════════ */}
       {(() => {
         const unpaidCount = orders.filter(o => o.paymentStatus === '미결제' && o.shipStatus !== '취소' && !o.isService).length;
         const waitingCount = waitingStockCount;
         const lowStockCount = stats.lowStock;
         const prepareCount = orders.filter(o => o.shipStatus === '배송준비중').length;
-        const hasAlerts = unpaidCount > 0 || waitingCount > 0 || lowStockCount > 0 || prepareCount > 0;
+        const alerts = [
+          prepareCount > 0 && { label: '배송 대기', value: prepareCount, unit: '건', view: 'shipping' },
+          unpaidCount > 0 && { label: '미결제', value: unpaidCount, unit: '건', view: 'orders' },
+          waitingCount > 0 && { label: '입고 대기', value: waitingCount, unit: '건', view: 'orders' },
+          lowStockCount > 0 && { label: '재고 부족', value: lowStockCount, unit: '종', view: 'items' },
+        ].filter(Boolean);
 
-        if (!hasAlerts) {
+        if (alerts.length === 0) {
           return (
-            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-center gap-3">
-              <span className="text-2xl">✅</span>
-              <div>
-                <div className="font-bold text-emerald-900 text-sm">모든 것이 순조롭습니다</div>
-                <div className="text-xs text-emerald-700">현재 처리할 긴급 사항이 없습니다</div>
-              </div>
+            <div className="bg-white border border-[#E4E4E7] rounded-[12px] p-5 flex items-center gap-3">
+              <div className="w-2 h-2 rounded-full bg-[#16A34A]" />
+              <div className="text-[14px] font-medium text-[#09090B]">모든 항목이 정상입니다</div>
+              <div className="text-[13px] text-[#71717A]">현재 확인할 긴급 사항이 없어요</div>
             </div>
           );
         }
 
         return (
-          <div className="bg-gradient-to-r from-amber-50 via-red-50 to-amber-50 border-2 border-amber-200 rounded-2xl p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <span className="text-lg">🔔</span>
-              <h3 className="font-bold text-stone-800 text-sm">확인이 필요한 항목</h3>
-              <span className="text-[10px] text-stone-500 ml-auto">클릭하여 이동</span>
+          <div className="bg-white border border-[#E4E4E7] rounded-[12px] overflow-hidden">
+            <div className="px-5 py-3 border-b border-[#E4E4E7] flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-[#F59E0B]" />
+                <div className="text-[14px] font-semibold text-[#09090B]">확인이 필요한 항목</div>
+              </div>
+              <div className="text-[12px] text-[#71717A]">{alerts.length}개 항목</div>
             </div>
-            <div className="grid grid-cols-4 gap-3">
-              {prepareCount > 0 && (
+            <div className="grid grid-cols-4 divide-x divide-[#E4E4E7]">
+              {alerts.map((a, i) => (
                 <button
-                  onClick={() => setView('shipping')}
-                  className="bg-white hover:bg-blue-50 border border-blue-200 rounded-xl p-3 text-left transition-all group"
+                  key={i}
+                  onClick={() => setView(a.view)}
+                  className="p-5 text-left hover:bg-[#FAFAFA] transition-colors"
                 >
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <span className="text-sm">📦</span>
-                    <span className="text-[10px] font-bold text-blue-700">배송 대기</span>
+                  <div className="text-[12px] font-medium text-[#71717A] mb-2">{a.label}</div>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-[24px] font-semibold text-[#09090B] tabular-nums tracking-tight">{a.value}</span>
+                    <span className="text-[13px] text-[#71717A]">{a.unit}</span>
                   </div>
-                  <div className="text-2xl font-bold text-blue-900 tabular-nums">{prepareCount}<span className="text-xs text-blue-500 ml-0.5">건</span></div>
-                  <div className="text-[10px] text-blue-600 mt-0.5 group-hover:underline">→ 배송관리</div>
                 </button>
-              )}
-              {unpaidCount > 0 && (
-                <button
-                  onClick={() => setView('orders')}
-                  className="bg-white hover:bg-red-50 border border-red-200 rounded-xl p-3 text-left transition-all group"
-                >
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <span className="text-sm">💳</span>
-                    <span className="text-[10px] font-bold text-red-700">미결제</span>
-                  </div>
-                  <div className="text-2xl font-bold text-red-900 tabular-nums">{unpaidCount}<span className="text-xs text-red-500 ml-0.5">건</span></div>
-                  <div className="text-[10px] text-red-600 mt-0.5 group-hover:underline">→ 수금 필요</div>
-                </button>
-              )}
-              {waitingCount > 0 && (
-                <button
-                  onClick={() => setView('orders')}
-                  className="bg-white hover:bg-purple-50 border border-purple-200 rounded-xl p-3 text-left transition-all group"
-                >
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <span className="text-sm">⏳</span>
-                    <span className="text-[10px] font-bold text-purple-700">입고대기</span>
-                  </div>
-                  <div className="text-2xl font-bold text-purple-900 tabular-nums">{waitingCount}<span className="text-xs text-purple-500 ml-0.5">건</span></div>
-                  <div className="text-[10px] text-purple-600 mt-0.5 group-hover:underline">→ 선주문</div>
-                </button>
-              )}
-              {lowStockCount > 0 && (
-                <button
-                  onClick={() => setView('items')}
-                  className="bg-white hover:bg-amber-50 border border-amber-200 rounded-xl p-3 text-left transition-all group"
-                >
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <span className="text-sm">⚠️</span>
-                    <span className="text-[10px] font-bold text-amber-700">재고 부족</span>
-                  </div>
-                  <div className="text-2xl font-bold text-amber-900 tabular-nums">{lowStockCount}<span className="text-xs text-amber-500 ml-0.5">종</span></div>
-                  <div className="text-[10px] text-amber-600 mt-0.5 group-hover:underline">→ 입고 필요</div>
-                </button>
-              )}
+              ))}
             </div>
           </div>
         );
       })()}
 
-      {/* ══════════════════════════════════════════════════ */}
-      {/* 📊 섹션 2: 핵심 KPI (매출/주문/완료율) */}
-      {/* ══════════════════════════════════════════════════ */}
+      {/* ═══════════════════════════════════════════════ */}
+      {/* 📊 핵심 KPI (미니멀 카드)                     */}
+      {/* ═══════════════════════════════════════════════ */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="font-bold text-stone-700 text-sm flex items-center gap-2">
-            <span>📊</span>
-            <span>핵심 실적</span>
-          </h2>
-          <div className="text-[10px] text-stone-400">전체 누적 기준 · 서비스/취소 제외</div>
+          <h3 className="text-[15px] font-semibold text-[#09090B]">핵심 실적</h3>
+          <div className="text-[12px] text-[#71717A]">전체 누적 · 서비스/취소 제외</div>
         </div>
-        <div className="grid grid-cols-4 gap-4">
-          {/* 총 매출 (가장 크게) */}
-          <div className="col-span-2 bg-gradient-to-br from-red-700 to-red-900 rounded-2xl p-5 text-white shadow-sm">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-1.5">
-                <TrendingUp size={14} className="opacity-80" />
-                <span className="text-xs font-semibold opacity-90">총 매출</span>
-              </div>
-              <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded font-semibold">실매출</span>
+        <div className="grid grid-cols-4 gap-3">
+          <div className="bg-white border border-[#E4E4E7] rounded-[12px] p-5">
+            <div className="text-[12px] font-medium text-[#71717A] mb-2">총 매출</div>
+            <div className="text-[28px] font-semibold text-[#09090B] tabular-nums tracking-tight">
+              ${formatNum(stats.totalSales)}
             </div>
-            <div className="flex items-baseline gap-1">
-              <span className="text-3xl font-bold tabular-nums">${formatNum(stats.totalSales)}</span>
+            <div className="text-[12px] text-[#71717A] mt-1">주문 {stats.totalOrders}건 · 평균 ${formatNum(stats.avgOrder)}</div>
+          </div>
+
+          <div className="bg-white border border-[#E4E4E7] rounded-[12px] p-5">
+            <div className="text-[12px] font-medium text-[#71717A] mb-2">배송 완료율</div>
+            <div className="text-[28px] font-semibold text-[#09090B] tabular-nums tracking-tight">
+              {stats.deliveryRate.toFixed(1)}<span className="text-[16px] text-[#71717A] ml-0.5">%</span>
             </div>
-            <div className="text-[11px] opacity-80 mt-2 flex items-center gap-3">
-              <span>주문 {stats.totalOrders}건</span>
-              <span className="opacity-40">|</span>
-              <span>평균 ${formatNum(stats.avgOrder)}</span>
+            <div className="mt-3 h-1 bg-[#F4F4F5] rounded-full overflow-hidden">
+              <div className="h-full bg-[#09090B] rounded-full" style={{ width: `${stats.deliveryRate}%` }} />
             </div>
           </div>
 
-          {/* 배송 완료율 */}
-          <div className="bg-white border border-stone-200 rounded-2xl p-4">
-            <div className="flex items-center gap-1.5 mb-2">
-              <Truck size={13} className="text-emerald-600" />
-              <span className="text-xs font-semibold text-stone-600">배송 완료율</span>
+          <div className="bg-white border border-[#E4E4E7] rounded-[12px] p-5">
+            <div className="text-[12px] font-medium text-[#71717A] mb-2">총 고객</div>
+            <div className="text-[28px] font-semibold text-[#09090B] tabular-nums tracking-tight">
+              {customers.length.toLocaleString()}
             </div>
-            <div className="flex items-baseline gap-1 mb-2">
-              <span className="text-2xl font-bold text-emerald-700 tabular-nums">{stats.deliveryRate.toFixed(1)}</span>
-              <span className="text-xs text-stone-400">%</span>
-            </div>
-            <div className="h-1.5 bg-stone-100 rounded-full overflow-hidden">
-              <div className="h-full bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-full" style={{width: `${stats.deliveryRate}%`}} />
-            </div>
+            <div className="text-[12px] text-[#71717A] mt-1">VIP {stats.vipCount} · B2B {customers.filter(c => c.isB2B).length}</div>
           </div>
 
-          {/* VIP 고객 */}
-          <div className="bg-white border border-stone-200 rounded-2xl p-4">
-            <div className="flex items-center gap-1.5 mb-2">
-              <Users size={13} className="text-rose-600" />
-              <span className="text-xs font-semibold text-stone-600">고객 현황</span>
+          <div className="bg-white border border-[#E4E4E7] rounded-[12px] p-5">
+            <div className="text-[12px] font-medium text-[#71717A] mb-2">배송료 수익</div>
+            <div className="text-[28px] font-semibold text-[#09090B] tabular-nums tracking-tight">
+              ${formatNum(stats.shippingFeeTotal)}
             </div>
-            <div className="flex items-baseline gap-1 mb-1">
-              <span className="text-2xl font-bold text-stone-800 tabular-nums">{customers.length}</span>
-              <span className="text-xs text-stone-400">명</span>
-            </div>
-            <div className="text-[10px] text-rose-700">
-              <span className="font-bold">VIP {stats.vipCount}</span>명
-              <span className="text-stone-400 mx-1">·</span>
-              <span>B2B {customers.filter(c => c.isB2B).length}곳</span>
-            </div>
+            <div className="text-[12px] text-[#71717A] mt-1">{stats.shippingFeeCount}건 부과</div>
           </div>
         </div>
       </div>
 
-      {/* ══════════════════════════════════════════════════ */}
-      {/* 🚚 섹션 3: 배송 현황 + Zone별 (실무 핵심) */}
-      {/* ══════════════════════════════════════════════════ */}
-      <div className="grid grid-cols-3 gap-4">
-        {/* 배송 상태 (2/3) */}
-        <div className="col-span-2 bg-white border border-stone-200 rounded-2xl p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-bold text-stone-700 text-sm flex items-center gap-2">
-              <span>🚚</span>
-              <span>배송 현황</span>
-              {cancelCount > 0 && (
-                <span className="text-[10px] text-stone-400 font-normal">(취소 {cancelCount}건 제외)</span>
-              )}
-            </h2>
-            <button onClick={() => setView('shipping')} className="text-[11px] text-stone-500 hover:text-stone-800 font-medium">자세히 →</button>
+      {/* ═══════════════════════════════════════════════ */}
+      {/* 🚚 배송 현황 + Zone별                          */}
+      {/* ═══════════════════════════════════════════════ */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="col-span-2 bg-white border border-[#E4E4E7] rounded-[12px] overflow-hidden">
+          <div className="px-5 py-4 border-b border-[#E4E4E7] flex items-center justify-between">
+            <div>
+              <h3 className="text-[15px] font-semibold text-[#09090B]">배송 현황</h3>
+              {cancelCount > 0 && <div className="text-[12px] text-[#71717A] mt-0.5">취소 {cancelCount}건 제외</div>}
+            </div>
+            <button onClick={() => setView('shipping')} className="text-[12px] text-[#52525B] hover:text-[#09090B] font-medium">
+              자세히 →
+            </button>
           </div>
 
-          {/* 4개 상태 한 줄로 */}
-          <div className="grid grid-cols-4 gap-2 mb-4">
+          <div className="grid grid-cols-4 divide-x divide-[#E4E4E7]">
             {shipStats.map(s => {
               const activeTotal = orders.filter(o => o.shipStatus !== '취소').length;
               const pct = activeTotal > 0 ? (s.count / activeTotal) * 100 : 0;
-              const colors = {
-                '배송준비중': 'bg-stone-50 border-stone-200 text-stone-800',
-                '출고대기': 'bg-amber-50 border-amber-200 text-amber-900',
-                '배송중': 'bg-blue-50 border-blue-200 text-blue-900',
-                '배송완료': 'bg-emerald-50 border-emerald-200 text-emerald-900',
-              };
               return (
-                <div key={s.status} className={`p-3 rounded-xl border-2 ${colors[s.status]}`}>
-                  <div className="text-[10px] font-semibold opacity-80 mb-1">{s.status}</div>
-                  <div className="text-2xl font-bold tabular-nums leading-tight">{s.count}</div>
-                  <div className="text-[10px] opacity-60 mt-0.5">{pct.toFixed(0)}%</div>
+                <div key={s.status} className="p-5">
+                  <div className="text-[12px] font-medium text-[#71717A] mb-2">{s.status}</div>
+                  <div className="text-[24px] font-semibold text-[#09090B] tabular-nums tracking-tight">{s.count}</div>
+                  <div className="text-[11px] text-[#71717A] mt-1 tabular-nums">{pct.toFixed(0)}%</div>
                 </div>
               );
             })}
           </div>
 
           {/* Zone별 배송 */}
-          <div className="pt-3 border-t border-stone-100">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-[11px] font-bold text-stone-600">Zone별 배송 (취소 제외)</h3>
-            </div>
-            <div className="grid grid-cols-8 gap-1.5">
+          <div className="px-5 py-4 border-t border-[#E4E4E7]">
+            <div className="text-[12px] font-medium text-[#71717A] mb-3">Zone별 배송 (취소 제외)</div>
+            <div className="grid grid-cols-8 gap-2">
               {SHIPPING_ZONES.map(z => {
-                const cnt = orders.filter(o => o.shippingGroup === z && o.shipStatus !== '취소').length;
+                const count = orders.filter(o => o.shippingGroup === z && o.shipStatus !== '취소').length;
                 return (
-                  <div key={z} className={`px-2 py-2 rounded-lg text-center ${ZONE_COLORS[z]}`}>
-                    <div className="text-[9px] font-bold opacity-80">{z.replace('Zone', 'Z')}</div>
-                    <div className="text-sm font-bold tabular-nums leading-tight">{cnt}</div>
+                  <div key={z} className="bg-[#FAFAFA] rounded-[8px] p-2.5 text-center border border-[#E4E4E7]">
+                    <div className="text-[10px] font-medium text-[#71717A]">Z{z.replace('Zone', '')}</div>
+                    <div className="text-[18px] font-semibold text-[#09090B] tabular-nums mt-1">{count}</div>
                   </div>
                 );
               })}
@@ -2422,48 +2400,48 @@ function Dashboard({ customers, items, orders, gifts = [], setView }) {
           </div>
         </div>
 
-        {/* B2B 현황 (1/3) */}
-        <div className="bg-white border border-stone-200 rounded-2xl p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-bold text-stone-700 text-sm flex items-center gap-2">
-              <span>🏢</span>
-              <span>B2B 거래처</span>
-            </h2>
-            <button onClick={() => setView('customers')} className="text-[11px] text-stone-500 hover:text-stone-800 font-medium">관리 →</button>
+        {/* B2B 거래처 */}
+        <div className="bg-white border border-[#E4E4E7] rounded-[12px] overflow-hidden">
+          <div className="px-5 py-4 border-b border-[#E4E4E7] flex items-center justify-between">
+            <h3 className="text-[15px] font-semibold text-[#09090B]">B2B 거래처</h3>
+            <button onClick={() => setView('customers')} className="text-[12px] text-[#52525B] hover:text-[#09090B] font-medium">
+              관리 →
+            </button>
           </div>
-          {customers.filter(c => c.isB2B).length > 0 ? (
-            <div className="space-y-3">
-              <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3">
-                <div className="text-[10px] text-indigo-700 mb-0.5">거래처 수</div>
-                <div className="text-2xl font-bold text-indigo-900 tabular-nums">
-                  {customers.filter(c => c.isB2B).length}<span className="text-xs font-normal text-indigo-500 ml-0.5">곳</span>
-                </div>
-              </div>
-              <div className="bg-red-50 border border-red-200 rounded-xl p-3">
-                <div className="text-[10px] text-red-700 mb-0.5">미수금 합계</div>
-                <div className="text-xl font-bold text-red-800 tabular-nums">
-                  ${formatNum(customers.filter(c => c.isB2B).reduce((s, c) => s + calcB2BReceivable(c.id, orders, items), 0))}
-                </div>
-              </div>
-              <div className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-3">
-                <div className="text-[10px] text-indigo-700 mb-0.5">B2B 주문</div>
-                <div className="text-xl font-bold text-indigo-900 tabular-nums">
-                  {orders.filter(o => customers.find(c => c.id === o.customerId)?.isB2B && o.shipStatus !== '취소').length}<span className="text-xs font-normal text-indigo-500 ml-0.5">건</span>
-                </div>
+
+          <div className="p-5 space-y-4">
+            <div>
+              <div className="text-[12px] font-medium text-[#71717A] mb-1">거래처 수</div>
+              <div className="text-[24px] font-semibold text-[#09090B] tabular-nums tracking-tight">
+                {customers.filter(c => c.isB2B).length}
+                <span className="text-[14px] text-[#71717A] ml-1">곳</span>
               </div>
             </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center h-40 text-center">
-              <span className="text-4xl mb-2 opacity-30">🏢</span>
-              <div className="text-xs text-stone-400 mb-3">등록된 거래처가 없습니다</div>
-              <button
-                onClick={() => setView('customers')}
-                className="text-[11px] text-indigo-600 hover:text-indigo-800 font-semibold bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg"
-              >
-                거래처 등록하기
-              </button>
+
+            <div className="h-px bg-[#E4E4E7]" />
+
+            <div>
+              <div className="text-[12px] font-medium text-[#71717A] mb-1">미수금 합계</div>
+              <div className="text-[24px] font-semibold text-[#09090B] tabular-nums tracking-tight">
+                ${formatNum((() => {
+                  const b2bIds = new Set(customers.filter(c => c.isB2B).map(c => c.id));
+                  return orders
+                    .filter(o => b2bIds.has(o.customerId) && o.paymentStatus === '미결제' && o.shipStatus !== '취소')
+                    .reduce((s, o) => s + (items.find(i => i.name === o.itemName)?.price || 0) * o.qty, 0);
+                })())}
+              </div>
             </div>
-          )}
+
+            <div className="h-px bg-[#E4E4E7]" />
+
+            <div>
+              <div className="text-[12px] font-medium text-[#71717A] mb-1">B2B 주문</div>
+              <div className="text-[24px] font-semibold text-[#09090B] tabular-nums tracking-tight">
+                {orders.filter(o => customers.find(c => c.id === o.customerId)?.isB2B && o.shipStatus !== '취소').length}
+                <span className="text-[14px] text-[#71717A] ml-1">건</span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -3016,98 +2994,98 @@ function Orders({ customers, items, orders, setOrders, gifts, setGifts, showToas
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3 flex-wrap">
+      {/* 검색 + 새 주문 버튼 */}
+      <div className="flex items-center gap-3">
         <div className="relative flex-1 max-w-md">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#A1A1AA]" />
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="주문번호, 고객명, 품목 검색..."
-            className="w-full pl-9 pr-4 py-2.5 bg-white border border-stone-200 rounded-lg text-sm focus:outline-none focus:border-red-700 focus:ring-2 focus:ring-red-100"
+            placeholder="주문번호, 고객명, 품목 검색"
+            className="w-full pl-9 pr-4 py-2 bg-white border border-[#E4E4E7] rounded-[8px] text-[14px] placeholder:text-[#A1A1AA] focus:outline-none focus:border-[#09090B] transition-colors"
           />
         </div>
         <button
           onClick={() => { setEditTarget(null); setShowForm(true); }}
-          className="flex items-center gap-2 px-4 py-2.5 bg-red-800 text-white rounded-lg text-sm font-semibold hover:bg-red-900 shadow-sm"
+          className="flex items-center gap-2 px-4 py-2 bg-[#09090B] hover:bg-black text-white rounded-[8px] text-[14px] font-medium transition-colors"
         >
-          <Plus size={16} /> 새 주문 등록
+          <Plus size={15} strokeWidth={2.5} />
+          새 주문
         </button>
       </div>
 
-      {/* 🆕 선택 액션 바 - 선택된 주문이 있을 때만 표시 */}
+      {/* 선택 액션 바 */}
       {selectedIds.size > 0 && (
-        <div className="flex items-center gap-2 p-3 bg-gradient-to-r from-red-50 to-amber-50 border-2 border-red-300 rounded-xl shadow-sm animate-[fadeIn_0.2s]">
-          <div className="flex items-center gap-2 pr-3 border-r border-red-200">
-            <span className="text-sm font-bold text-red-900">
-              ✓ {selectedIds.size}건 선택됨
+        <div className="flex items-center gap-2 p-3 bg-white border border-[#E4E4E7] rounded-[10px]">
+          <div className="flex items-center gap-2 pr-3 border-r border-[#E4E4E7]">
+            <span className="text-[13px] font-medium text-[#09090B]">
+              {selectedIds.size}개 선택됨
             </span>
             <button
               onClick={clearSelection}
-              className="text-xs text-stone-500 hover:text-red-700 underline"
+              className="text-[12px] text-[#71717A] hover:text-[#09090B] transition-colors"
             >
-              선택 해제
+              해제
             </button>
           </div>
 
-          {/* 상태 변경 */}
-          <div className="flex items-center gap-1">
-            <span className="text-[10px] text-stone-500 mr-1">배송:</span>
-            <button onClick={() => handleBulkStatus('배송준비중')} className="px-2 py-1 bg-white hover:bg-stone-100 border border-stone-300 rounded text-xs font-semibold">준비중</button>
-            <button onClick={() => handleBulkStatus('출고대기')} className="px-2 py-1 bg-white hover:bg-amber-50 border border-amber-300 text-amber-800 rounded text-xs font-semibold">출고대기</button>
-            <button onClick={() => handleBulkStatus('배송중')} className="px-2 py-1 bg-white hover:bg-blue-50 border border-blue-300 text-blue-800 rounded text-xs font-semibold">배송중</button>
-            <button onClick={() => handleBulkStatus('배송완료')} className="px-2 py-1 bg-white hover:bg-emerald-50 border border-emerald-300 text-emerald-800 rounded text-xs font-semibold">완료</button>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] text-[#71717A] mr-1">배송</span>
+            <button onClick={() => handleBulkStatus('배송준비중')} className="px-2.5 py-1 bg-white hover:bg-[#F4F4F5] border border-[#E4E4E7] rounded-[6px] text-[12px] font-medium text-[#52525B] transition-colors">준비중</button>
+            <button onClick={() => handleBulkStatus('출고대기')} className="px-2.5 py-1 bg-white hover:bg-[#F4F4F5] border border-[#E4E4E7] rounded-[6px] text-[12px] font-medium text-[#52525B] transition-colors">출고대기</button>
+            <button onClick={() => handleBulkStatus('배송중')} className="px-2.5 py-1 bg-white hover:bg-[#F4F4F5] border border-[#E4E4E7] rounded-[6px] text-[12px] font-medium text-[#52525B] transition-colors">배송중</button>
+            <button onClick={() => handleBulkStatus('배송완료')} className="px-2.5 py-1 bg-white hover:bg-[#F4F4F5] border border-[#E4E4E7] rounded-[6px] text-[12px] font-medium text-[#52525B] transition-colors">완료</button>
           </div>
 
-          {/* 결제 상태 */}
-          <div className="flex items-center gap-1 pl-2 border-l border-red-200">
-            <span className="text-[10px] text-stone-500 mr-1">결제:</span>
-            <button onClick={() => handleBulkPayment('미결제')} className="px-2 py-1 bg-white hover:bg-red-50 border border-red-300 text-red-800 rounded text-xs font-semibold">미결제</button>
-            <button onClick={() => handleBulkPayment('결제완료')} className="px-2 py-1 bg-white hover:bg-emerald-50 border border-emerald-300 text-emerald-800 rounded text-xs font-semibold">완료</button>
+          <div className="flex items-center gap-1.5 pl-2 border-l border-[#E4E4E7]">
+            <span className="text-[11px] text-[#71717A] mr-1">결제</span>
+            <button onClick={() => handleBulkPayment('미결제')} className="px-2.5 py-1 bg-white hover:bg-[#F4F4F5] border border-[#E4E4E7] rounded-[6px] text-[12px] font-medium text-[#52525B] transition-colors">미결제</button>
+            <button onClick={() => handleBulkPayment('결제완료')} className="px-2.5 py-1 bg-white hover:bg-[#F4F4F5] border border-[#E4E4E7] rounded-[6px] text-[12px] font-medium text-[#52525B] transition-colors">완료</button>
           </div>
 
-          {/* 삭제 */}
           <button
             onClick={handleBulkDelete}
-            className="ml-auto px-3 py-1.5 bg-red-700 hover:bg-red-800 text-white rounded-lg text-xs font-bold shadow-sm active:scale-95 transition-all"
+            className="ml-auto px-3 py-1 bg-[#FEF2F2] hover:bg-[#FEE2E2] text-[#B91C1C] rounded-[6px] text-[12px] font-medium transition-colors"
           >
-            🗑️ 선택 삭제
+            삭제
           </button>
         </div>
       )}
 
-      {/* 주문 유형 필터 탭 */}
-      <div className="bg-white rounded-xl border border-stone-200 p-1 flex items-center gap-1 flex-wrap">
+      {/* 주문 유형 탭 */}
+      <div className="flex items-center gap-1 border-b border-[#E4E4E7]">
         {[
-          { id: 'all', label: '전체', icon: '📋', count: orders.length, activeClass: 'bg-stone-800 text-white' },
-          { id: 'b2c', label: '개인 (B2C)', icon: '🏠', count: orders.filter(o => !customerMap[o.customerId]?.isB2B).length, activeClass: 'bg-red-800 text-white' },
-          { id: 'b2b', label: '거래처 (B2B)', icon: '🏢', count: orders.filter(o => customerMap[o.customerId]?.isB2B).length, activeClass: 'bg-indigo-700 text-white' },
-          { id: 'waiting', label: '입고대기', icon: '⏳', count: orders.filter(o => o.shipStatus === '입고대기').length, activeClass: 'bg-purple-700 text-white' },
-          { id: 'split', label: '분할 배송', icon: '📦', count: orders.filter(o => o.splitDeliveries?.length > 0).length, activeClass: 'bg-teal-700 text-white' },
+          { id: 'all', label: '전체', count: orders.length },
+          { id: 'b2c', label: '개인', count: orders.filter(o => !customerMap[o.customerId]?.isB2B).length },
+          { id: 'b2b', label: '거래처', count: orders.filter(o => customerMap[o.customerId]?.isB2B).length },
+          { id: 'waiting', label: '입고대기', count: orders.filter(o => o.shipStatus === '입고대기').length },
+          { id: 'split', label: '분할 배송', count: orders.filter(o => o.splitDeliveries?.length > 0).length },
         ].map(tab => (
           <button
             key={tab.id}
             onClick={() => setOrderTypeFilter(tab.id)}
-            className={`flex-1 px-3 py-2 rounded-lg text-xs font-bold transition-all ${
-              orderTypeFilter === tab.id ? tab.activeClass : 'text-stone-600 hover:bg-stone-50'
+            className={`px-4 py-2.5 text-[13px] font-medium transition-colors border-b-2 -mb-px ${
+              orderTypeFilter === tab.id
+                ? 'text-[#09090B] border-[#09090B]'
+                : 'text-[#71717A] hover:text-[#09090B] border-transparent'
             }`}
           >
-            <span className="mr-1">{tab.icon}</span>
             {tab.label}
-            <span className={`ml-1.5 text-[10px] ${orderTypeFilter === tab.id ? 'opacity-90' : 'opacity-60'}`}>
-              ({tab.count})
+            <span className={`ml-1.5 text-[12px] tabular-nums ${orderTypeFilter === tab.id ? 'text-[#52525B]' : 'text-[#A1A1AA]'}`}>
+              {tab.count}
             </span>
           </button>
         ))}
       </div>
 
       {/* 기간 & Zone 필터 */}
-      <div className="bg-white rounded-xl border border-stone-200 p-3 flex items-center gap-3 flex-wrap">
+      <div className="bg-white rounded-[10px] border border-[#E4E4E7] p-3 flex items-center gap-3 flex-wrap">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-stone-600">📅 기간:</span>
+          <span className="text-[12px] font-medium text-[#71717A]">기간</span>
           <select
             value={yearFilter}
             onChange={e => setYearFilter(e.target.value)}
-            className="px-2 py-1.5 border border-stone-200 rounded text-xs bg-white focus:outline-none focus:border-red-700"
+            className="px-2.5 py-1.5 border border-[#E4E4E7] rounded-[6px] text-[12px] bg-white text-[#09090B] focus:outline-none focus:border-[#09090B] cursor-pointer transition-colors"
           >
             <option value="">전체 년도</option>
             {availableYears.map(y => <option key={y} value={y}>{y}년</option>)}
@@ -3115,7 +3093,7 @@ function Orders({ customers, items, orders, setOrders, gifts, setGifts, showToas
           <select
             value={monthFilter}
             onChange={e => setMonthFilter(e.target.value)}
-            className="px-2 py-1.5 border border-stone-200 rounded text-xs bg-white focus:outline-none focus:border-red-700"
+            className="px-2.5 py-1.5 border border-[#E4E4E7] rounded-[6px] text-[12px] bg-white text-[#09090B] focus:outline-none focus:border-[#09090B] cursor-pointer transition-colors"
           >
             <option value="">전체 월</option>
             {['01','02','03','04','05','06','07','08','09','10','11','12'].map(m =>
@@ -3123,50 +3101,54 @@ function Orders({ customers, items, orders, setOrders, gifts, setGifts, showToas
             )}
           </select>
         </div>
-        <div className="w-px h-5 bg-stone-200" />
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-xs font-semibold text-stone-600 mr-1">🗺️ Zone:</span>
+
+        <div className="w-px h-5 bg-[#E4E4E7]" />
+
+        <div className="flex items-center gap-1 flex-wrap">
+          <span className="text-[12px] font-medium text-[#71717A] mr-1">Zone</span>
           <button
             onClick={() => setZoneFilter('')}
-            className={`px-2.5 py-1 rounded text-[11px] font-bold border transition-all ${
-              zoneFilter === '' ? 'bg-stone-800 text-white border-stone-800' : 'bg-white text-stone-600 border-stone-200 hover:bg-stone-50'
+            className={`px-2.5 py-1 rounded-[6px] text-[12px] font-medium transition-colors ${
+              zoneFilter === '' ? 'bg-[#09090B] text-white' : 'bg-white text-[#52525B] border border-[#E4E4E7] hover:bg-[#F4F4F5]'
             }`}>
             전체
           </button>
           {SHIPPING_ZONES.map(z => (
-            <button key={z} onClick={() => setZoneFilter(zoneFilter === z ? '' : z)}
-              className={`px-2.5 py-1 rounded text-[11px] font-bold border transition-all ${
+            <button
+              key={z}
+              onClick={() => setZoneFilter(zoneFilter === z ? '' : z)}
+              className={`px-2.5 py-1 rounded-[6px] text-[12px] font-medium transition-colors ${
                 zoneFilter === z
-                  ? 'bg-stone-800 text-white border-stone-800'
-                  : `border-stone-200 ${ZONE_COLORS[z]} hover:opacity-80`
+                  ? 'bg-[#09090B] text-white'
+                  : 'bg-white text-[#52525B] border border-[#E4E4E7] hover:bg-[#F4F4F5]'
               }`}>
-              {z.replace('Zone', 'Z')}
+              Z{z.replace('Zone', '')}
             </button>
           ))}
         </div>
+
         {(yearFilter || monthFilter || zoneFilter) && (
           <button
             onClick={() => { setYearFilter(''); setMonthFilter(''); setZoneFilter(''); }}
-            className="ml-auto text-xs text-stone-500 hover:text-stone-700 underline">
-            필터 초기화
+            className="text-[12px] text-[#71717A] hover:text-[#09090B] transition-colors">
+            초기화
           </button>
         )}
-        <div className={(yearFilter || monthFilter || zoneFilter) ? "" : "ml-auto"}>
-          <span className="text-xs text-stone-500">
-            <span className="font-bold text-stone-800">{filtered.length}</span>건 표시
-          </span>
+
+        <div className="ml-auto text-[12px] text-[#71717A]">
+          <span className="font-medium text-[#09090B] tabular-nums">{filtered.length}</span>건
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden">
+      <div className="bg-white rounded-[12px] border border-[#E4E4E7] overflow-hidden">
         <div className="overflow-x-auto scrollbar-slim">
-          <table className="w-full text-sm">
-            <thead className="bg-stone-50 border-b border-stone-200">
+          <table className="w-full text-[13px]">
+            <thead className="bg-[#FAFAFA] border-b border-[#E4E4E7]">
               <tr>
                 <th className="w-10 px-3 py-3">
                   <input
                     type="checkbox"
-                    className="w-4 h-4 rounded accent-red-700 cursor-pointer"
+                    className="w-4 h-4 rounded accent-[#09090B] cursor-pointer"
                     checked={filtered.length > 0 && filtered.slice(0, displayLimit).every(o => selectedIds.has(o.id))}
                     onChange={() => toggleSelectAll(filtered.slice(0, displayLimit).map(o => o.id))}
                     title="전체 선택"
@@ -3180,7 +3162,7 @@ function Orders({ customers, items, orders, setOrders, gifts, setGifts, showToas
                 <SortHeader label="수량" field="qty" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="right" />
                 <SortHeader label="금액" field="amount" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="right" />
                 <SortHeader label="상태" field="status" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="center" />
-                <th className="text-center px-4 py-3 font-semibold text-stone-600 text-xs">관리</th>
+                <th className="text-center px-4 py-3 font-medium text-[#71717A] text-[12px]">관리</th>
               </tr>
             </thead>
             <tbody>
@@ -4347,116 +4329,139 @@ function Customers({ customers, setCustomers, items, orders, showToast }) {
 
   return (
     <div className="space-y-4">
-      {/* 🏷 고객 유형 탭 */}
-      <div className="flex items-center gap-2 bg-white border border-stone-200 rounded-xl p-1">
+      {/* 검색 + 고객 추가 */}
+      <div className="flex items-center gap-3">
+        <div className="relative flex-1 max-w-md">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#A1A1AA]" />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="이름, 고객ID, 전화, 주소 검색"
+            className="w-full pl-9 pr-4 py-2 bg-white border border-[#E4E4E7] rounded-[8px] text-[14px] placeholder:text-[#A1A1AA] focus:outline-none focus:border-[#09090B] transition-colors"
+          />
+        </div>
+        <button
+          onClick={() => { setEditTarget(null); setShowForm(true); }}
+          className="flex items-center gap-2 px-4 py-2 bg-[#09090B] hover:bg-black text-white rounded-[8px] text-[14px] font-medium transition-colors"
+        >
+          <Plus size={15} strokeWidth={2.5} />
+          고객 추가
+        </button>
+      </div>
+
+      {/* 선택 액션 바 */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-2 p-3 bg-white border border-[#E4E4E7] rounded-[10px]">
+          <div className="flex items-center gap-2 pr-3 border-r border-[#E4E4E7]">
+            <span className="text-[13px] font-medium text-[#09090B]">
+              {selectedIds.size}명 선택됨
+            </span>
+            <button
+              onClick={clearSelection}
+              className="text-[12px] text-[#71717A] hover:text-[#09090B] transition-colors"
+            >
+              해제
+            </button>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] text-[#71717A] mr-1">등급</span>
+            <button onClick={() => handleBulkGrade('VIP')} className="px-2.5 py-1 bg-white hover:bg-[#F4F4F5] border border-[#E4E4E7] rounded-[6px] text-[12px] font-medium text-[#52525B] transition-colors">VIP</button>
+            <button onClick={() => handleBulkGrade('우수')} className="px-2.5 py-1 bg-white hover:bg-[#F4F4F5] border border-[#E4E4E7] rounded-[6px] text-[12px] font-medium text-[#52525B] transition-colors">우수</button>
+            <button onClick={() => handleBulkGrade('일반')} className="px-2.5 py-1 bg-white hover:bg-[#F4F4F5] border border-[#E4E4E7] rounded-[6px] text-[12px] font-medium text-[#52525B] transition-colors">일반</button>
+          </div>
+
+          <div className="flex items-center gap-1.5 pl-2 border-l border-[#E4E4E7]">
+            <span className="text-[11px] text-[#71717A] mr-1">Aged Care</span>
+            <button onClick={() => handleBulkAgedCare(true)} className="px-2.5 py-1 bg-white hover:bg-[#F4F4F5] border border-[#E4E4E7] rounded-[6px] text-[12px] font-medium text-[#52525B] transition-colors">설정</button>
+            <button onClick={() => handleBulkAgedCare(false)} className="px-2.5 py-1 bg-white hover:bg-[#F4F4F5] border border-[#E4E4E7] rounded-[6px] text-[12px] font-medium text-[#52525B] transition-colors">해제</button>
+          </div>
+
+          <button
+            onClick={handleBulkDeleteCustomers}
+            className="ml-auto px-3 py-1 bg-[#FEF2F2] hover:bg-[#FEE2E2] text-[#B91C1C] rounded-[6px] text-[12px] font-medium transition-colors"
+          >
+            삭제
+          </button>
+        </div>
+      )}
+
+      {/* 고객 유형 탭 */}
+      <div className="flex items-center gap-1 border-b border-[#E4E4E7]">
         {[
-          { id: 'all', label: '전체', icon: '👥', count: customers.length, activeClass: 'bg-stone-800 text-white' },
-          { id: 'b2c', label: '개인 고객', icon: '🏠', count: customers.filter(c => !c.isB2B).length, activeClass: 'bg-red-800 text-white' },
-          { id: 'b2b', label: '거래처 (B2B)', icon: '🏢', count: customers.filter(c => c.isB2B).length, activeClass: 'bg-indigo-700 text-white' },
+          { id: 'all', label: '전체', count: customers.length },
+          { id: 'b2c', label: '개인', count: customers.filter(c => !c.isB2B).length },
+          { id: 'b2b', label: '거래처', count: customers.filter(c => c.isB2B).length },
         ].map(tab => (
           <button
             key={tab.id}
             onClick={() => setCustomerTypeFilter(tab.id)}
-            className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-bold transition-all ${
-              customerTypeFilter === tab.id ? tab.activeClass : 'text-stone-600 hover:bg-stone-50'
+            className={`px-4 py-2.5 text-[13px] font-medium transition-colors border-b-2 -mb-px ${
+              customerTypeFilter === tab.id
+                ? 'text-[#09090B] border-[#09090B]'
+                : 'text-[#71717A] hover:text-[#09090B] border-transparent'
             }`}
           >
-            <span className="mr-1.5">{tab.icon}</span>
             {tab.label}
-            <span className={`ml-2 text-[10px] font-semibold ${customerTypeFilter === tab.id ? 'opacity-90' : 'opacity-60'}`}>
-              ({tab.count})
+            <span className={`ml-1.5 text-[12px] tabular-nums ${customerTypeFilter === tab.id ? 'text-[#52525B]' : 'text-[#A1A1AA]'}`}>
+              {tab.count.toLocaleString()}
             </span>
           </button>
         ))}
       </div>
 
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="relative flex-1 min-w-[240px] max-w-md">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="이름, 고객ID, 전화, 주소 검색..."
-            className="w-full pl-9 pr-4 py-2.5 bg-white border border-stone-200 rounded-lg text-sm focus:outline-none focus:border-red-700 focus:ring-2 focus:ring-red-100"
-          />
-        </div>
-        <div className="flex items-center gap-1 bg-white border border-stone-200 rounded-lg p-1">
-          {['', 'VIP', '우수', '일반'].map(g => (
-            <button key={g} onClick={() => setGradeFilter(g)}
-              className={`px-3 py-1.5 text-xs font-medium rounded ${gradeFilter === g ? 'bg-stone-800 text-white' : 'text-stone-600 hover:bg-stone-50'}`}>
-              {g || '전체등급'}
+      {/* 등급 + Aged Care 필터 */}
+      <div className="bg-white rounded-[10px] border border-[#E4E4E7] p-3 flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-1.5">
+          <span className="text-[12px] font-medium text-[#71717A] mr-1">등급</span>
+          {[
+            { v: '', label: '전체' },
+            { v: 'VIP', label: 'VIP' },
+            { v: '우수', label: '우수' },
+            { v: '일반', label: '일반' },
+          ].map(g => (
+            <button
+              key={g.v}
+              onClick={() => setGradeFilter(g.v)}
+              className={`px-2.5 py-1 rounded-[6px] text-[12px] font-medium transition-colors ${
+                gradeFilter === g.v
+                  ? 'bg-[#09090B] text-white'
+                  : 'bg-white text-[#52525B] border border-[#E4E4E7] hover:bg-[#F4F4F5]'
+              }`}>
+              {g.label}
             </button>
           ))}
         </div>
+
+        <div className="w-px h-5 bg-[#E4E4E7]" />
+
         <button
           onClick={() => setAgedCareFilter(!agedCareFilter)}
-          className={`px-3 py-2 rounded-lg text-xs font-bold border-2 transition-all ${
+          className={`px-3 py-1 rounded-[6px] text-[12px] font-medium transition-colors ${
             agedCareFilter
-              ? 'bg-amber-600 text-white border-amber-600'
-              : 'bg-white text-amber-700 border-amber-300 hover:bg-amber-50'
+              ? 'bg-[#09090B] text-white'
+              : 'bg-white text-[#52525B] border border-[#E4E4E7] hover:bg-[#F4F4F5]'
           }`}>
-          🏥 Aged Care만 ({customers.filter(c => c.agedCare).length})
+          Aged Care <span className="tabular-nums ml-0.5 opacity-70">{customers.filter(c => c.agedCare).length}</span>
         </button>
-        <div className="text-xs text-stone-500">
-          총 <span className="font-bold text-stone-800">{filtered.length}</span>명 / 전체 <span className="font-bold text-stone-800">{customers.length}</span>명
+
+        <div className="ml-auto text-[12px] text-[#71717A]">
+          <span className="font-medium text-[#09090B] tabular-nums">{filtered.length.toLocaleString()}</span>
+          <span className="mx-1">/</span>
+          <span className="tabular-nums">{customers.length.toLocaleString()}</span>
+          <span className="ml-1">명</span>
         </div>
-        <button
-          onClick={() => { setEditTarget(null); setShowForm(true); }}
-          className="ml-auto flex items-center gap-2 px-4 py-2.5 bg-red-800 text-white rounded-lg text-sm font-semibold hover:bg-red-900 shadow-sm"
-        >
-          <Plus size={16} /> 고객 추가
-        </button>
       </div>
 
-      {/* 🆕 선택 액션 바 */}
-      {selectedIds.size > 0 && (
-        <div className="flex items-center gap-2 p-3 bg-gradient-to-r from-red-50 to-amber-50 border-2 border-red-300 rounded-xl shadow-sm">
-          <div className="flex items-center gap-2 pr-3 border-r border-red-200">
-            <span className="text-sm font-bold text-red-900">
-              ✓ {selectedIds.size}명 선택됨
-            </span>
-            <button
-              onClick={clearSelection}
-              className="text-xs text-stone-500 hover:text-red-700 underline"
-            >
-              선택 해제
-            </button>
-          </div>
-
-          {/* 등급 변경 */}
-          <div className="flex items-center gap-1">
-            <span className="text-[10px] text-stone-500 mr-1">등급:</span>
-            <button onClick={() => handleBulkGrade('VIP')} className="px-2 py-1 bg-white hover:bg-red-50 border border-red-300 text-red-800 rounded text-xs font-semibold">VIP</button>
-            <button onClick={() => handleBulkGrade('우수')} className="px-2 py-1 bg-white hover:bg-amber-50 border border-amber-300 text-amber-800 rounded text-xs font-semibold">우수</button>
-            <button onClick={() => handleBulkGrade('일반')} className="px-2 py-1 bg-white hover:bg-stone-100 border border-stone-300 rounded text-xs font-semibold">일반</button>
-          </div>
-
-          {/* Aged Care */}
-          <div className="flex items-center gap-1 pl-2 border-l border-red-200">
-            <span className="text-[10px] text-stone-500 mr-1">Aged Care:</span>
-            <button onClick={() => handleBulkAgedCare(true)} className="px-2 py-1 bg-white hover:bg-amber-50 border border-amber-300 text-amber-800 rounded text-xs font-semibold">🏥 설정</button>
-            <button onClick={() => handleBulkAgedCare(false)} className="px-2 py-1 bg-white hover:bg-stone-100 border border-stone-300 rounded text-xs font-semibold">해제</button>
-          </div>
-
-          {/* 삭제 */}
-          <button
-            onClick={handleBulkDeleteCustomers}
-            className="ml-auto px-3 py-1.5 bg-red-700 hover:bg-red-800 text-white rounded-lg text-xs font-bold shadow-sm active:scale-95 transition-all"
-          >
-            🗑️ 선택 삭제
-          </button>
-        </div>
-      )}
-
-      <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden">
+      <div className="bg-white rounded-[12px] border border-[#E4E4E7] overflow-hidden">
         <div className="overflow-x-auto scrollbar-slim">
-          <table className="w-full text-sm">
-            <thead className="bg-stone-50 border-b border-stone-200">
+          <table className="w-full text-[13px]">
+            <thead className="bg-[#FAFAFA] border-b border-[#E4E4E7]">
               <tr>
                 <th className="w-10 px-3 py-3">
                   <input
                     type="checkbox"
-                    className="w-4 h-4 rounded accent-red-700 cursor-pointer"
+                    className="w-4 h-4 rounded accent-[#09090B] cursor-pointer"
                     checked={filtered.length > 0 && filtered.slice(0, displayLimit).every(c => selectedIds.has(c.id))}
                     onChange={() => toggleSelectAll(filtered.slice(0, displayLimit).map(c => c.id))}
                     title="전체 선택"
@@ -4465,13 +4470,13 @@ function Customers({ customers, setCustomers, items, orders, showToast }) {
                 <SortHeader label="고객ID" field="id" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="left" />
                 <SortHeader label="성함" field="name" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="left" />
                 <SortHeader label="연락처" field="phone" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="left" />
-                <th className="text-left px-4 py-3 font-semibold text-stone-600 text-xs">주소</th>
-                <th className="text-left px-4 py-3 font-semibold text-stone-600 text-xs">주문 품목</th>
-                <th className="text-center px-4 py-3 font-semibold text-stone-600 text-xs">구분</th>
+                <th className="text-left px-4 py-3 font-medium text-[#71717A] text-[12px]">주소</th>
+                <th className="text-left px-4 py-3 font-medium text-[#71717A] text-[12px]">주문 품목</th>
+                <th className="text-center px-4 py-3 font-medium text-[#71717A] text-[12px]">구분</th>
                 <SortHeader label="등급(자동)" field="grade" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="center" />
                 <SortHeader label="주문" field="orderCount" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="center" />
                 <SortHeader label="구매액" field="totalSpent" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="right" />
-                <th className="text-center px-4 py-3 font-semibold text-stone-600 text-xs">관리</th>
+                <th className="text-center px-4 py-3 font-medium text-[#71717A] text-[12px]">관리</th>
               </tr>
             </thead>
             <tbody>
@@ -5166,16 +5171,16 @@ function Items({ items, setItems, showToast }) {
         <table className="w-full text-sm">
           <thead className="bg-stone-50 border-b border-stone-200">
             <tr>
-              <th className="text-left px-4 py-3 font-semibold text-stone-600 text-xs">품목코드</th>
-              <th className="text-left px-4 py-3 font-semibold text-stone-600 text-xs">품목명</th>
+              <th className="text-left px-4 py-3 font-medium text-[#71717A] text-[12px]">품목코드</th>
+              <th className="text-left px-4 py-3 font-medium text-[#71717A] text-[12px]">품목명</th>
               <th className="text-right px-4 py-3 font-semibold text-stone-600 text-xs">💰 원가</th>
               <th className="text-right px-4 py-3 font-semibold text-stone-600 text-xs">🏠 B2C 판매가</th>
               <th className="text-right px-4 py-3 font-semibold text-stone-600 text-xs">🏢 B2B 도매가</th>
-              <th className="text-center px-4 py-3 font-semibold text-stone-600 text-xs">마진율</th>
+              <th className="text-center px-4 py-3 font-medium text-[#71717A] text-[12px]">마진율</th>
               <th className="text-right px-4 py-3 font-semibold text-stone-600 text-xs">실재고</th>
               <th className="text-right px-4 py-3 font-semibold text-stone-600 text-xs">가용재고</th>
-              <th className="text-center px-4 py-3 font-semibold text-stone-600 text-xs">상태</th>
-              <th className="text-center px-4 py-3 font-semibold text-stone-600 text-xs">관리</th>
+              <th className="text-center px-4 py-3 font-medium text-[#71717A] text-[12px]">상태</th>
+              <th className="text-center px-4 py-3 font-medium text-[#71717A] text-[12px]">관리</th>
             </tr>
           </thead>
           <tbody>
@@ -5809,139 +5814,153 @@ function Shipping({ customers, orders, setOrders, showToast }) {
 
   return (
     <div className="space-y-4">
-      {/* 🆕 선택 액션 바 */}
+      {/* 선택 액션 바 */}
       {selectedIds.size > 0 && (
-        <div className="flex items-center gap-2 p-3 bg-gradient-to-r from-red-50 to-amber-50 border-2 border-red-300 rounded-xl shadow-sm flex-wrap">
-          <div className="flex items-center gap-2 pr-3 border-r border-red-200">
-            <span className="text-sm font-bold text-red-900">
-              ✓ {selectedIds.size}건 선택됨
+        <div className="flex items-center gap-2 p-3 bg-white border border-[#E4E4E7] rounded-[10px] flex-wrap">
+          <div className="flex items-center gap-2 pr-3 border-r border-[#E4E4E7]">
+            <span className="text-[13px] font-medium text-[#09090B]">
+              {selectedIds.size}건 선택됨
             </span>
             <button
               onClick={clearSelection}
-              className="text-xs text-stone-500 hover:text-red-700 underline"
+              className="text-[12px] text-[#71717A] hover:text-[#09090B] transition-colors"
             >
-              선택 해제
+              해제
             </button>
           </div>
 
-          {/* 상태 변경 */}
-          <div className="flex items-center gap-1">
-            <span className="text-[10px] text-stone-500 mr-1">배송:</span>
-            <button onClick={() => handleBulkStatus('출고대기')} className="px-2 py-1 bg-white hover:bg-amber-50 border border-amber-300 text-amber-800 rounded text-xs font-semibold">출고대기</button>
-            <button onClick={() => handleBulkStatus('배송중')} className="px-2 py-1 bg-white hover:bg-blue-50 border border-blue-300 text-blue-800 rounded text-xs font-semibold">배송중</button>
-            <button onClick={() => handleBulkStatus('배송완료')} className="px-2 py-1 bg-white hover:bg-emerald-50 border border-emerald-300 text-emerald-800 rounded text-xs font-semibold">완료</button>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] text-[#71717A] mr-1">배송</span>
+            <button onClick={() => handleBulkStatus('출고대기')} className="px-2.5 py-1 bg-white hover:bg-[#F4F4F5] border border-[#E4E4E7] rounded-[6px] text-[12px] font-medium text-[#52525B] transition-colors">출고대기</button>
+            <button onClick={() => handleBulkStatus('배송중')} className="px-2.5 py-1 bg-white hover:bg-[#F4F4F5] border border-[#E4E4E7] rounded-[6px] text-[12px] font-medium text-[#52525B] transition-colors">배송중</button>
+            <button onClick={() => handleBulkStatus('배송완료')} className="px-2.5 py-1 bg-white hover:bg-[#F4F4F5] border border-[#E4E4E7] rounded-[6px] text-[12px] font-medium text-[#52525B] transition-colors">완료</button>
           </div>
 
-          {/* 결제 */}
-          <div className="flex items-center gap-1 pl-2 border-l border-red-200">
-            <span className="text-[10px] text-stone-500 mr-1">결제:</span>
-            <button onClick={() => handleBulkPayment('결제완료')} className="px-2 py-1 bg-white hover:bg-emerald-50 border border-emerald-300 text-emerald-800 rounded text-xs font-semibold">완료</button>
-            <button onClick={() => handleBulkPayment('미결제')} className="px-2 py-1 bg-white hover:bg-red-50 border border-red-300 text-red-800 rounded text-xs font-semibold">미결제</button>
+          <div className="flex items-center gap-1.5 pl-2 border-l border-[#E4E4E7]">
+            <span className="text-[11px] text-[#71717A] mr-1">결제</span>
+            <button onClick={() => handleBulkPayment('결제완료')} className="px-2.5 py-1 bg-white hover:bg-[#F4F4F5] border border-[#E4E4E7] rounded-[6px] text-[12px] font-medium text-[#52525B] transition-colors">완료</button>
+            <button onClick={() => handleBulkPayment('미결제')} className="px-2.5 py-1 bg-white hover:bg-[#F4F4F5] border border-[#E4E4E7] rounded-[6px] text-[12px] font-medium text-[#52525B] transition-colors">미결제</button>
           </div>
 
-          {/* Zone 일괄 배정 */}
-          <div className="flex items-center gap-1 pl-2 border-l border-red-200">
-            <span className="text-[10px] text-stone-500 mr-1">Zone:</span>
+          <div className="flex items-center gap-1 pl-2 border-l border-[#E4E4E7]">
+            <span className="text-[11px] text-[#71717A] mr-1">Zone</span>
             {SHIPPING_ZONES.map(z => (
               <button
                 key={z}
                 onClick={() => handleBulkZone(z)}
-                className={`px-1.5 py-1 ${ZONE_COLORS[z]} hover:opacity-80 rounded text-[10px] font-bold`}
+                className="px-2 py-1 bg-white hover:bg-[#F4F4F5] border border-[#E4E4E7] rounded-[6px] text-[11px] font-medium text-[#52525B] transition-colors"
               >
-                {z.replace('Zone', 'Z')}
+                Z{z.replace('Zone', '')}
               </button>
             ))}
-            <button onClick={() => handleBulkZone('')} className="px-1.5 py-1 bg-white hover:bg-stone-100 border border-stone-300 rounded text-[10px] font-semibold">해제</button>
+            <button onClick={() => handleBulkZone('')} className="px-2 py-1 bg-white hover:bg-[#F4F4F5] border border-[#E4E4E7] rounded-[6px] text-[11px] font-medium text-[#71717A] transition-colors">해제</button>
           </div>
         </div>
       )}
 
+      {/* 상태 필터 카드 */}
       <div className="grid grid-cols-4 gap-3">
         {Object.entries(statusCounts).map(([k, v]) => (
-          <button key={k} onClick={() => setStatusFilter(statusFilter === k ? '' : k)}
-            className={`text-left p-4 rounded-xl border-2 transition-all ${
-              statusFilter === k ? 'border-red-700 bg-red-50' : 'border-stone-200 bg-white hover:border-stone-300'
+          <button
+            key={k}
+            onClick={() => setStatusFilter(statusFilter === k ? '' : k)}
+            className={`text-left p-4 rounded-[12px] border transition-colors ${
+              statusFilter === k
+                ? 'bg-[#09090B] border-[#09090B]'
+                : 'bg-white border-[#E4E4E7] hover:border-[#D4D4D8]'
             }`}>
-            <div className="text-xs text-stone-500 font-medium mb-1">{k}</div>
-            <div className="text-2xl font-bold text-stone-800 tabular-nums">{v}</div>
+            <div className={`text-[12px] font-medium mb-1 ${statusFilter === k ? 'text-white/70' : 'text-[#71717A]'}`}>{k}</div>
+            <div className={`text-[28px] font-semibold tabular-nums tracking-tight ${statusFilter === k ? 'text-white' : 'text-[#09090B]'}`}>{v}</div>
           </button>
         ))}
       </div>
 
-      {/* Zone 필터 */}
-      <div className="bg-white rounded-2xl border border-stone-200 p-4">
+      {/* Zone + 결제 필터 */}
+      <div className="bg-white rounded-[12px] border border-[#E4E4E7] p-4">
         <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-bold text-stone-700">🗺️ 배송 Zone별 필터</span>
-          </div>
+          <div className="text-[13px] font-semibold text-[#09090B]">Zone별 배송</div>
           {(zoneFilter || paymentFilter || statusFilter || pickupFilter) && (
             <button
               onClick={() => { setZoneFilter(''); setPaymentFilter(''); setStatusFilter(''); setPickupFilter(false); }}
-              className="text-xs text-stone-500 hover:text-stone-700 underline">
-              모든 필터 해제
+              className="text-[12px] text-[#71717A] hover:text-[#09090B] transition-colors">
+              필터 초기화
             </button>
           )}
         </div>
-        {/* 전체 버튼 (윗줄 풀 너비) */}
-        <button
-          onClick={() => setZoneFilter('')}
-          className={`w-full px-3 py-2.5 rounded-lg text-xs font-bold border-2 transition-all mb-2 ${
-            zoneFilter === '' ? 'border-indigo-700 bg-indigo-700 text-white' : 'border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
-          }`}>
-          전체 <span className="font-normal opacity-80 ml-1">{orders.length}건</span>
-        </button>
-        {/* Zone 1~8 버튼 (4x2 배열) */}
-        <div className="grid grid-cols-4 gap-2">
+
+        {/* Zone 버튼 */}
+        <div className="grid grid-cols-9 gap-2">
+          <button
+            onClick={() => setZoneFilter('')}
+            className={`px-2 py-2 rounded-[8px] text-[12px] font-medium transition-colors ${
+              zoneFilter === ''
+                ? 'bg-[#09090B] text-white'
+                : 'bg-white text-[#52525B] border border-[#E4E4E7] hover:bg-[#F4F4F5]'
+            }`}>
+            <div>전체</div>
+            <div className="text-[10px] opacity-70 mt-0.5 tabular-nums">{orders.length}</div>
+          </button>
           {SHIPPING_ZONES.map(z => (
-            <button key={z} onClick={() => setZoneFilter(zoneFilter === z ? '' : z)}
-              className={`px-3 py-2.5 rounded-lg text-xs font-bold border-2 transition-all ${
+            <button
+              key={z}
+              onClick={() => setZoneFilter(zoneFilter === z ? '' : z)}
+              className={`px-2 py-2 rounded-[8px] text-[12px] font-medium transition-colors ${
                 zoneFilter === z
-                  ? 'border-stone-800 bg-stone-800 text-white'
-                  : `border-stone-200 ${ZONE_COLORS[z]} hover:opacity-80`
+                  ? 'bg-[#09090B] text-white'
+                  : 'bg-white text-[#52525B] border border-[#E4E4E7] hover:bg-[#F4F4F5]'
               }`}>
-              {z.replace('Zone', 'Zone ')}
-              <div className="text-[10px] font-normal opacity-70 mt-0.5">{zoneCounts[z]}건</div>
+              <div>Z{z.replace('Zone', '')}</div>
+              <div className="text-[10px] opacity-70 mt-0.5 tabular-nums">{zoneCounts[z]}</div>
             </button>
           ))}
         </div>
-        {/* 결제상태 / 픽업 필터 */}
-        <div className="mt-3 pt-3 border-t border-stone-100 flex items-center gap-2 flex-wrap">
-          <span className="text-xs font-semibold text-stone-600">💳 결제상태:</span>
+
+        {/* 결제상태 + 픽업 */}
+        <div className="mt-3 pt-3 border-t border-[#E4E4E7] flex items-center gap-2 flex-wrap">
+          <span className="text-[12px] font-medium text-[#71717A]">결제</span>
           <button
             onClick={() => setPaymentFilter(paymentFilter === '결제완료' ? '' : '결제완료')}
-            className={`px-3 py-1 rounded text-xs font-bold transition-all ${
-              paymentFilter === '결제완료' ? 'bg-emerald-700 text-white' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+            className={`px-3 py-1 rounded-[6px] text-[12px] font-medium transition-colors ${
+              paymentFilter === '결제완료'
+                ? 'bg-[#09090B] text-white'
+                : 'bg-white text-[#52525B] border border-[#E4E4E7] hover:bg-[#F4F4F5]'
             }`}>
-            ✓ 결제완료 {orders.filter(o => o.paymentStatus === '결제완료').length}건
+            완료 <span className="tabular-nums ml-0.5 opacity-70">{orders.filter(o => o.paymentStatus === '결제완료').length}</span>
           </button>
           <button
             onClick={() => setPaymentFilter(paymentFilter === '미결제' ? '' : '미결제')}
-            className={`px-3 py-1 rounded text-xs font-bold transition-all ${
-              paymentFilter === '미결제' ? 'bg-red-700 text-white' : 'bg-red-50 text-red-700 hover:bg-red-100'
+            className={`px-3 py-1 rounded-[6px] text-[12px] font-medium transition-colors ${
+              paymentFilter === '미결제'
+                ? 'bg-[#09090B] text-white'
+                : 'bg-white text-[#52525B] border border-[#E4E4E7] hover:bg-[#F4F4F5]'
             }`}>
-            ✗ 미결제 {unpaidCount}건
+            미결제 <span className="tabular-nums ml-0.5 opacity-70">{unpaidCount}</span>
           </button>
-          <div className="w-px h-4 bg-stone-200 mx-1" />
-          <span className="text-xs font-semibold text-stone-600">📍 픽업:</span>
+
+          <div className="w-px h-5 bg-[#E4E4E7]" />
+
+          <span className="text-[12px] font-medium text-[#71717A]">픽업</span>
           <button
             onClick={() => setPickupFilter(!pickupFilter)}
-            className={`px-3 py-1 rounded text-xs font-bold transition-all ${
-              pickupFilter ? 'bg-sky-600 text-white' : 'bg-sky-50 text-sky-700 hover:bg-sky-100'
+            className={`px-3 py-1 rounded-[6px] text-[12px] font-medium transition-colors ${
+              pickupFilter
+                ? 'bg-[#09090B] text-white'
+                : 'bg-white text-[#52525B] border border-[#E4E4E7] hover:bg-[#F4F4F5]'
             }`}>
-            📍 픽업만 {orders.filter(o => o.isPickup).length}건
+            픽업만 <span className="tabular-nums ml-0.5 opacity-70">{orders.filter(o => o.isPickup).length}</span>
           </button>
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden">
+      <div className="bg-white rounded-[12px] border border-[#E4E4E7] overflow-hidden">
         <div className="overflow-x-auto scrollbar-slim">
-          <table className="w-full text-sm">
-            <thead className="bg-stone-50 border-b border-stone-200">
+          <table className="w-full text-[13px]">
+            <thead className="bg-[#FAFAFA] border-b border-[#E4E4E7]">
               <tr>
                 <th className="w-10 px-3 py-3">
                   <input
                     type="checkbox"
-                    className="w-4 h-4 rounded accent-red-700 cursor-pointer"
+                    className="w-4 h-4 rounded accent-[#09090B] cursor-pointer"
                     checked={filtered.length > 0 && filtered.slice(0, displayLimit).every(o => selectedIds.has(o.id))}
                     onChange={() => toggleSelectAll(filtered.slice(0, displayLimit).map(o => o.id))}
                     title="전체 선택"
@@ -5950,15 +5969,15 @@ function Shipping({ customers, orders, setOrders, showToast }) {
                 <SortHeader label="주문번호" field="id" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="left" />
                 <SortHeader label="Zone" field="zone" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="center" />
                 <SortHeader label="고객" field="customer" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="left" />
-                <th className="text-left px-4 py-3 font-semibold text-stone-600 text-xs">주문내역</th>
-                <th className="text-left px-4 py-3 font-semibold text-stone-600 text-xs">배송지</th>
+                <th className="text-left px-4 py-3 font-medium text-[#71717A] text-[12px]">주문내역</th>
+                <th className="text-left px-4 py-3 font-medium text-[#71717A] text-[12px]">배송지</th>
                 <SortHeader label="출고일" field="shipDate" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="center" />
-                <th className="text-center px-4 py-3 font-semibold text-stone-600 text-xs">배송방법</th>
-                <th className="text-center px-4 py-3 font-semibold text-stone-600 text-xs">결제방식</th>
+                <th className="text-center px-4 py-3 font-medium text-[#71717A] text-[12px]">배송방법</th>
+                <th className="text-center px-4 py-3 font-medium text-[#71717A] text-[12px]">결제방식</th>
                 <SortHeader label="결제상태" field="payment" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="center" />
-                <th className="text-left px-4 py-3 font-semibold text-stone-600 text-xs">메모</th>
+                <th className="text-left px-4 py-3 font-medium text-[#71717A] text-[12px]">메모</th>
                 <SortHeader label="상태" field="status" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="center" />
-                <th className="text-center px-4 py-3 font-semibold text-stone-600 text-xs">관리</th>
+                <th className="text-center px-4 py-3 font-medium text-[#71717A] text-[12px]">관리</th>
               </tr>
             </thead>
             <tbody>
