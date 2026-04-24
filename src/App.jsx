@@ -8,6 +8,8 @@ import {
   suppressRealtimeEcho,
   refreshAllTables,
   fetchAll,
+  logAudit,
+  fetchAuditLogs,
   TABLES,
 } from './supabase.js';
 
@@ -616,6 +618,10 @@ function clearAuthSession() {
   localStorage.removeItem(AUTH_KEY);
 }
 
+// 🆕 관리자 사용자 목록 (2-3명의 담당자)
+// ⚠️ 누가 뭘 바꿨는지 추적하기 위한 용도 (비밀번호는 공용 admin1234)
+const ADMIN_USERS = ['사장님', '와이프', '알바생'];
+
 function getAttempts() {
   try {
     const data = localStorage.getItem(ATTEMPT_KEY);
@@ -844,6 +850,7 @@ function ChangePasswordModal({ onClose, showToast }) {
 
 function LoginScreen({ onSuccess, drivers = [] }) {
   const [input, setInput] = useState('');
+  const [userName, setUserName] = useState(ADMIN_USERS[0]);  // 🆕 기본: 첫 번째 사용자
   const [error, setError] = useState('');
   const [shake, setShake] = useState(false);
   const [attempts, setAttempts] = useState(getAttempts());
@@ -872,9 +879,9 @@ function LoginScreen({ onSuccess, drivers = [] }) {
 
     // 1. 관리자 비밀번호 확인
     if (input === getAdminPassword()) {
-      saveAuthSession({ role: 'admin' });
+      saveAuthSession({ role: 'admin', userName });  // 🆕 사용자 이름 저장
       saveAttempts({ count: 0, lockedUntil: 0 });
-      onSuccess({ role: 'admin' });
+      onSuccess({ role: 'admin', userName });
       return;
     }
 
@@ -956,7 +963,28 @@ function LoginScreen({ onSuccess, drivers = [] }) {
           ) : (
             <form onSubmit={handleSubmit}>
               <h2 className="font-serif-ko text-xl font-bold text-stone-800 mb-1">로그인</h2>
-              <p className="text-xs text-stone-500 mb-5">비밀번호를 입력해주세요</p>
+              <p className="text-xs text-stone-500 mb-5">누구이신가요?</p>
+
+              {/* 🆕 사용자 이름 선택 */}
+              <div className="mb-4">
+                <label className="block text-xs font-semibold text-stone-600 mb-1.5">이름</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {ADMIN_USERS.map(name => (
+                    <button
+                      key={name}
+                      type="button"
+                      onClick={() => setUserName(name)}
+                      className={`px-3 py-2.5 rounded-xl text-sm font-medium border-2 transition-all ${
+                        userName === name
+                          ? 'bg-[#09090B] text-white border-[#09090B]'
+                          : 'bg-white text-stone-700 border-stone-200 hover:border-stone-300'
+                      }`}
+                    >
+                      {name}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
               <div className="mb-4">
                 <label className="block text-xs font-semibold text-stone-600 mb-1.5">비밀번호</label>
@@ -1022,6 +1050,7 @@ export default function App() {
   const [isAuthed, setIsAuthed] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
   const [userRole, setUserRole] = useState(null); // 'admin' | 'driver'
+  const [currentUser, setCurrentUser] = useState(null); // 🆕 관리자 이름 (사장님/와이프/알바생)
   const [currentDriver, setCurrentDriver] = useState(null);
   const [view, setView] = useState('dashboard');
   const [customers, _setCustomersInternal] = useState(INITIAL_CUSTOMERS);
@@ -1039,6 +1068,7 @@ export default function App() {
     if (session) {
       setIsAuthed(true);
       setUserRole(session.role || 'admin');
+      setCurrentUser(session.userName || null);  // 🆕 사용자 이름 복원
       if (session.role === 'driver' && session.driverId) {
         setCurrentDriver({ id: session.driverId, name: session.driverName });
       }
@@ -1237,14 +1267,100 @@ export default function App() {
     }, 1000);
   };
 
+  // 📋 감사 로그 기록 헬퍼 (diff 감지)
+  // prev와 next 배열 비교 → 추가/삭제/수정 로그 기록
+  const recordAuditDiff = (entityType, prev, next, getEntityName) => {
+    if (!currentUser) return;  // 로그인 안 한 상태면 기록 안 함
+    if (!isSupabaseConfigured) return;
+    if (isReceivingFromFirebaseRef.current) return;  // 외부 변경은 기록 안 함
+
+    const prevMap = {};
+    prev.forEach(r => { if (r.id) prevMap[r.id] = r; });
+    const nextMap = {};
+    next.forEach(r => { if (r.id) nextMap[r.id] = r; });
+
+    const added = [];
+    const removed = [];
+    const updated = [];
+
+    for (const r of next) {
+      if (!r.id) continue;
+      if (!prevMap[r.id]) added.push(r);
+      else if (JSON.stringify(prevMap[r.id]) !== JSON.stringify(r)) updated.push(r);
+    }
+    for (const r of prev) {
+      if (!r.id) continue;
+      if (!nextMap[r.id]) removed.push(r);
+    }
+
+    // 대량 변경은 요약 로그 하나로
+    const totalChanges = added.length + removed.length + updated.length;
+    if (totalChanges === 0) return;
+
+    if (totalChanges > 10) {
+      // 대량 변경 (배차 업로드 등)
+      logAudit({
+        userName: currentUser,
+        action: 'bulk',
+        entityType,
+        description: `${entityType} 대량 변경: 신규 ${added.length} · 수정 ${updated.length} · 삭제 ${removed.length}`,
+      });
+      return;
+    }
+
+    // 개별 변경 로그
+    added.forEach(r => {
+      logAudit({
+        userName: currentUser,
+        action: 'create',
+        entityType,
+        entityId: r.id,
+        entityName: getEntityName ? getEntityName(r) : r.id,
+        description: `${entityType} 생성: ${getEntityName ? getEntityName(r) : r.id}`,
+      });
+    });
+    updated.forEach(r => {
+      const prevR = prevMap[r.id];
+      // 어떤 필드가 바뀌었는지 diff 계산 (간단 버전)
+      const changedFields = [];
+      Object.keys(r).forEach(key => {
+        if (JSON.stringify(prevR[key]) !== JSON.stringify(r[key])) {
+          changedFields.push(key);
+        }
+      });
+      logAudit({
+        userName: currentUser,
+        action: 'update',
+        entityType,
+        entityId: r.id,
+        entityName: getEntityName ? getEntityName(r) : r.id,
+        description: `${entityType} 수정: ${getEntityName ? getEntityName(r) : r.id}${changedFields.length > 0 ? ` (${changedFields.join(', ')})` : ''}`,
+        changes: { fields: changedFields },
+      });
+    });
+    removed.forEach(r => {
+      logAudit({
+        userName: currentUser,
+        action: 'delete',
+        entityType,
+        entityId: r.id,
+        entityName: getEntityName ? getEntityName(r) : r.id,
+        description: `${entityType} 삭제: ${getEntityName ? getEntityName(r) : r.id}`,
+      });
+    });
+  };
+
   // 🔧 공개 setter들 - 로컬 저장 + Firebase 저장
   // (Firestore onSnapshot은 내용 비교로 무한루프 방지)
   const setCustomers = (newValue) => {
     const resolved = typeof newValue === 'function' ? newValue(customers) : newValue;
+    const prevCustomers = customers;  // 📋 이전 상태 기억 (log용)
     _setCustomersInternal(resolved);
     saveData(STORAGE_KEYS.customers, resolved);
     // 🛡️ Firebase에서 받은 데이터이면 다시 업로드 안 함 (에코 방지)
     if (isReceivingFromFirebaseRef.current) return;
+    // 📋 변경 이력 기록
+    recordAuditDiff('customer', prevCustomers, resolved, c => c.name);
     if (isSupabaseConfigured && initialSyncDoneRef.current) {
       suppressRealtimeEcho(TABLES.customers, 3000);
       setSaveState('saving');
@@ -1264,6 +1380,7 @@ export default function App() {
 
   const setItems = (newValue) => {
     const resolved = typeof newValue === 'function' ? newValue(items) : newValue;
+    const prevItems = items;  // 📋
     // availStock은 계산된 값이므로 저장 시 제거 (Supabase 스키마에 없음)
     const cleaned = resolved.map(item => {
       const { availStock, ...clean } = item;
@@ -1272,6 +1389,8 @@ export default function App() {
     _setItemsInternal(cleaned);
     saveData(STORAGE_KEYS.items, cleaned);
     if (isReceivingFromFirebaseRef.current) return;
+    // 📋 변경 이력 기록
+    recordAuditDiff('item', prevItems, cleaned, i => i.name);
     if (isSupabaseConfigured && initialSyncDoneRef.current) {
       suppressRealtimeEcho(TABLES.items, 3000);
       setSaveState('saving');
@@ -1291,9 +1410,12 @@ export default function App() {
 
   const setOrders = (newValue) => {
     const resolved = typeof newValue === 'function' ? newValue(orders) : newValue;
+    const prevOrders = orders;  // 📋
     _setOrdersInternal(resolved);
     saveData(STORAGE_KEYS.orders, resolved);
     if (isReceivingFromFirebaseRef.current) return;
+    // 📋 변경 이력 기록
+    recordAuditDiff('order', prevOrders, resolved, o => `${o.id} (${o.itemName} × ${o.qty})`);
     if (isSupabaseConfigured && initialSyncDoneRef.current) {
       suppressRealtimeEcho(TABLES.orders, 3000);
       setSaveState('saving');
@@ -1466,12 +1588,14 @@ export default function App() {
     clearAuthSession();
     setIsAuthed(false);
     setUserRole(null);
+    setCurrentUser(null);  // 🆕
     setCurrentDriver(null);
   };
 
   const handleLoginSuccess = (result) => {
     setIsAuthed(true);
     setUserRole(result.role);
+    setCurrentUser(result.userName || null);  // 🆕 관리자 이름
     if (result.role === 'driver') {
       setCurrentDriver(result.driver);
     } else {
@@ -1970,6 +2094,14 @@ export default function App() {
                 {new Date().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })}
               </div>
             </div>
+
+            {/* 🆕 현재 사용자 */}
+            {currentUser && (
+              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-[#09090B] rounded-[8px] text-[12px] font-medium text-white">
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#22C55E]" />
+                {currentUser}
+              </div>
+            )}
           </div>
         </header>
 
