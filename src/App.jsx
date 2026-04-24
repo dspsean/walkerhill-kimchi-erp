@@ -8046,10 +8046,18 @@ function ExcelUploadButton({ customers, items, orders, setCustomers, setOrders, 
       if (update) {
         return { ...o, ...update };
       }
+      // 🆕 매칭 안 된 주문은 취소하지 않고 미배정(Zone 제거)만 처리
+      // - 이미 취소/서비스/완료된 주문은 그대로
+      // - 사용자가 선택한 경우에만 취소 처리
       const cancel = preview.cancelled.find(c => c.orderId === o.id);
-      if (cancel) {
+      if (cancel && preview.cancelMode === 'cancel') {
         return { ...o, shipStatus: '취소', shippingGroup: '' };
       }
+      if (cancel && preview.cancelMode === 'unassign') {
+        // Zone만 해제하고 상태는 유지 (배송준비중으로 되돌림)
+        return { ...o, shippingGroup: '', sequence: null, arrivalTime: '' };
+      }
+      // cancel 모드가 'keep'이면 기존 상태 그대로 (아무것도 안 함)
       return o;
     });
 
@@ -8061,7 +8069,11 @@ function ExcelUploadButton({ customers, items, orders, setCustomers, setOrders, 
 
     setCustomers(updatedCustomers);
     setOrders(updatedOrders);
-    showToast(`✓ 업데이트 완료: 주문 ${Object.keys(preview.orderUpdates).length}건 · 취소 ${preview.cancelled.length}건 · 신규 ${preview.newOrders.length}건`);
+    const mode = preview.cancelMode || 'keep';
+    const cancelInfo = mode === 'cancel' ? `취소 ${preview.cancelled.length}건` :
+                      mode === 'unassign' ? `미배정 ${preview.cancelled.length}건` :
+                      `제외 유지 ${preview.cancelled.length}건`;
+    showToast(`✓ 업데이트: 주문 ${Object.keys(preview.orderUpdates).length}건 · ${cancelInfo} · 신규 ${preview.newOrders.length}건`);
     setPreview(null);
   };
 
@@ -8133,6 +8145,13 @@ function ExcelUploadButton({ customers, items, orders, setCustomers, setOrders, 
 
 function ExcelUploadPreviewModal({ preview, onApply, onCancel }) {
   const totalUpdates = Object.keys(preview.orderUpdates).length;
+  // 🆕 매칭 안 된 주문 처리 방식: keep(유지) / unassign(Zone만 해제) / cancel(취소)
+  const [cancelMode, setCancelMode] = useState('keep');
+
+  const handleApplyWithMode = () => {
+    onApply({ ...preview, cancelMode });
+  };
+
   return (
     <div className="fixed inset-0 bg-stone-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onCancel}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
@@ -8161,7 +8180,7 @@ function ExcelUploadPreviewModal({ preview, onApply, onCancel }) {
             </div>
             <div className="bg-red-50 rounded-xl p-3 text-center">
               <div className="text-2xl font-bold text-red-800 tabular-nums">{preview.cancelled.length}</div>
-              <div className="text-[10px] font-semibold text-red-700">취소 주문</div>
+              <div className="text-[10px] font-semibold text-red-700">엑셀에 없음</div>
             </div>
           </div>
 
@@ -8198,15 +8217,99 @@ function ExcelUploadPreviewModal({ preview, onApply, onCancel }) {
             </div>
           )}
 
-          {/* 취소 주문 */}
+          {/* 🆕 제외된 주문 (엑셀에 없는 주문) - 처리 방식 선택 */}
           {preview.cancelled.length > 0 && (
             <div>
-              <div className="text-sm font-bold text-red-700 mb-2">❌ 취소 주문</div>
-              <div className="bg-red-50 rounded-xl p-3 space-y-1 max-h-40 overflow-y-auto">
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-sm font-bold text-stone-700">
+                  ⚠️ 엑셀에 없는 기존 주문 <span className="text-red-700 tabular-nums">{preview.cancelled.length}건</span>
+                </div>
+              </div>
+
+              {/* 처리 방식 선택 */}
+              <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-xl">
+                <div className="text-[11px] font-bold text-amber-900 mb-2">🤔 이 주문들을 어떻게 처리할까요?</div>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCancelMode('keep')}
+                    className={`p-2.5 rounded-lg border-2 text-left transition-all ${
+                      cancelMode === 'keep'
+                        ? 'bg-white border-emerald-500 shadow-sm'
+                        : 'bg-white/50 border-stone-200 hover:border-stone-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-base">✅</span>
+                      <span className="text-xs font-bold text-stone-800">그대로 유지</span>
+                      {cancelMode === 'keep' && <span className="ml-auto text-emerald-600 text-xs">●</span>}
+                    </div>
+                    <div className="text-[10px] text-stone-500 mt-1 leading-tight">
+                      Zone/순번 변경 없이<br/>기존 상태 유지
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setCancelMode('unassign')}
+                    className={`p-2.5 rounded-lg border-2 text-left transition-all ${
+                      cancelMode === 'unassign'
+                        ? 'bg-white border-amber-500 shadow-sm'
+                        : 'bg-white/50 border-stone-200 hover:border-stone-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-base">🔄</span>
+                      <span className="text-xs font-bold text-stone-800">Zone 해제</span>
+                      {cancelMode === 'unassign' && <span className="ml-auto text-amber-600 text-xs">●</span>}
+                    </div>
+                    <div className="text-[10px] text-stone-500 mt-1 leading-tight">
+                      Zone만 빼고<br/>미배정 상태로
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setCancelMode('cancel')}
+                    className={`p-2.5 rounded-lg border-2 text-left transition-all ${
+                      cancelMode === 'cancel'
+                        ? 'bg-white border-red-500 shadow-sm'
+                        : 'bg-white/50 border-stone-200 hover:border-stone-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-base">❌</span>
+                      <span className="text-xs font-bold text-stone-800">취소 처리</span>
+                      {cancelMode === 'cancel' && <span className="ml-auto text-red-600 text-xs">●</span>}
+                    </div>
+                    <div className="text-[10px] text-stone-500 mt-1 leading-tight">
+                      주문 상태를<br/>"취소"로 변경
+                    </div>
+                  </button>
+                </div>
+                <div className="mt-2 text-[10px] text-amber-800 font-semibold">
+                  💡 기본: <strong>그대로 유지</strong> (안전) · 엑셀에 주소가 없거나 매칭 안 된 주문도 보존됨
+                </div>
+              </div>
+
+              {/* 대상 주문 리스트 */}
+              <div className={`rounded-xl p-3 space-y-1 max-h-40 overflow-y-auto ${
+                cancelMode === 'cancel' ? 'bg-red-50' :
+                cancelMode === 'unassign' ? 'bg-amber-50' :
+                'bg-stone-50'
+              }`}>
                 {preview.cancelled.map((c, i) => (
                   <div key={i} className="text-xs flex items-center justify-between">
-                    <span className="font-bold text-red-900">{c.customerName || c.orderId}</span>
-                    <span className="text-red-600 text-[10px]">{c.reason || '엑셀에서 제외됨'}</span>
+                    <span className={`font-bold ${
+                      cancelMode === 'cancel' ? 'text-red-900' :
+                      cancelMode === 'unassign' ? 'text-amber-900' :
+                      'text-stone-800'
+                    }`}>{c.customerName || c.orderId}</span>
+                    <span className={`text-[10px] ${
+                      cancelMode === 'cancel' ? 'text-red-600' :
+                      cancelMode === 'unassign' ? 'text-amber-600' :
+                      'text-stone-500'
+                    }`}>{c.reason || '엑셀에 없음'}</span>
                   </div>
                 ))}
               </div>
@@ -8216,7 +8319,7 @@ function ExcelUploadPreviewModal({ preview, onApply, onCancel }) {
 
         <div className="sticky bottom-0 bg-white px-6 py-4 border-t border-stone-200 flex items-center justify-end gap-2">
           <button onClick={onCancel} className="px-4 py-2 text-sm text-stone-600 hover:bg-stone-100 rounded-lg">취소</button>
-          <button onClick={onApply} className="px-5 py-2 bg-sky-700 hover:bg-sky-800 text-white rounded-lg text-sm font-semibold">
+          <button onClick={handleApplyWithMode} className="px-5 py-2 bg-sky-700 hover:bg-sky-800 text-white rounded-lg text-sm font-semibold">
             적용하기
           </button>
         </div>
