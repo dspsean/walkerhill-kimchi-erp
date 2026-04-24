@@ -68,8 +68,38 @@ export async function fetchAll(tableName) {
  * @param {Function} onError - 에러 콜백
  * @returns {Function} unsubscribe 함수
  */
+// 🔧 fetchAll debounce: 연속된 변경 알림을 묶어서 처리 (무한 루프 방지)
+const _fetchAllTimers = {};
+const _recentFetches = {};  // 최근 fetch 시각 기록
+
 export function subscribeToTable(tableName, onChange, onError) {
   if (!supabase) return () => {};
+
+  // 스로틀된 fetch (1초에 최대 1번만 호출)
+  const throttledFetch = async () => {
+    const now = Date.now();
+    const lastFetch = _recentFetches[tableName] || 0;
+
+    // 1초 이내에 이미 fetch했으면 스킵
+    if (now - lastFetch < 1000) {
+      return;
+    }
+
+    // 기존 타이머 취소 (debounce 500ms)
+    if (_fetchAllTimers[tableName]) {
+      clearTimeout(_fetchAllTimers[tableName]);
+    }
+
+    _fetchAllTimers[tableName] = setTimeout(async () => {
+      _recentFetches[tableName] = Date.now();
+      try {
+        const fresh = await fetchAll(tableName);
+        onChange(fresh);
+      } catch (err) {
+        console.error(`Error in throttledFetch for ${tableName}:`, err);
+      }
+    }, 500);
+  };
 
   // 초기 데이터 로드 + 이후 변경 감지
   const channel = supabase
@@ -77,16 +107,16 @@ export function subscribeToTable(tableName, onChange, onError) {
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: tableName },
-      async (payload) => {
-        // 변경 발생 시 전체 데이터 다시 조회
-        const fresh = await fetchAll(tableName);
-        onChange(fresh);
+      () => {
+        // 변경 발생 시 스로틀된 fetch
+        throttledFetch();
       }
     )
     .subscribe((status, err) => {
       if (status === 'SUBSCRIBED') {
         console.log(`✓ ${tableName} 실시간 구독 시작`);
         // 초기 데이터 로드
+        _recentFetches[tableName] = Date.now();
         fetchAll(tableName).then(onChange);
       } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
         console.error(`${tableName} 구독 에러:`, err);
@@ -95,6 +125,10 @@ export function subscribeToTable(tableName, onChange, onError) {
     });
 
   return () => {
+    if (_fetchAllTimers[tableName]) {
+      clearTimeout(_fetchAllTimers[tableName]);
+      delete _fetchAllTimers[tableName];
+    }
     supabase.removeChannel(channel);
   };
 }
