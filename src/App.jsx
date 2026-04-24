@@ -4184,7 +4184,6 @@ function Customers({ customers, setCustomers, items, orders, showToast, setOrder
   const [historyTarget, setHistoryTarget] = useState(null);
   const [displayLimit, setDisplayLimit] = useState(50);
   const [showDuplicates, setShowDuplicates] = useState(false);  // 🆕 중복 찾기 모달
-  const [showCleanup, setShowCleanup] = useState(false);  // 🆕 주문 없는 고객 정리 모달
 
   // 🆕 체크박스
   const [selectedIds, setSelectedIds] = useState(new Set());
@@ -4400,21 +4399,39 @@ function Customers({ customers, setCustomers, items, orders, showToast, setOrder
           ) : null;
         })()}
 
-        {/* 🆕 주문 없는 고객 정리 버튼 */}
+        {/* 🆕 주문 없는 고객 즉시 삭제 버튼 */}
         {(() => {
           const customerIdsWithOrders = new Set(orders.map(o => o.customerId));
           const noOrderCount = customers.filter(c => !customerIdsWithOrders.has(c.id)).length;
 
-          return noOrderCount > 0 ? (
+          if (noOrderCount === 0) return null;
+
+          const handleCleanupNow = () => {
+            const withOrders = customers.filter(c => customerIdsWithOrders.has(c.id));
+            const withoutCount = customers.length - withOrders.length;
+
+            if (!confirm(
+              `⚠️ 주문 없는 고객 ${withoutCount}명을 영구 삭제합니다.\n\n` +
+              `• 전체: ${customers.length}명\n` +
+              `• 유지: ${withOrders.length}명 (주문 있음)\n` +
+              `• 삭제: ${withoutCount}명 (주문 없음)\n\n` +
+              `복구할 수 없습니다. 계속할까요?`
+            )) return;
+
+            setCustomers(withOrders);
+            showToast(`✓ ${withoutCount}명 삭제 완료 · 남은 고객 ${withOrders.length}명`);
+          };
+
+          return (
             <button
-              onClick={() => setShowCleanup(true)}
+              onClick={handleCleanupNow}
               className="flex items-center gap-2 px-3 py-2 bg-white hover:bg-[#FEF2F2] border border-[#FECACA] text-[#B91C1C] rounded-[8px] text-[13px] font-medium transition-colors"
-              title="주문 이력이 없는 고객 일괄 삭제"
+              title={`주문 이력이 없는 고객 ${noOrderCount}명을 즉시 삭제합니다`}
             >
               <Trash2 size={14} />
               주문 없는 고객 <span className="tabular-nums">{noOrderCount}명</span>
             </button>
-          ) : null;
+          );
         })()}
 
         <button
@@ -4687,149 +4704,6 @@ function Customers({ customers, setCustomers, items, orders, showToast, setOrder
           onClose={() => setShowDuplicates(false)}
         />
       )}
-
-      {showCleanup && (
-        <CleanupNoOrderModal
-          customers={customers}
-          setCustomers={setCustomers}
-          orders={orders}
-          showToast={showToast}
-          onClose={() => setShowCleanup(false)}
-        />
-      )}
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════
-// 🧹 주문 없는 고객 정리 모달
-// ═══════════════════════════════════════════════════════════
-function CleanupNoOrderModal({ customers, setCustomers, orders, showToast, onClose }) {
-  const [confirmed, setConfirmed] = useState(false);
-
-  // 주문 있는 고객 / 없는 고객 분류
-  const { withOrders, withoutOrders } = useMemo(() => {
-    const customerIdsWithOrders = new Set(orders.map(o => o.customerId));
-    const withOrders = customers.filter(c => customerIdsWithOrders.has(c.id));
-    const withoutOrders = customers.filter(c => !customerIdsWithOrders.has(c.id));
-    return { withOrders, withoutOrders };
-  }, [customers, orders]);
-
-  const handleConfirmDelete = () => {
-    // 주문 있는 고객만 남기기
-    setCustomers(withOrders);
-    showToast(`✓ ${withoutOrders.length}명 삭제 완료 · 남은 고객 ${withOrders.length}명`);
-    onClose();
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-[16px] shadow-2xl w-full max-w-2xl max-h-[88vh] overflow-y-auto scrollbar-slim" onClick={e => e.stopPropagation()}>
-        <div className="sticky top-0 bg-white px-6 py-4 border-b border-[#E4E4E7] flex items-center justify-between z-10">
-          <div>
-            <h2 className="text-[18px] font-semibold text-[#09090B] tracking-tight">주문 없는 고객 정리</h2>
-            <div className="text-[13px] text-[#71717A] mt-0.5">주문 이력이 없는 고객을 일괄 삭제합니다</div>
-          </div>
-          <button onClick={onClose} className="p-1.5 hover:bg-[#F4F4F5] rounded-[6px] transition-colors">
-            <X size={18} />
-          </button>
-        </div>
-
-        <div className="p-6 space-y-5">
-          {/* 경고 박스 */}
-          <div className="p-4 bg-[#FEF2F2] border border-[#FECACA] rounded-[10px]">
-            <div className="flex items-start gap-2">
-              <AlertTriangle size={16} className="text-[#B91C1C] mt-0.5 flex-shrink-0" />
-              <div className="text-[13px] text-[#991B1B] leading-relaxed">
-                <div className="font-semibold mb-1">⚠️ 삭제 전 확인해주세요</div>
-                <div>• 주문 이력이 없는 고객이 <strong>영구 삭제</strong>됩니다</div>
-                <div>• 삭제된 고객은 복구할 수 없습니다</div>
-                <div>• 필요시 <strong>먼저 백업</strong>을 권장합니다 (좌측 "백업 내보내기")</div>
-                <div>• 나중에 신규 고객은 하나씩 추가하세요</div>
-              </div>
-            </div>
-          </div>
-
-          {/* 통계 카드 */}
-          <div className="grid grid-cols-3 gap-3">
-            <div className="bg-white border border-[#E4E4E7] rounded-[12px] p-4">
-              <div className="text-[12px] font-medium text-[#71717A] mb-2">현재 전체</div>
-              <div className="text-[28px] font-semibold text-[#09090B] tabular-nums tracking-tight">{customers.length}</div>
-              <div className="text-[10px] text-[#A1A1AA] mt-1">명</div>
-            </div>
-            <div className="bg-[#F0FDF4] border border-[#BBF7D0] rounded-[12px] p-4">
-              <div className="text-[12px] font-medium text-[#15803D] mb-2">유지 (주문 있음)</div>
-              <div className="text-[28px] font-semibold text-[#166534] tabular-nums tracking-tight">{withOrders.length}</div>
-              <div className="text-[10px] text-[#15803D] mt-1">명</div>
-            </div>
-            <div className="bg-[#FEF2F2] border border-[#FECACA] rounded-[12px] p-4">
-              <div className="text-[12px] font-medium text-[#B91C1C] mb-2">삭제 (주문 없음)</div>
-              <div className="text-[28px] font-semibold text-[#991B1B] tabular-nums tracking-tight">{withoutOrders.length}</div>
-              <div className="text-[10px] text-[#B91C1C] mt-1">명</div>
-            </div>
-          </div>
-
-          {/* 삭제 대상 미리보기 (처음 20명) */}
-          {withoutOrders.length > 0 && (
-            <div>
-              <div className="text-[13px] font-semibold text-[#09090B] mb-2">
-                삭제될 고객 샘플 <span className="text-[#71717A] ml-1 tabular-nums font-normal">
-                  (처음 20명 / 총 {withoutOrders.length}명)
-                </span>
-              </div>
-              <div className="bg-white border border-[#E4E4E7] rounded-[10px] p-3 space-y-1 max-h-60 overflow-y-auto scrollbar-slim">
-                {withoutOrders.slice(0, 20).map(c => (
-                  <div key={c.id} className="text-[12px] flex items-center justify-between py-0.5">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] text-[#A1A1AA] font-mono">{c.id}</span>
-                      <span className="font-medium text-[#09090B]">{c.name}</span>
-                    </div>
-                    <span className="text-[11px] text-[#71717A] truncate max-w-[200px]">{c.phone}</span>
-                  </div>
-                ))}
-                {withoutOrders.length > 20 && (
-                  <div className="text-center text-[11px] text-[#A1A1AA] pt-2 border-t border-[#E4E4E7] mt-2">
-                    ... 외 {withoutOrders.length - 20}명
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* 확인 체크박스 */}
-          <div className="p-3 bg-[#FAFAFA] border border-[#E4E4E7] rounded-[10px]">
-            <label className="flex items-start gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={confirmed}
-                onChange={e => setConfirmed(e.target.checked)}
-                className="w-4 h-4 mt-0.5 accent-[#09090B]"
-              />
-              <span className="text-[13px] text-[#09090B] leading-relaxed">
-                위 {withoutOrders.length}명의 고객을 <strong>영구 삭제</strong>하는 것에 동의합니다.
-                삭제 후 복구할 수 없음을 이해했습니다.
-              </span>
-            </label>
-          </div>
-        </div>
-
-        {/* 하단 버튼 */}
-        <div className="sticky bottom-0 bg-white px-6 py-4 border-t border-[#E4E4E7] flex items-center justify-end gap-2">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-[13px] font-medium text-[#52525B] hover:bg-[#F4F4F5] rounded-[8px] transition-colors"
-          >
-            취소
-          </button>
-          <button
-            onClick={handleConfirmDelete}
-            disabled={!confirmed || withoutOrders.length === 0}
-            className="px-5 py-2 bg-[#B91C1C] hover:bg-[#991B1B] text-white rounded-[8px] text-[13px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {withoutOrders.length}명 삭제하기
-          </button>
-        </div>
-      </div>
     </div>
   );
 }
