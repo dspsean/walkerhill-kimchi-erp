@@ -810,12 +810,7 @@ const DRIVERS_KEY = 'wh:v6:drivers';
 
 // 🚚 기본 배송기사 계정 (엑셀 기반 차량 A~F 배정)
 const INITIAL_DRIVERS = [
-  { id: 'D001', name: '차량A 기사', password: 'driverA', zones: ['Zone1'], phone: '', region: 'Upper North Shore (Hornsby·Turramurra·Chatswood·St Ives)' },
-  { id: 'D002', name: '차량B 기사', password: 'driverB', zones: ['Zone2'], phone: '', region: 'Beecroft·Epping·Marsfield·N.Ryde·Ryde·Carlingford' },
-  { id: 'D003', name: '차량C 기사', password: 'driverC', zones: ['Zone3'], phone: '', region: 'Kellyville·Rouse Hill·Castle Hill·Norwest·Baulkham Hills·Merrylands' },
-  { id: 'D004', name: '차량D 기사', password: 'driverD', zones: ['Zone4'], phone: '', region: 'Parramatta·Westmead·Homebush·Concord·Burwood·Five Dock·Eastwood' },
-  { id: 'D005', name: '차량E 기사', password: 'driverE', zones: ['Zone5'], phone: '', region: 'Strathfield·Lidcombe·Bankstown·Greenacre·Campsie·Melrose Park' },
-  { id: 'D006', name: '차량F 기사', password: 'driverF', zones: ['Zone6'], phone: '', region: '서부 외곽 (Box Hill·Blacktown) · City · Arncliffe · Hurstville' },
+  { id: 'D001', name: '기사', password: 'driverA', zones: [], phone: '', region: '' },
 ];
 
 function getAuthSession() {
