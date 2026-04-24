@@ -94,14 +94,18 @@ export async function fetchAll(tableName) {
 
 /**
  * 실시간 구독 (테이블 변경 감지)
- * @param {string} tableName - 테이블 이름
- * @param {Function} onChange - 변경 시 호출 (전체 데이터 다시 조회 후 전달)
- * @param {Function} onError - 에러 콜백
- * @returns {Function} unsubscribe 함수
  */
-// 🔧 fetchAll debounce: 연속된 변경 알림을 묶어서 처리 (무한 루프 방지)
+// 🔧 fetchAll debounce + echo 방지 (무한 루프/스파이럴 차단)
 const _fetchAllTimers = {};
-const _recentFetches = {};  // 최근 fetch 시각 기록
+const _recentFetches = {};
+const _suppressFetchUntil = {}; // 저장 후 echo 무시용
+const _saveBatchTimers = {};
+const _lastSavedRows = {};  // 🔑 diff 비교용 (saveBatch와 subscribeToTable 공유)
+
+// 저장 직후 호출하면 지정된 시간 동안 realtime echo 무시
+export function suppressRealtimeEcho(tableName, durationMs = 3000) {
+  _suppressFetchUntil[tableName] = Date.now() + durationMs;
+}
 
 export function subscribeToTable(tableName, onChange, onError) {
   if (!supabase) return () => {};
@@ -110,6 +114,12 @@ export function subscribeToTable(tableName, onChange, onError) {
   const throttledFetch = async () => {
     const now = Date.now();
     const lastFetch = _recentFetches[tableName] || 0;
+    const suppressUntil = _suppressFetchUntil[tableName] || 0;
+
+    // 저장 직후 echo는 무시
+    if (now < suppressUntil) {
+      return;
+    }
 
     // 1초 이내에 이미 fetch했으면 스킵
     if (now - lastFetch < 1000) {
@@ -139,18 +149,24 @@ export function subscribeToTable(tableName, onChange, onError) {
       'postgres_changes',
       { event: '*', schema: 'public', table: tableName },
       () => {
-        // 변경 발생 시 스로틀된 fetch
         throttledFetch();
       }
     )
     .subscribe((status, err) => {
       if (status === 'SUBSCRIBED') {
         console.log(`✓ ${tableName} 실시간 구독 시작`);
-        // 초기 데이터 로드
         _recentFetches[tableName] = Date.now();
-        fetchAll(tableName).then(onChange);
+        fetchAll(tableName).then(fresh => {
+          // 🚀 초기 데이터로 lastSavedRows 초기화 (불필요한 전체 재업로드 방지)
+          const map = {};
+          fresh.forEach(row => {
+            if (row.id) map[row.id] = JSON.stringify(row);
+          });
+          _lastSavedRows[tableName] = map;
+          onChange(fresh);
+        });
       } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-        console.error(`${tableName} 구독 에러:`, err);
+        console.warn(`${tableName} 구독 상태:`, status);
         if (onError) onError(err || new Error(status));
       }
     });
@@ -180,9 +196,6 @@ export async function upsertRow(tableName, row) {
 /**
  * 여러 row 일괄 upsert (Diff 기반 - 변경된 것만)
  */
-const _saveBatchTimers = {};
-const _lastSavedRows = {};
-
 export async function saveBatch(tableName, rows) {
   if (!supabase || !rows || rows.length === 0) return;
 
