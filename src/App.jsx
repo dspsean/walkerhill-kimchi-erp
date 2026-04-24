@@ -1428,6 +1428,24 @@ export default function App() {
     setAuthChecked(true);
   }, []);
 
+  // ⌨️ 키보드 단축키 (Alt + 숫자) - Hooks 규칙 준수 위해 early return 이전에 선언
+  useEffect(() => {
+    const navIds = ['dashboard', 'orders', 'customers', 'items', 'gifts', 'shipping', 'drivers'];
+    const handleKeyDown = (e) => {
+      const tag = (e.target.tagName || '').toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable) return;
+      if (e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
+        const num = parseInt(e.key);
+        if (num >= 1 && num <= navIds.length) {
+          e.preventDefault();
+          setView(navIds[num - 1]);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   // 🔥 Firebase 연결 상태
   const [syncStatus, setSyncStatus] = useState(isSupabaseConfigured ? 'connecting' : 'local');
   const initialSyncDoneRef = useRef(false);
@@ -1683,31 +1701,6 @@ export default function App() {
     { id: 'shipping', label: '배송관리', icon: Truck, shortcut: '6' },
     { id: 'drivers', label: '기사관리', icon: Truck, shortcut: '7' },
   ];
-
-  // ⌨️ 키보드 단축키 (Alt + 숫자)
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      // 입력 중이면 단축키 비활성화
-      const tag = (e.target.tagName || '').toLowerCase();
-      if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable) return;
-
-      // Alt + 1~7: 메뉴 이동
-      if (e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
-        const num = parseInt(e.key);
-        if (num >= 1 && num <= nav.length) {
-          e.preventDefault();
-          setView(nav[num - 1].id);
-        }
-      }
-      // Esc: 대시보드로
-      if (e.key === 'Escape' && !e.altKey && !e.metaKey && !e.ctrlKey) {
-        const hasOpenModal = document.querySelector('.fixed.inset-0.bg-stone-900\\/50, .fixed.inset-0.bg-stone-900\\/40');
-        if (!hasOpenModal) setView('dashboard');
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [nav]);
 
   const lowStockCount = itemsWithStock.filter(i => i.availStock <= 20).length;
 
