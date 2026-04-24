@@ -2785,6 +2785,7 @@ function Orders({ customers, items, orders, setOrders, gifts, setGifts, showToas
   const [monthFilter, setMonthFilter] = useState('');
   const [zoneFilter, setZoneFilter] = useState('');
   const [orderTypeFilter, setOrderTypeFilter] = useState('all'); // 'all' | 'b2c' | 'b2b' | 'waiting' | 'split'
+  const [productFilter, setProductFilter] = useState(''); // 🆕 상품 필터 (itemName)
   const [sortKey, setSortKey] = useState('id');
   const [sortDir, setSortDir] = useState('desc');
   const [showForm, setShowForm] = useState(false);
@@ -2893,6 +2894,19 @@ function Orders({ customers, items, orders, setOrders, gifts, setGifts, showToas
       });
     }
     if (zoneFilter) result = result.filter(o => o.shippingGroup === zoneFilter);
+    // 🆕 상품 필터 (단일 품목 또는 items 배열 내 포함)
+    if (productFilter) {
+      result = result.filter(o => {
+        // 취소/서비스는 상품 필터에서 제외
+        if (o.shipStatus === '취소' || o.isService) return false;
+        // 다품목: items 배열 내 포함 여부
+        if (o.items && Array.isArray(o.items) && o.items.length > 0) {
+          return o.items.some(it => it.itemName === productFilter);
+        }
+        // 단일 품목
+        return o.itemName === productFilter;
+      });
+    }
     // 주문 유형 필터
     if (orderTypeFilter === 'b2c') result = result.filter(o => !customerMap[o.customerId]?.isB2B);
     else if (orderTypeFilter === 'b2b') result = result.filter(o => customerMap[o.customerId]?.isB2B);
@@ -2932,9 +2946,9 @@ function Orders({ customers, items, orders, setOrders, gifts, setGifts, showToas
       return 0;
     });
     return result;
-  }, [orders, search, yearFilter, monthFilter, zoneFilter, orderTypeFilter, sortKey, sortDir, customerMap, priceMap]);
+  }, [orders, search, yearFilter, monthFilter, zoneFilter, orderTypeFilter, productFilter, sortKey, sortDir, customerMap, priceMap]);
 
-  // 🆕 상품별 판매 수량 집계 (필터 반영 · 취소/서비스 제외)
+  // 🆕 상품별 판매 수량 집계 (productFilter 무시 · 다른 필터만 반영)
   const productCounts = useMemo(() => {
     const counts = {
       '배추김치 4KG': 0,
@@ -2944,7 +2958,33 @@ function Orders({ customers, items, orders, setOrders, gifts, setGifts, showToas
       '총각김치 2KG - 2세트(할인)': 0,
       '혼합세트 (배추4KG + 총각2KG)': 0,
     };
-    filtered.forEach(o => {
+
+    // productFilter만 제외한 필터 세트로 orders 필터링
+    let baseFiltered = [...orders];
+    if (yearFilter) baseFiltered = baseFiltered.filter(o => (o.date || '').startsWith(yearFilter));
+    if (monthFilter) {
+      baseFiltered = baseFiltered.filter(o => {
+        if (!o.date) return false;
+        return o.date.slice(5, 7) === monthFilter;
+      });
+    }
+    if (zoneFilter) baseFiltered = baseFiltered.filter(o => o.shippingGroup === zoneFilter);
+    if (orderTypeFilter === 'b2c') baseFiltered = baseFiltered.filter(o => !customerMap[o.customerId]?.isB2B);
+    else if (orderTypeFilter === 'b2b') baseFiltered = baseFiltered.filter(o => customerMap[o.customerId]?.isB2B);
+    else if (orderTypeFilter === 'waiting') baseFiltered = baseFiltered.filter(o => o.shipStatus === '입고대기');
+    else if (orderTypeFilter === 'split') baseFiltered = baseFiltered.filter(o => o.splitDeliveries?.length > 0);
+    if (search) {
+      const s = search.toLowerCase();
+      baseFiltered = baseFiltered.filter(o => {
+        const c = customerMap[o.customerId];
+        return o.id.toLowerCase().includes(s) ||
+          (c?.name || '').toLowerCase().includes(s) ||
+          o.customerId.toLowerCase().includes(s) ||
+          o.itemName.toLowerCase().includes(s);
+      });
+    }
+
+    baseFiltered.forEach(o => {
       // 취소/서비스 주문 제외
       if (o.shipStatus === '취소' || o.isService) return;
       // 다품목 주문 처리
@@ -2962,9 +3002,9 @@ function Orders({ customers, items, orders, setOrders, gifts, setGifts, showToas
       }
     });
     return counts;
-  }, [filtered]);
+  }, [orders, search, yearFilter, monthFilter, zoneFilter, orderTypeFilter, customerMap]);
 
-  useEffect(() => { setDisplayLimit(50); }, [search, yearFilter, monthFilter, zoneFilter, orderTypeFilter]);
+  useEffect(() => { setDisplayLimit(50); }, [search, yearFilter, monthFilter, zoneFilter, orderTypeFilter, productFilter]);
 
   const nextOrderId = () => {
     const nums = orders.map(o => parseInt(o.id.replace('ORD-',''), 10)).filter(n => !isNaN(n));
@@ -3033,17 +3073,36 @@ function Orders({ customers, items, orders, setOrders, gifts, setGifts, showToas
 
   return (
     <div className="space-y-4">
-      {/* 🆕 상품별 판매 수량 (필터 반영) */}
+      {/* 🆕 상품별 판매 수량 (필터 반영 · 클릭 시 필터링) */}
       <div className="bg-white rounded-[12px] border border-[#E4E4E7] overflow-hidden">
         <div className="px-5 py-3 border-b border-[#E4E4E7] flex items-center justify-between">
           <div>
             <div className="text-[13px] font-semibold text-[#09090B]">상품별 판매 수량</div>
-            <div className="text-[11px] text-[#71717A] mt-0.5">현재 필터 기준 · 취소/서비스 제외</div>
+            <div className="text-[11px] text-[#71717A] mt-0.5">
+              {productFilter ? (
+                <span className="inline-flex items-center gap-1 text-[#09090B] font-medium">
+                  <span className="inline-block w-1 h-1 rounded-full bg-[#09090B]" />
+                  {productFilter} 주문자만 표시 중
+                </span>
+              ) : (
+                '카드를 클릭하면 해당 상품 주문자만 필터링됩니다'
+              )}
+            </div>
           </div>
-          <div className="text-[11px] text-[#71717A]">
-            총 <span className="font-semibold text-[#09090B] tabular-nums">
-              {Object.values(productCounts).reduce((s, v) => s + v, 0)}
-            </span>개
+          <div className="flex items-center gap-3">
+            {productFilter && (
+              <button
+                onClick={() => setProductFilter('')}
+                className="text-[11px] text-[#71717A] hover:text-[#09090B] transition-colors"
+              >
+                필터 해제
+              </button>
+            )}
+            <div className="text-[11px] text-[#71717A]">
+              총 <span className="font-semibold text-[#09090B] tabular-nums">
+                {Object.values(productCounts).reduce((s, v) => s + v, 0)}
+              </span>개
+            </div>
           </div>
         </div>
         <div className="grid grid-cols-6 divide-x divide-[#E4E4E7]">
@@ -3054,16 +3113,35 @@ function Orders({ customers, items, orders, setOrders, gifts, setGifts, showToas
             { name: '총각김치 2KG', label: '총각김치 2KG', short: '1세트' },
             { name: '총각김치 2KG - 2세트(할인)', label: '총각김치 2KG', short: '2세트' },
             { name: '혼합세트 (배추4KG + 총각2KG)', label: '혼합세트', short: '배추+총각' },
-          ].map(p => (
-            <div key={p.name} className="px-4 py-3">
-              <div className="text-[11px] font-medium text-[#71717A] mb-0.5">{p.label}</div>
-              <div className="text-[10px] text-[#A1A1AA] mb-1.5">{p.short}</div>
-              <div className="text-[22px] font-semibold text-[#09090B] tabular-nums tracking-tight">
-                {productCounts[p.name]}
-                <span className="text-[12px] text-[#71717A] ml-1 font-normal">개</span>
-              </div>
-            </div>
-          ))}
+          ].map(p => {
+            const isActive = productFilter === p.name;
+            const count = productCounts[p.name];
+            return (
+              <button
+                key={p.name}
+                onClick={() => setProductFilter(isActive ? '' : p.name)}
+                disabled={count === 0}
+                className={`px-4 py-3 text-left transition-colors ${
+                  isActive
+                    ? 'bg-[#09090B]'
+                    : count === 0
+                      ? 'opacity-40 cursor-not-allowed'
+                      : 'hover:bg-[#FAFAFA] cursor-pointer'
+                }`}
+              >
+                <div className={`text-[11px] font-medium mb-0.5 ${isActive ? 'text-white/70' : 'text-[#71717A]'}`}>
+                  {p.label}
+                </div>
+                <div className={`text-[10px] mb-1.5 ${isActive ? 'text-white/50' : 'text-[#A1A1AA]'}`}>
+                  {p.short}
+                </div>
+                <div className={`text-[22px] font-semibold tabular-nums tracking-tight ${isActive ? 'text-white' : 'text-[#09090B]'}`}>
+                  {count}
+                  <span className={`text-[12px] ml-1 font-normal ${isActive ? 'text-white/70' : 'text-[#71717A]'}`}>개</span>
+                </div>
+              </button>
+            );
+          })}
         </div>
       </div>
 
