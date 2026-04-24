@@ -618,9 +618,31 @@ function clearAuthSession() {
   localStorage.removeItem(AUTH_KEY);
 }
 
-// 🆕 관리자 사용자 목록 (2-3명의 담당자)
+// 🆕 관리자 사용자 목록 (localStorage 기반 - 사용자 직접 편집)
 // ⚠️ 누가 뭘 바꿨는지 추적하기 위한 용도 (비밀번호는 공용 admin1234)
-const ADMIN_USERS = ['사장님', '와이프', '알바생'];
+const ADMIN_USERS_KEY = 'wh:adminUsers';
+const DEFAULT_ADMIN_USERS = ['사장님', '와이프', '알바생'];
+
+function getAdminUsers() {
+  try {
+    const data = localStorage.getItem(ADMIN_USERS_KEY);
+    if (data) {
+      const users = JSON.parse(data);
+      if (Array.isArray(users) && users.length > 0) return users;
+    }
+  } catch {}
+  return DEFAULT_ADMIN_USERS;
+}
+
+function saveAdminUsers(users) {
+  try {
+    const cleaned = users.map(u => String(u).trim()).filter(u => u.length > 0);
+    localStorage.setItem(ADMIN_USERS_KEY, JSON.stringify(cleaned));
+    return cleaned;
+  } catch {
+    return users;
+  }
+}
 
 function getAttempts() {
   try {
@@ -849,8 +871,10 @@ function ChangePasswordModal({ onClose, showToast }) {
 }
 
 function LoginScreen({ onSuccess, drivers = [] }) {
+  const [adminUsers, setAdminUsers] = useState(() => getAdminUsers());  // 🆕 동적 로드
+  const [showEditUsers, setShowEditUsers] = useState(false);  // 🆕 이름 편집 모달
   const [input, setInput] = useState('');
-  const [userName, setUserName] = useState(ADMIN_USERS[0]);  // 🆕 기본: 첫 번째 사용자
+  const [userName, setUserName] = useState(adminUsers[0] || '사장님');
   const [error, setError] = useState('');
   const [shake, setShake] = useState(false);
   const [attempts, setAttempts] = useState(getAttempts());
@@ -968,8 +992,8 @@ function LoginScreen({ onSuccess, drivers = [] }) {
               {/* 🆕 사용자 이름 선택 */}
               <div className="mb-4">
                 <label className="block text-xs font-semibold text-stone-600 mb-1.5">이름</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {ADMIN_USERS.map(name => (
+                <div className={`grid gap-2 ${adminUsers.length <= 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                  {adminUsers.map(name => (
                     <button
                       key={name}
                       type="button"
@@ -1015,6 +1039,15 @@ function LoginScreen({ onSuccess, drivers = [] }) {
                 🔓 로그인
               </button>
 
+              {/* 🆕 사용자 이름 편집 버튼 */}
+              <button
+                type="button"
+                onClick={() => setShowEditUsers(true)}
+                className="w-full mt-2 py-2 bg-transparent hover:bg-stone-50 text-stone-500 hover:text-stone-700 rounded-lg text-xs transition-colors"
+              >
+                이름 목록 수정
+              </button>
+
               <div className="mt-5 pt-4 border-t border-stone-100 space-y-1.5">
                 <div className="flex items-center gap-2 p-2 bg-stone-50 rounded-lg">
                   <span className="text-base">👔</span>
@@ -1040,6 +1073,163 @@ function LoginScreen({ onSuccess, drivers = [] }) {
 
         <div className="text-center mt-6 text-[11px] text-red-200/60">
           © 2026 워커힐김치 OMS
+        </div>
+      </div>
+
+      {/* 🆕 이름 편집 모달 */}
+      {showEditUsers && (
+        <EditUsersModal
+          initialUsers={adminUsers}
+          onSave={(newUsers) => {
+            const saved = saveAdminUsers(newUsers);
+            setAdminUsers(saved);
+            // 현재 선택한 이름이 삭제됐으면 첫 번째로 변경
+            if (!saved.includes(userName)) {
+              setUserName(saved[0] || '사용자');
+            }
+            setShowEditUsers(false);
+          }}
+          onClose={() => setShowEditUsers(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// 👥 사용자 이름 편집 모달
+// ═══════════════════════════════════════════════════════════
+function EditUsersModal({ initialUsers, onSave, onClose }) {
+  const [users, setUsers] = useState(initialUsers || []);
+  const [newName, setNewName] = useState('');
+
+  const addUser = () => {
+    const trimmed = newName.trim();
+    if (!trimmed) return;
+    if (users.includes(trimmed)) {
+      alert('이미 있는 이름입니다');
+      return;
+    }
+    if (users.length >= 10) {
+      alert('최대 10명까지 추가 가능합니다');
+      return;
+    }
+    setUsers([...users, trimmed]);
+    setNewName('');
+  };
+
+  const removeUser = (idx) => {
+    if (users.length <= 1) {
+      alert('최소 1명은 남아있어야 합니다');
+      return;
+    }
+    setUsers(users.filter((_, i) => i !== idx));
+  };
+
+  const updateUser = (idx, value) => {
+    const next = [...users];
+    next[idx] = value;
+    setUsers(next);
+  };
+
+  const handleSave = () => {
+    const cleaned = users.map(u => String(u).trim()).filter(u => u.length > 0);
+    if (cleaned.length === 0) {
+      alert('최소 1명의 이름이 필요합니다');
+      return;
+    }
+    // 중복 체크
+    const uniqueSet = new Set(cleaned);
+    if (uniqueSet.size !== cleaned.length) {
+      alert('중복된 이름이 있습니다');
+      return;
+    }
+    onSave(cleaned);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-[16px] shadow-2xl w-full max-w-md max-h-[88vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="px-6 py-4 border-b border-[#E4E4E7] flex items-center justify-between">
+          <div>
+            <h2 className="text-[16px] font-semibold text-[#09090B] tracking-tight">이름 목록 수정</h2>
+            <div className="text-[12px] text-[#71717A] mt-0.5">로그인 시 선택할 이름을 관리합니다</div>
+          </div>
+          <button onClick={onClose} className="p-1.5 hover:bg-[#F4F4F5] rounded-[6px] transition-colors">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-4">
+          {/* 안내 */}
+          <div className="p-3 bg-[#F0F9FF] border border-[#BFDBFE] rounded-[8px] text-[12px] text-[#1E40AF] leading-relaxed">
+            💡 이 목록은 <strong>이 브라우저에만 저장</strong>됩니다. 다른 PC에서도 수정하려면 그 PC에서 별도로 설정하세요.
+          </div>
+
+          {/* 현재 목록 */}
+          <div>
+            <label className="block text-[12px] font-semibold text-[#52525B] mb-2">현재 이름 ({users.length}명)</label>
+            <div className="space-y-2">
+              {users.map((user, idx) => (
+                <div key={idx} className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={user}
+                    onChange={(e) => updateUser(idx, e.target.value)}
+                    className="flex-1 px-3 py-2 border border-[#E4E4E7] rounded-[8px] text-[13px] focus:outline-none focus:ring-2 focus:ring-[#09090B]/20"
+                    placeholder="이름"
+                    maxLength={20}
+                  />
+                  <button
+                    onClick={() => removeUser(idx)}
+                    className="p-2 text-[#71717A] hover:bg-[#FEF2F2] hover:text-[#B91C1C] rounded-[8px] transition-colors"
+                    title="삭제"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* 추가 */}
+          <div>
+            <label className="block text-[12px] font-semibold text-[#52525B] mb-2">새 이름 추가</label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addUser(); } }}
+                className="flex-1 px-3 py-2 border border-[#E4E4E7] rounded-[8px] text-[13px] focus:outline-none focus:ring-2 focus:ring-[#09090B]/20"
+                placeholder="예: 형"
+                maxLength={20}
+              />
+              <button
+                onClick={addUser}
+                disabled={!newName.trim()}
+                className="px-4 py-2 bg-[#09090B] hover:bg-black disabled:bg-[#D4D4D8] disabled:cursor-not-allowed text-white rounded-[8px] text-[13px] font-medium transition-colors"
+              >
+                <Plus size={14} />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* 하단 버튼 */}
+        <div className="px-6 py-4 bg-[#FAFAFA] border-t border-[#E4E4E7] flex items-center justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 bg-white hover:bg-[#F4F4F5] border border-[#E4E4E7] text-[#52525B] rounded-[8px] text-[13px] font-medium transition-colors"
+          >
+            취소
+          </button>
+          <button
+            onClick={handleSave}
+            className="px-4 py-2 bg-[#09090B] hover:bg-black text-white rounded-[8px] text-[13px] font-medium transition-colors"
+          >
+            저장
+          </button>
         </div>
       </div>
     </div>
@@ -1078,7 +1268,7 @@ export default function App() {
 
   // ⌨️ 키보드 단축키 (Alt + 숫자) - Hooks 규칙 준수 위해 early return 이전에 선언
   useEffect(() => {
-    const navIds = ['dashboard', 'orders', 'customers', 'items', 'gifts', 'shipping', 'drivers'];
+    const navIds = ['dashboard', 'orders', 'customers', 'items', 'gifts', 'shipping', 'drivers', 'audit'];
     const handleKeyDown = (e) => {
       const tag = (e.target.tagName || '').toLowerCase();
       if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable) return;
@@ -1435,9 +1625,12 @@ export default function App() {
 
   const setDrivers = (newValue) => {
     const resolved = typeof newValue === 'function' ? newValue(drivers) : newValue;
+    const prevDrivers = drivers;  // 📋
     _setDriversInternal(resolved);
     saveData(DRIVERS_KEY, resolved);
     if (isReceivingFromFirebaseRef.current) return;
+    // 📋 변경 이력 기록
+    recordAuditDiff('driver', prevDrivers, resolved, d => d.name);
     if (isSupabaseConfigured && initialSyncDoneRef.current) {
       suppressRealtimeEcho(TABLES.drivers, 3000);
       setSaveState('saving');
@@ -1578,8 +1771,11 @@ export default function App() {
   // 🎁 사은품 저장 래퍼 (localStorage만)
   const saveGifts = (newGifts) => {
     const resolved = typeof newGifts === 'function' ? newGifts(gifts) : newGifts;
+    const prevGifts = gifts;  // 📋
     setGifts(resolved);
     saveData(GIFT_STORAGE_KEY, resolved);
+    // 📋 변경 이력 기록
+    recordAuditDiff('gift', prevGifts, resolved, g => g.name || g.id);
   };
 
   const itemsWithStock = useMemo(() => calcAvailStock(items, orders), [items, orders]);
@@ -1642,6 +1838,7 @@ export default function App() {
     { id: 'gifts', label: '사은품', icon: Package, shortcut: '5' },
     { id: 'shipping', label: '배송관리', icon: Truck, shortcut: '6' },
     { id: 'drivers', label: '기사관리', icon: Truck, shortcut: '7' },
+    { id: 'audit', label: '변경 이력', icon: History, shortcut: '8' },  // 🆕
   ];
 
   const lowStockCount = itemsWithStock.filter(i => i.availStock <= 20).length;
@@ -1982,6 +2179,7 @@ export default function App() {
               {view === 'gifts' && '사은품 이벤트를 관리하세요'}
               {view === 'shipping' && '배송 상태를 업데이트하세요'}
               {view === 'drivers' && '배송기사 계정을 관리하세요'}
+              {view === 'audit' && '누가 언제 무엇을 변경했는지 확인하세요'}
             </div>
           </div>
 
@@ -2113,6 +2311,7 @@ export default function App() {
           {view === 'gifts' && <Gifts gifts={gifts} setGifts={saveGifts} orders={orders} setOrders={setOrders} customers={customers} items={itemsWithStock} showToast={showToast} setView={setView} />}
           {view === 'shipping' && <Shipping customers={customers} orders={orders} setOrders={setOrders} showToast={showToast} />}
           {view === 'drivers' && <DriversManagement drivers={drivers} setDrivers={setDrivers} orders={orders} showToast={showToast} />}
+          {view === 'audit' && <AuditLog currentUser={currentUser} />}
         </div>
       </main>
 
@@ -7573,6 +7772,269 @@ function GiftFormModal({ editTarget, onSave, onClose }) {
             </div>
           </label>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// 📋 변경 이력 (Audit Log) 페이지
+// ═══════════════════════════════════════════════════════════
+function AuditLog({ currentUser }) {
+  const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [userFilter, setUserFilter] = useState('all');
+  const [typeFilter, setTypeFilter] = useState('all');
+  const [periodFilter, setPeriodFilter] = useState('week');  // today/week/month/all
+  const [limit, setLimit] = useState(100);
+
+  // 이력 불러오기
+  const loadLogs = async () => {
+    setLoading(true);
+    try {
+      const options = { limit: 500 };  // 충분히 많이 가져오기
+      // 기간 필터
+      const now = new Date();
+      if (periodFilter === 'today') {
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        options.fromDate = today.toISOString();
+      } else if (periodFilter === 'week') {
+        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        options.fromDate = weekAgo.toISOString();
+      } else if (periodFilter === 'month') {
+        const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        options.fromDate = monthAgo.toISOString();
+      }
+      const data = await fetchAuditLogs(options);
+      setLogs(data);
+    } catch (err) {
+      console.error('이력 로드 실패:', err);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadLogs();
+  }, [periodFilter]);
+
+  // 필터링
+  const filtered = useMemo(() => {
+    return logs.filter(log => {
+      if (userFilter !== 'all' && log.user_name !== userFilter) return false;
+      if (typeFilter !== 'all' && log.entity_type !== typeFilter) return false;
+      return true;
+    }).slice(0, limit);
+  }, [logs, userFilter, typeFilter, limit]);
+
+  // 고유 사용자 목록
+  const uniqueUsers = useMemo(() => {
+    return [...new Set(logs.map(l => l.user_name))].filter(Boolean);
+  }, [logs]);
+
+  // 날짜별 그룹핑
+  const groupedByDate = useMemo(() => {
+    const groups = {};
+    filtered.forEach(log => {
+      const date = new Date(log.timestamp);
+      const dateKey = date.toISOString().slice(0, 10);  // YYYY-MM-DD
+      if (!groups[dateKey]) groups[dateKey] = [];
+      groups[dateKey].push(log);
+    });
+    // 배열로 변환 (최신순)
+    return Object.entries(groups).sort(([a], [b]) => b.localeCompare(a));
+  }, [filtered]);
+
+  // 날짜 포맷
+  const formatDateHeader = (dateKey) => {
+    const today = new Date().toISOString().slice(0, 10);
+    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    if (dateKey === today) return '오늘';
+    if (dateKey === yesterday) return '어제';
+    const d = new Date(dateKey);
+    return d.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' });
+  };
+
+  // 시간 포맷
+  const formatTime = (iso) => {
+    const d = new Date(iso);
+    return d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+  };
+
+  // 액션별 아이콘 + 색상
+  const getActionStyle = (action) => {
+    switch (action) {
+      case 'create': return { icon: '➕', color: 'text-[#15803D]', bg: 'bg-[#F0FDF4]', border: 'border-[#BBF7D0]', label: '생성' };
+      case 'update': return { icon: '✏️', color: 'text-[#1D4ED8]', bg: 'bg-[#EFF6FF]', border: 'border-[#BFDBFE]', label: '수정' };
+      case 'delete': return { icon: '🗑️', color: 'text-[#B91C1C]', bg: 'bg-[#FEF2F2]', border: 'border-[#FECACA]', label: '삭제' };
+      case 'bulk': return { icon: '📦', color: 'text-[#B45309]', bg: 'bg-[#FFFBEB]', border: 'border-[#FDE68A]', label: '대량' };
+      default: return { icon: '•', color: 'text-[#52525B]', bg: 'bg-[#F4F4F5]', border: 'border-[#E4E4E7]', label: '변경' };
+    }
+  };
+
+  // 엔티티 타입 한글
+  const getEntityLabel = (type) => {
+    const map = { customer: '고객', order: '주문', item: '품목', driver: '기사', gift: '사은품' };
+    return map[type] || type;
+  };
+
+  if (!isSupabaseConfigured) {
+    return (
+      <div className="bg-white rounded-[12px] border border-[#E4E4E7] p-12 text-center">
+        <CloudOff size={40} className="mx-auto text-[#D4D4D8] mb-3" />
+        <div className="text-[14px] text-[#71717A]">클라우드 연결이 필요합니다</div>
+        <div className="text-[12px] text-[#A1A1AA] mt-1">Supabase가 연결되어야 변경 이력을 볼 수 있습니다</div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {/* 필터 바 */}
+      <div className="bg-white rounded-[12px] border border-[#E4E4E7] p-4 mb-4 flex items-center gap-3 flex-wrap">
+        <div className="text-[12px] font-semibold text-[#52525B]">필터</div>
+
+        {/* 기간 */}
+        <div className="flex items-center gap-1 bg-[#FAFAFA] border border-[#E4E4E7] rounded-[8px] p-0.5">
+          {[
+            { id: 'today', label: '오늘' },
+            { id: 'week', label: '최근 7일' },
+            { id: 'month', label: '최근 30일' },
+            { id: 'all', label: '전체' },
+          ].map(p => (
+            <button
+              key={p.id}
+              onClick={() => setPeriodFilter(p.id)}
+              className={`px-3 py-1.5 rounded-[6px] text-[12px] font-medium transition-colors ${
+                periodFilter === p.id ? 'bg-[#09090B] text-white' : 'text-[#71717A] hover:bg-white'
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+
+        {/* 작성자 */}
+        <select
+          value={userFilter}
+          onChange={e => setUserFilter(e.target.value)}
+          className="px-3 py-1.5 bg-white border border-[#E4E4E7] rounded-[8px] text-[12px] font-medium text-[#52525B] focus:outline-none focus:ring-2 focus:ring-[#09090B]/20 cursor-pointer"
+        >
+          <option value="all">전체 작성자</option>
+          {uniqueUsers.map(u => <option key={u} value={u}>{u}</option>)}
+        </select>
+
+        {/* 유형 */}
+        <select
+          value={typeFilter}
+          onChange={e => setTypeFilter(e.target.value)}
+          className="px-3 py-1.5 bg-white border border-[#E4E4E7] rounded-[8px] text-[12px] font-medium text-[#52525B] focus:outline-none focus:ring-2 focus:ring-[#09090B]/20 cursor-pointer"
+        >
+          <option value="all">전체 유형</option>
+          <option value="order">주문</option>
+          <option value="customer">고객</option>
+          <option value="item">품목</option>
+          <option value="driver">기사</option>
+          <option value="gift">사은품</option>
+        </select>
+
+        <div className="ml-auto flex items-center gap-2">
+          <div className="text-[12px] text-[#71717A]">
+            총 <span className="font-semibold text-[#09090B] tabular-nums">{filtered.length}</span>건
+          </div>
+          <button
+            onClick={loadLogs}
+            disabled={loading}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-[#FAFAFA] border border-[#E4E4E7] text-[#52525B] rounded-[8px] text-[12px] font-medium transition-colors disabled:opacity-50"
+          >
+            <RotateCcw size={12} className={loading ? 'animate-spin' : ''} />
+            새로고침
+          </button>
+        </div>
+      </div>
+
+      {/* 타임라인 */}
+      <div className="bg-white rounded-[12px] border border-[#E4E4E7] overflow-hidden">
+        {loading ? (
+          <div className="p-12 text-center">
+            <Loader2 size={24} className="animate-spin mx-auto text-[#71717A] mb-2" />
+            <div className="text-[13px] text-[#71717A]">불러오는 중...</div>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="p-12 text-center">
+            <History size={40} className="mx-auto text-[#D4D4D8] mb-3" />
+            <div className="text-[14px] text-[#71717A]">기록된 변경 이력이 없습니다</div>
+            <div className="text-[12px] text-[#A1A1AA] mt-1">주문/고객/품목을 수정하면 자동으로 기록됩니다</div>
+          </div>
+        ) : (
+          <div className="divide-y divide-[#F4F4F5]">
+            {groupedByDate.map(([dateKey, items]) => (
+              <div key={dateKey}>
+                {/* 날짜 헤더 */}
+                <div className="sticky top-0 px-6 py-2 bg-[#FAFAFA] border-b border-[#E4E4E7] z-10">
+                  <div className="text-[12px] font-semibold text-[#52525B]">
+                    📅 {formatDateHeader(dateKey)}
+                    <span className="ml-2 text-[#A1A1AA] font-normal tabular-nums">{items.length}건</span>
+                  </div>
+                </div>
+
+                {/* 이벤트 리스트 */}
+                <div className="divide-y divide-[#F4F4F5]">
+                  {items.map(log => {
+                    const style = getActionStyle(log.action);
+                    return (
+                      <div key={log.id} className="px-6 py-3 hover:bg-[#FAFAFA] transition-colors">
+                        <div className="flex items-start gap-3">
+                          {/* 시간 */}
+                          <div className="w-12 shrink-0 text-[12px] text-[#71717A] font-mono tabular-nums mt-0.5">
+                            {formatTime(log.timestamp)}
+                          </div>
+
+                          {/* 사용자 */}
+                          <div className="w-20 shrink-0 mt-0.5">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#09090B] text-white rounded-[5px] text-[11px] font-medium">
+                              {log.user_name}
+                            </span>
+                          </div>
+
+                          {/* 액션 배지 */}
+                          <div className={`inline-flex items-center gap-1 px-2 py-0.5 ${style.bg} ${style.border} border rounded-[5px] text-[11px] font-medium ${style.color} shrink-0 mt-0.5`}>
+                            {style.icon} {getEntityLabel(log.entity_type)} {style.label}
+                          </div>
+
+                          {/* 설명 */}
+                          <div className="flex-1 text-[13px] text-[#09090B] leading-relaxed">
+                            {log.entity_name && (
+                              <span className="font-medium">{log.entity_name}</span>
+                            )}
+                            {log.entity_name && log.description && <span className="text-[#A1A1AA]"> · </span>}
+                            <span className="text-[#52525B]">{log.description}</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+
+            {/* 더 보기 */}
+            {logs.length > limit && (
+              <div className="px-6 py-4 bg-[#FAFAFA] text-center border-t border-[#E4E4E7]">
+                <button
+                  onClick={() => setLimit(limit + 100)}
+                  className="px-4 py-2 bg-white hover:bg-[#FAFAFA] border border-[#E4E4E7] text-[#52525B] rounded-[8px] text-[12px] font-medium transition-colors"
+                >
+                  더 보기 ({logs.length - limit}건 더 있음)
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* 하단 안내 */}
+      <div className="mt-4 p-3 bg-[#F0F9FF] border border-[#BFDBFE] rounded-[8px] text-[12px] text-[#1E40AF] leading-relaxed">
+        💡 변경 이력은 Supabase에 저장되어 다른 PC에서도 확인할 수 있습니다. 주문/고객/품목/기사/사은품의 생성·수정·삭제가 자동으로 기록됩니다.
       </div>
     </div>
   );
