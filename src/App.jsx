@@ -1813,7 +1813,7 @@ export default function App() {
             <div className="text-xs text-stone-500 mt-0.5">
               {view === 'dashboard' && '매출·주문·배송 현황을 한눈에'}
               {view === 'orders' && '주문을 등록하고 카톡 메시지를 생성하세요'}
-              {view === 'customers' && '고객 정보를 관리하세요 (최대 4,500명)'}
+              {view === 'customers' && '고객 정보를 관리하세요 (최대 5,000명)'}
               {view === 'items' && '품목과 재고를 관리하세요'}
               {view === 'gifts' && '사은품 이벤트와 자동 지급 기준을 관리하세요'}
               {view === 'shipping' && '배송 상태를 업데이트하세요'}
