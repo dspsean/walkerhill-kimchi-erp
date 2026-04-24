@@ -26,10 +26,15 @@ export const supabase = isSupabaseConfigured
     })
   : null;
 
+// ============================================================
+// 🔧 개발 모드 로그 (프로덕션에서는 자동 비활성화)
+// ============================================================
+const DEBUG = false;
+const log = DEBUG ? console.log : () => {};
+const warn = DEBUG ? console.warn : () => {};
+
 if (isSupabaseConfigured) {
   console.log('%c🟢 Supabase 연결 준비 완료!', 'background: #15803D; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold;');
-  console.log(`   URL: ${SUPABASE_URL}`);
-  console.log('   Realtime 구독이 곧 시작됩니다...');
 } else {
   console.error('%c❌ Supabase 설정되지 않음 - 로컬 모드로 동작', 'background: #B91C1C; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold;');
   console.error('⚠️ 다른 PC와 데이터 동기화 안 됩니다!');
@@ -80,13 +85,13 @@ export async function fetchAll(tableName) {
 
       // 안전장치: 최대 20,000행 (20 페이지)
       if (from >= 20000) {
-        console.warn(`⚠️ ${tableName}: 20,000건 초과, 페이지네이션 중단`);
+        warn(`⚠️ ${tableName}: 20,000건 초과, 페이지네이션 중단`);
         break;
       }
     }
 
     if (allData.length > PAGE_SIZE) {
-      console.log(`✓ ${tableName}: 페이지네이션으로 ${allData.length}건 모두 로드`);
+      log(`✓ ${tableName}: 페이지네이션으로 ${allData.length}건 모두 로드`);
     }
 
     return allData;
@@ -145,7 +150,7 @@ export function subscribeToTable(tableName, onChange, onError) {
         const fresh = await fetchAll(tableName);
         onChange(fresh);
       } catch (err) {
-        console.error(`Error in throttledFetch for ${tableName}:`, err);
+        log(`Error in throttledFetch for ${tableName}:`, err);
       }
     }, 500);
   };
@@ -154,7 +159,7 @@ export function subscribeToTable(tableName, onChange, onError) {
   // 30초마다 데이터 확인 - 다른 PC의 변경사항 반영
   const startPolling = () => {
     if (pollingInterval) return;
-    console.log(`🔄 ${tableName} 폴링 모드 시작 (30초 주기)`);
+    log(`🔄 ${tableName} 폴링 모드 시작 (30초 주기)`);
     pollingInterval = setInterval(async () => {
       const now = Date.now();
       const suppressUntil = _suppressFetchUntil[tableName] || 0;
@@ -163,7 +168,7 @@ export function subscribeToTable(tableName, onChange, onError) {
         const fresh = await fetchAll(tableName);
         onChange(fresh);
       } catch (err) {
-        console.error(`Error in polling ${tableName}:`, err);
+        log(`Error in polling ${tableName}:`, err);
       }
     }, 30000);
   };
@@ -182,7 +187,7 @@ export function subscribeToTable(tableName, onChange, onError) {
       'postgres_changes',
       { event: '*', schema: 'public', table: tableName },
       (payload) => {
-        console.log(`📨 ${tableName} 실시간 변경 감지:`, payload.eventType);
+        log(`📨 ${tableName} 실시간 변경 감지:`, payload.eventType);
         realtimeWorking = true;
         stopPolling();  // Realtime 확인되면 폴링 중지
         throttledFetch();
@@ -190,7 +195,7 @@ export function subscribeToTable(tableName, onChange, onError) {
     )
     .subscribe((status, err) => {
       if (status === 'SUBSCRIBED') {
-        console.log(`✓ ${tableName} 구독 시작`);
+        log(`✓ ${tableName} 구독 시작`);
         _recentFetches[tableName] = Date.now();
         fetchAll(tableName).then(fresh => {
           const map = {};
@@ -203,16 +208,16 @@ export function subscribeToTable(tableName, onChange, onError) {
         // Realtime 테스트: 10초 내 이벤트 안 오면 폴링 시작
         setTimeout(() => {
           if (!realtimeWorking) {
-            console.warn(`⚠️ ${tableName} Realtime 이벤트 미확인 - 폴링 모드로 fallback`);
+            warn(`⚠️ ${tableName} Realtime 이벤트 미확인 - 폴링 모드로 fallback`);
             startPolling();
           }
         }, 10000);
       } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-        console.warn(`❌ ${tableName} 구독 상태:`, status);
+        warn(`❌ ${tableName} 구독 상태:`, status);
         startPolling();  // 실패 시 즉시 폴링 시작
         if (onError) onError(err || new Error(status));
       } else if (status === 'CLOSED') {
-        console.log(`🔌 ${tableName} 채널 닫힘`);
+        log(`🔌 ${tableName} 채널 닫힘`);
       }
     });
 
@@ -328,7 +333,7 @@ async function _saveBatchInternal(tableName, rows) {
     return { success: true, saved: 0, total: rows.length };
   }
 
-  console.log(`📤 ${tableName}: ${changedRows.length}/${rows.length}건 변경됨, 업로드 중...`);
+  log(`📤 ${tableName}: ${changedRows.length}/${rows.length}건 변경됨, 업로드 중...`);
 
   // 청크 업로드
   const CHUNK_SIZE = 50;
@@ -357,13 +362,13 @@ async function _saveBatchInternal(tableName, rows) {
         _suppressFetchUntil[tableName] = Date.now() + 5000;
 
         if (chunks.length > 5 && idx % 5 === 0) {
-          console.log(`  ⏳ ${tableName}: ${uploadedCount}/${changedRows.length} (${Math.round(uploadedCount / changedRows.length * 100)}%)`);
+          log(`  ⏳ ${tableName}: ${uploadedCount}/${changedRows.length} (${Math.round(uploadedCount / changedRows.length * 100)}%)`);
         }
       } catch (err) {
         lastError = err;
         retries++;
         if (retries < MAX_RETRIES) {
-          console.warn(`  ⚠️ ${tableName} 청크 ${idx + 1} 실패 (재시도 ${retries}/${MAX_RETRIES})`, err.message);
+          warn(`  ⚠️ ${tableName} 청크 ${idx + 1} 실패 (재시도 ${retries}/${MAX_RETRIES})`, err.message);
           await new Promise(r => setTimeout(r, 2000));
         } else {
           console.error(`  ❌ ${tableName} 청크 ${idx + 1} 최종 실패:`, err);
@@ -380,7 +385,7 @@ async function _saveBatchInternal(tableName, rows) {
   }
 
   _lastSavedRows[tableName] = currentMap;
-  console.log(`✓ ${tableName} ${uploadedCount}/${changedRows.length}건 업로드 완료`);
+  log(`✓ ${tableName} ${uploadedCount}/${changedRows.length}건 업로드 완료`);
   _suppressFetchUntil[tableName] = Date.now() + 3000;
 
   return { success: true, saved: uploadedCount, total: rows.length };
