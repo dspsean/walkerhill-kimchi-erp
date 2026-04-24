@@ -1582,10 +1582,15 @@ export default function App() {
 
   const setItems = (newValue) => {
     const resolved = typeof newValue === 'function' ? newValue(items) : newValue;
-    _setItemsInternal(resolved);
-    saveData(STORAGE_KEYS.items, resolved);
+    // availStock은 계산된 값이므로 저장 시 제거 (Supabase 스키마에 없음)
+    const cleaned = resolved.map(item => {
+      const { availStock, ...clean } = item;
+      return clean;
+    });
+    _setItemsInternal(cleaned);
+    saveData(STORAGE_KEYS.items, cleaned);
     if (isSupabaseConfigured && initialSyncDoneRef.current) {
-      saveBatch(TABLES.items, resolved);
+      saveBatch(TABLES.items, cleaned);
     }
   };
 
@@ -4303,19 +4308,29 @@ function Items({ items, setItems, showToast }) {
   const baechu = items.find(i => i.code === 'P001');
   const chonggak = items.find(i => i.code === 'P002');
 
+  // availStock 같은 계산 필드 제거 (Supabase 저장 시 문제 방지)
+  const stripComputed = (item) => {
+    const { availStock, ...clean } = item;
+    return clean;
+  };
+
   const handleSaveStock = (code, newStock) => {
-    setItems(items.map(i => i.code === code ? { ...i, realStock: newStock } : i));
+    setItems(prev => prev.map(i => {
+      if (i.code !== code) return stripComputed(i);
+      return { ...stripComputed(i), realStock: newStock };
+    }));
     showToast('재고가 업데이트되었습니다');
   };
 
   // 📥 입고 처리 (평균 원가 자동 재계산)
   const handleStockIn = (code, stockInData) => {
     // stockInData: { qty, cost, date, memo, supplier }
-    setItems(items.map(i => {
-      if (i.code !== code) return i;
+    setItems(prev => prev.map(i => {
+      if (i.code !== code) return stripComputed(i);
 
-      const currentStock = i.realStock || 0;
-      const currentCost = i.cost || 0;
+      const clean = stripComputed(i);
+      const currentStock = clean.realStock || 0;
+      const currentCost = clean.cost || 0;
       const newQty = stockInData.qty;
       const newCost = stockInData.cost;
 
@@ -4336,10 +4351,10 @@ function Items({ items, setItems, showToast }) {
       };
 
       return {
-        ...i,
+        ...clean,
         realStock: totalQty,
         cost: avgCost,
-        stockHistory: [...(i.stockHistory || []), newHistoryEntry],
+        stockHistory: [...(clean.stockHistory || []), newHistoryEntry],
       };
     }));
     showToast(`✅ 입고 완료: ${stockInData.qty}개 · 평균원가 재계산됨`);
@@ -4353,10 +4368,13 @@ function Items({ items, setItems, showToast }) {
 
   const handleSave = (item) => {
     if (editTarget) {
-      setItems(items.map(i => i.code === editTarget.code ? { ...item, code: editTarget.code } : i));
+      setItems(prev => prev.map(i => {
+        if (i.code !== editTarget.code) return stripComputed(i);
+        return { ...stripComputed(i), ...item, code: editTarget.code };
+      }));
       showToast('품목이 수정되었습니다');
     } else {
-      setItems([...items, { ...item, code: nextCode() }]);
+      setItems(prev => [...prev.map(stripComputed), { ...item, code: nextCode() }]);
       showToast('품목이 추가되었습니다');
     }
     setShowForm(false);
@@ -8329,5 +8347,5 @@ function ExcelHelpModal({ onClose }) {
         </div>
       </div>
     </div>
-  );  
+  );
 }
