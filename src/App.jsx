@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, memo } from 'react';
 import { Search, Plus, Edit2, Trash2, Copy, Check, Package, Users, ShoppingCart, Truck, BarChart3, Download, X, Send, AlertTriangle, TrendingUp, Bell, FileDown, RotateCcw, History, LogOut, Cloud, CloudOff, Save, Loader2, AlertCircle } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
@@ -11,408 +11,19 @@ import {
   TABLES,
 } from './supabase.js';
 
-const INITIAL_CUSTOMERS = [
-  { id: 'C0001', name: '송현숙', phone: '0433 110 140', agedCare: false, address: '2108/3 NETWORK Place North Ryde', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0002', name: '정진욱', phone: '0430 152 237', agedCare: false, address: '5 Dairy Farm Way Kellyville NSW 2155', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0003', name: '이성연', phone: '0417 185 558', agedCare: false, address: '#3057 5 Amytis St. Rouse Hill.', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0004', name: '우혜정', phone: '0433 732 432', agedCare: false, address: '1 Ardennes Street Box Hill NSW 2765', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0005', name: 'J eastwood', phone: '0410 448 671', agedCare: false, address: '1 brushbox st sydney olympic park', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0006', name: 'jaemi&ethan', phone: '0431 643 454', agedCare: false, address: '1 Holland st Chatswood', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0007', name: '양인자', phone: '0410 490 060', agedCare: false, address: '1 Medora Lane Cabarita 2137', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0008', name: '한세라', phone: '0421 989 688', agedCare: false, address: '1 Sherears ave, strathfield', grade: '일반', joinDate: '2025-04-21', memo: '카카오채널주문' },
-  { id: 'C0009', name: '정연', phone: '0413 096 587', agedCare: false, address: '1/135 ferest rd Arncliffe', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0010', name: '최신자 Sin Ja Choi', phone: '0411 261 323', agedCare: true, address: '1/31 Stephen Street, Hornsby, NSW, 2077', grade: '일반', joinDate: '2025-04-21', memo: '개인부담 $24/강민경LW코디, 인보이스 2장으로나눠발행' },
-  { id: 'C0011', name: '이승희', phone: '0411 248 845', agedCare: false, address: '1/8 marsden road,ermington', grade: '일반', joinDate: '2025-04-21', memo: '문자주문' },
-  { id: 'C0012', name: '김희정', phone: '0426 294 555', agedCare: false, address: '10 Alonso cr, Schofields', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0013', name: '한정혜(한수)', phone: '0425 154 498', agedCare: false, address: '10 annabelle crescent, kellyville', grade: '일반', joinDate: '2025-04-21', memo: '문자, 카카오채널 중복주문' },
-  { id: 'C0014', name: '박향미', phone: '0402 085 437', agedCare: false, address: '10 Diamond Court Newington', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0015', name: '김수현', phone: '0401 939 892', agedCare: false, address: '10 Galahad cres Castle hill', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0016', name: '이해분', phone: '0450 766 975', agedCare: true, address: '10 Lindsay Street, Campsei NSW 2194', grade: '일반', joinDate: '2025-04-21', memo: 'payments@kagedcare.com.au 인보이스보내기/최영준 KA' },
-  { id: 'C0017', name: 'Augustine jang', phone: '0433 763 062', agedCare: false, address: '10/2 trafalgar pl marsfield', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0018', name: '김수민', phone: '0489 173 040', agedCare: false, address: '100 Fairway Dr Norwest 2153', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0019', name: '조민주', phone: '0433 379 996', agedCare: false, address: '104 Narara valley Drive 2250', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0020', name: '이정애', phone: '0414 784 003', agedCare: false, address: '104 Pretoria Pde. Hornsby', grade: '일반', joinDate: '2025-04-21', memo: '현금' },
-  { id: 'C0021', name: 'nina Yun', phone: '0423 611 548', agedCare: false, address: '107 Palmer street Woolloomooloo', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0022', name: '송은 cathy', phone: '0438560 100', agedCare: false, address: '10A Lawley cres pymble', grade: '일반', joinDate: '2025-04-21', memo: '카카오채널주문' },
-  { id: 'C0023', name: '김수경', phone: '0413 220 344', agedCare: false, address: '11 Hyland place Minchinbury', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0024', name: '신은주', phone: '0438 123 178', agedCare: false, address: '11/11 Cross St Baulkham Hills', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0025', name: '이진형', phone: '0481 226 381', agedCare: false, address: '11/25 wongala cres Beecroft', grade: '일반', joinDate: '2025-04-21', memo: '빌딩 B로 들어가야함, 입구는 Chapman Ave' },
-  { id: 'C0026', name: 'kim', phone: '0406 330 005', agedCare: false, address: '11/36-40 Landers rd Lane Cove', grade: '일반', joinDate: '2025-04-21', memo: '문자주문' },
-  { id: 'C0027', name: '박미자', phone: '0452 431 946', agedCare: false, address: '11/75-79 Fallon St. Rydalmere 2116', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0028', name: '성재니', phone: '0420 824 954', agedCare: false, address: '116 chalmers street Surry hills Blacksmith cafe', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0029', name: '이종희', phone: '0451 876 522', agedCare: false, address: '11fourth ave denistone', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0030', name: '홍경희', phone: '0435 624 533', agedCare: false, address: '12 Beverley Crescent, Marsfield 2122', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0031', name: 'Leanne&Wilson', phone: '0416 633 845', agedCare: false, address: '12 buckra st, Turramurra 2074', grade: '일반', joinDate: '2025-04-21', memo: '2건주문, 배송지 다름' },
-  { id: 'C0032', name: '이숙진', phone: '0417 293 732', agedCare: false, address: '12 Fairholm street Strathfield', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0033', name: '안정혜', phone: '0433 174 465', agedCare: false, address: '12 Tathra place, Castle hill', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0034', name: 'jane hur', phone: '0420 945 972', agedCare: false, address: '12 Water St, Wahroonga', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0035', name: '송미정', phone: '0452 177 909', agedCare: false, address: '122excelsior Ave Castle hill', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0036', name: '김금진', phone: '0430 574 512', agedCare: true, address: 'U125,208 -226 Pacific Highway, Hornsby', grade: '일반', joinDate: '2025-04-21', memo: '개인부담금 15불/KA지나코디(승조앤코디)' },
-  { id: 'C0037', name: '김진', phone: '0430 784 378', agedCare: true, address: 'U125,208 -226 Pacific Highway, Hornsby', grade: '일반', joinDate: '2025-04-21', memo: '개인부담금 15불/KA지나코디(승조앤코디)' },
-  { id: 'C0038', name: 'kim yun', phone: '0412-131-581', agedCare: false, address: '128/ 40 Strathalbyn Dr Oatlands', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0039', name: 'anna', phone: '0413 683 572', agedCare: false, address: '1303/11Railway St Chatswood', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0040', name: '김숙희', phone: '0430 288 033', agedCare: false, address: '14 first Avenue Campsie', grade: '일반', joinDate: '2025-04-21', memo: '현금' },
-  { id: 'C0041', name: '제니정', phone: '0401 343 659', agedCare: false, address: '14 The cloisters St,lves', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0042', name: 'grace park', phone: '0421 134 163', agedCare: false, address: '14 Watt Ave Newingron', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0043', name: '장선경', phone: '0432 342 003', agedCare: false, address: '15 Bellamy farm Rd West pennant hills', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0044', name: '김영실', phone: '0426 880 691', agedCare: false, address: '15 Glenrowan Ave Kellyville', grade: '일반', joinDate: '2025-04-21', memo: '현금' },
-  { id: 'C0045', name: '이주현', phone: '0430 597 267', agedCare: false, address: '15 Maida Rd Epping', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0046', name: '최상미', phone: '0481 220 082', agedCare: false, address: '16 Edgbaston rd, North Kellyville NSW 2155', grade: '일반', joinDate: '2025-04-21', memo: '문자주문' },
-  { id: 'C0047', name: '조앤신', phone: '0411 567 664', agedCare: false, address: '16 EULALIA st West Ryde', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0048', name: '유옥자', phone: '0468 683 823', agedCare: false, address: '16 merle st north epping', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0049', name: '김성애', phone: '0418 979 693', agedCare: false, address: '1602/3-5 Albert Rd STRATHFIELD', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0050', name: '정애리', phone: '0433 250 600', agedCare: false, address: '17 bimbil pl, castle hill', grade: '일반', joinDate: '2025-04-21', memo: '문자주문' },
-  { id: 'C0051', name: '양선화(Sue Yang)', phone: '0433 092 191', agedCare: false, address: '17 Dresden Avenue, Castle Hill', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0052', name: '안소영', phone: '0424 000 303', agedCare: false, address: '17 Hannah st Beecroft', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0053', name: '김정임(양정임)', phone: '0414 378 065', agedCare: false, address: '17 Teak Pl Cherrybrook', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0054', name: 'Nam Kim', phone: '0424 845 614', agedCare: false, address: '17/1-3 Mary St Lidcombe', grade: '일반', joinDate: '2025-04-21', memo: '카카오채널주문/빠른 배송 원함' },
-  { id: 'C0055', name: '김예림', phone: '0415 441 420', agedCare: false, address: '18 chiltern crescent castle hill NSW 2154', grade: '일반', joinDate: '2025-04-21', memo: '카카오채널주문' },
-  { id: 'C0056', name: '김양금', phone: '0406 133 021', agedCare: false, address: '18 crest rd Gledswood hills NSW2557', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0057', name: 'Sally Kim', phone: '0433 233 374', agedCare: false, address: '197 Seven Hills Road Baulkham Hills Sally Kim', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0058', name: '김경미', phone: '0430 346 332', agedCare: false, address: '19A Robertson Road Chester Hill 2162', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0059', name: '박기숙(이기숙님)', phone: '0438 244 089', agedCare: false, address: '2 dolphin close Claremont Meadows', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0060', name: '박수영', phone: '0427 420 387', agedCare: false, address: '2 James st CARLINGFORD', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0061', name: '유옥심', phone: '0423 693 566', agedCare: false, address: '2 Olive St Ryde', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0062', name: 'cho ja si(ka)', phone: '0426 961 004', agedCare: false, address: '20 second av Epping', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0063', name: '서자영', phone: '0430 125 357', agedCare: false, address: '21 Malvern Ave Roseville', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0064', name: '한미', phone: '0425 885 557', agedCare: false, address: '21 ZappiastRiverstone 2765', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0065', name: 'Seungwoo Kang(강승우)', phone: '0401 419 730', agedCare: false, address: '21A Gormley St, Lidcome 2141', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0066', name: '한혜선', phone: '0414 367 738', agedCare: false, address: '22 Huntingdale cir Castle Hill', grade: '일반', joinDate: '2025-04-21', memo: '카카오채널주문' },
-  { id: 'C0067', name: '김지연', phone: '0404 005 122', agedCare: false, address: '22 Kooba ave Chatswood', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0068', name: '이혜명', phone: '0425 435 469', agedCare: false, address: '22 Kristy Court,Kellyville', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0069', name: '김미진', phone: '0403 474 111', agedCare: false, address: '22/61peninsula Dr breakfastpoint', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0070', name: '박옥선', phone: '0420 854 700', agedCare: false, address: '22-26 ANN STREET LIDCOMBE', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0071', name: 'Anna Hyatt', phone: '0423 886 856', agedCare: false, address: '23 steward st, Lilyfield NSW 2040', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0072', name: '이희경', phone: '0434 619 618', agedCare: false, address: '24 windermere ave northmead', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0073', name: 'young', phone: '0402 005 190', agedCare: false, address: '25 Cumberlamb st, epping', grade: '일반', joinDate: '2025-04-21', memo: '카카오채널주문' },
-  { id: 'C0074', name: '김봉두', phone: '0409 207 807', agedCare: false, address: '25 meredith st Bankstown building 1 1002호', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0075', name: '김현진', phone: '0433 933 800', agedCare: false, address: '26 Tomah st Carlingford nsw 2118', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0076', name: '안지연', phone: '0430 482 944', agedCare: false, address: '26/1-9 Mark st Lidcombe', grade: '일반', joinDate: '2025-04-21', memo: '카카오채널주문' },
-  { id: 'C0077', name: '이은정', phone: '0421 728 072', agedCare: false, address: '26A Alice St. Turramurra', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0078', name: '이상미', phone: '0425 249 123', agedCare: false, address: '26A South Parade Campsie', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0079', name: '강인희', phone: '0402 851 926', agedCare: false, address: '27 Rondelay Dr castle hill 2154', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0080', name: '이은성', phone: '0434 584 737', agedCare: false, address: '289-295 Sussex St, Sydney NSW 2000', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0081', name: '문경희', phone: '0421 289 029', agedCare: false, address: '28Barney st. North parramatta', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0082', name: '홍수정', phone: '0431 770 022', agedCare: false, address: '29 apps ave, north turramurra', grade: '일반', joinDate: '2025-04-21', memo: '문자주문' },
-  { id: 'C0083', name: 'kun young kang(강건영)', phone: '0430 102 854', agedCare: false, address: '2A/ 2b help st, chatswood NSW 2067', grade: '일반', joinDate: '2025-04-21', memo: '문자주문' },
-  { id: 'C0084', name: '세라 콜린스(정원미)', phone: '0418 379 124', agedCare: false, address: '3 Murray rose ave, sydney Olympic Park', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0085', name: '올리비아전', phone: '0420 961 010', agedCare: false, address: '3 Sommer Street, Gables NSW 2765', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0086', name: '박영미', phone: '0449 936 368', agedCare: false, address: '3/26 East Parade Eastwood', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0087', name: 'soungheeyi', phone: '0409 700 688', agedCare: false, address: '303 A Warringah rd Beacon hill 2100 Nsw', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0088', name: '티파니맘', phone: '0424 838 092', agedCare: false, address: '30A kelvin rd st ives', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0089', name: '박정선', phone: '0414 382 662', agedCare: false, address: '31 beechworth road pymble', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0090', name: '조정미', phone: '0424 930 015', agedCare: false, address: '33 CRITERION CRES DOONSIDE', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0091', name: '권현숙', phone: '0433 894 833', agedCare: false, address: '33/4-6 Mercer St, Castlehills', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0092', name: 'June Jeong', phone: '0422 523 566', agedCare: false, address: '34 lona Avenue, North Rocks 2151', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0093', name: '의전모피', phone: '0416 412 100', agedCare: false, address: '35-39 brodie st Rydalmere 2116', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0094', name: '임은정', phone: '0410 618 945', agedCare: false, address: '37 Kissing Point Road Turramurra Nsw 2074', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0095', name: 'jenna lee', phone: '0404 832 283', agedCare: false, address: '37 tooth ave Newington', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0096', name: '김정자', phone: '0400 459 429', agedCare: false, address: '4 Gillian Pde West Pymble', grade: '일반', joinDate: '2025-04-21', memo: '현금' },
-  { id: 'C0097', name: '신현자', phone: '0435 735 010', agedCare: false, address: '4 willandra rd, woongarrh', grade: '일반', joinDate: '2025-04-21', memo: '문자주문' },
-  { id: 'C0098', name: '오영주', phone: '0425 222 150', agedCare: false, address: '4/10-12 beamish st. Campsie NSW 2194', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0099', name: 'Sonia Young', phone: '0400 826 411', agedCare: false, address: '4/8 Sybil st. Eastwood', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0100', name: '클레어윤', phone: '0410 800 999', agedCare: false, address: '40 nelson st Gordon', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0101', name: '송효정', phone: '0438 285 375', agedCare: false, address: '41 Perry St North Rocks 2151', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0102', name: '소니아', phone: '0412 234 341', agedCare: false, address: '414/20 Railway st Lidcomebe', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0103', name: '다이나(김순옥)', phone: '0423 926 900', agedCare: false, address: '43yates avenue Dundas Valley', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0104', name: 'soon', phone: '0423 788 911', agedCare: false, address: '44 Pennant Pde Caringford', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0105', name: 'Julie Kim', phone: '0452 380 432', agedCare: false, address: '45/3-7 Taylor Street Lidcombe', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0106', name: '진성숙', phone: '0433 080 778', agedCare: false, address: '5 Africa Way Colebee', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0107', name: '김희숙', phone: '0415 106 819', agedCare: true, address: '5 Mcdonald way, greenacre NSW2190', grade: '일반', joinDate: '2025-04-21', memo: 'payments@kagedcare.com.au 인보이스보내기' },
-  { id: 'C0108', name: 'jessica J', phone: '0430 790 727', agedCare: false, address: '5/25 Livingstone Rd. Lidcombe', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0109', name: '최남순', phone: '0430 704 719', agedCare: true, address: '55 Third Ave, Campsie NSW 2194', grade: '일반', joinDate: '2025-04-21', memo: 'payments@kagedcare.com.au 인보이스보내기' },
-  { id: 'C0110', name: '지현 김영옥 시누', phone: '0432 711 789', agedCare: false, address: '56 Linden Way, Castlecrag', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0111', name: '박태경', phone: '0415 762 153', agedCare: false, address: '56 Morshead st North Ryde', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0112', name: '이영은', phone: '0405 196 375', agedCare: false, address: '56 Reilleys road Winston Hills 2153', grade: '일반', joinDate: '2025-04-21', memo: '카카오채널주문' },
-  { id: 'C0113', name: '죠엔', phone: '0486 350 080', agedCare: false, address: '56 Reilleys road Winston Hills 2153', grade: '일반', joinDate: '2025-04-21', memo: '카카오채널주문, 카톡중복주문 확인' },
-  { id: 'C0114', name: '민혜진', phone: '0451 995 382', agedCare: false, address: '59 the parkway beaumont hill', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0115', name: '서경미', phone: '0455 999 061', agedCare: false, address: '6 bond place kellyville 2155 NSW', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0116', name: '소이맘', phone: '0415 288 757', agedCare: false, address: '6 Dunbar cl. Normanhurst. 2076', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0117', name: '장혜선', phone: '0404 978 929', agedCare: false, address: '6 imperial rd, castlehill', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0118', name: '누나', phone: '0434 197 016', agedCare: false, address: '6 kirriford way, carlingford', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0119', name: '문애령', phone: '0433 840 224', agedCare: false, address: '6 Shakespeare st Compsie', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0120', name: 'grace kim', phone: '0434 585 737', agedCare: false, address: '61 grose st. North Parramatta', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0121', name: '곽수연', phone: '0423 338 085', agedCare: false, address: '63 Belmont Street Merrylands', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0122', name: '윤성원', phone: '0433 001 499', agedCare: false, address: '68 De Castella Dr. Blacktown', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0123', name: '김은경', phone: '0422 124 485', agedCare: false, address: '6a culgoa Av, eastwood,NSW 2123', grade: '일반', joinDate: '2025-04-21', memo: '문자주문' },
-  { id: 'C0124', name: '강명준', phone: '0450 027 548', agedCare: false, address: '7 julian place sefton', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0125', name: '이수연', phone: '0413 991 662', agedCare: false, address: '7 Lynette Ave Carlingford.', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0126', name: '이서연', phone: '0433 528 383', agedCare: false, address: '7 narelle ave pymble', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0127', name: '윤경', phone: '0402 754 676', agedCare: false, address: '7 Railway Street Chatswood', grade: '일반', joinDate: '2025-04-21', memo: '현금' },
-  { id: 'C0128', name: '문환할머니(Moon Hwan Yea)', phone: '0422 880 594', agedCare: false, address: '7 Telfer pl. westtmead 2145', grade: '일반', joinDate: '2025-04-21', memo: '36(김치값 20%)' },
-  { id: 'C0129', name: '피터할아버지(Peter Yea)', phone: '0422 880 594', agedCare: false, address: '7 Telfer pl. westtmead 2145', grade: '일반', joinDate: '2025-04-21', memo: '20(김치값 20%)' },
-  { id: 'C0130', name: '이주연', phone: '0400 234 052', agedCare: false, address: '7 Vincent St Baulkham Hills', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0131', name: '송미현', phone: '0420 907 879', agedCare: false, address: '702/63 west parade west Ryde', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0132', name: '이소연', phone: '0424 472 361', agedCare: false, address: '73 Middle Harbour Road, Linfield', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0133', name: '차홍주', phone: '0468 481 583', agedCare: false, address: '76 water street Strathfield south', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0134', name: '박정주', phone: '0430 918 875', agedCare: false, address: '76A Avon rd North ryde 2113', grade: '일반', joinDate: '2025-04-21', memo: '카카오채널주문/베송비' },
-  { id: 'C0135', name: '장휘자', phone: '0426 067 715', agedCare: true, address: '7a Burke st Concord west', grade: '일반', joinDate: '2025-04-21', memo: '코디/장보은' },
-  { id: 'C0136', name: 'Felicity(이정임)', phone: '0405 106 908', agedCare: false, address: '7A Hollis Ave Denistone East', grade: '일반', joinDate: '2025-04-21', memo: '문자주문' },
-  { id: 'C0137', name: 'Leanne&Wilson(Miyoung Seong)', phone: '0416 633 845', agedCare: false, address: '8 Ashburton ave South Turramurra 2074', grade: '일반', joinDate: '2025-04-21', memo: '1인, 2건주문, 배송지 다름' },
-  { id: 'C0138', name: '노희왕', phone: '0403 156 438', agedCare: true, address: '8 Fairview Street, Concord', grade: '일반', joinDate: '2025-04-21', memo: '수건 3개지급,개인부담 $36 /강민경LW코디' },
-  { id: 'C0139', name: '김지선', phone: '0488 995 377', agedCare: false, address: '8/8 Field pl Telopea nsw2117', grade: '일반', joinDate: '2025-04-21', memo: '카카오채널주문' },
-  { id: 'C0140', name: '주희', phone: '0404 767 215', agedCare: false, address: '8-10 Cambridge Street, Cammeray', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0141', name: '제니남', phone: '0410 480 090', agedCare: false, address: '85 Juno Pde, Greenacre Nsw 2190', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0142', name: '김미리', phone: '0415 186 972', agedCare: false, address: '9 Macmahon Street Hurstville 2220', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0143', name: '박은', phone: '0405 141 062', agedCare: false, address: '9 William Place north rocks', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0144', name: '이병일', phone: '0402 254 346', agedCare: false, address: '9 windermere rd Epping 2121 nsw', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0145', name: '백현주', phone: '0434 261 314', agedCare: false, address: '90A Lucinda Avenue South Wahroonga', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0146', name: 'jay', phone: '0433 499 611', agedCare: false, address: '99/22 gadigal ave zetland NSW 2017', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0147', name: '이아가다', phone: '0414 967 858', agedCare: false, address: 'APT 806, 26 Cambridge Street, Epping 2121', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0148', name: '벨라 윤', phone: '0431 638 679', agedCare: false, address: 'Block B.Unit 67/132 killeaton St.STIVES', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0149', name: 'Kong Duck Sung', phone: '0414 942 405', agedCare: false, address: 'C4/4 C Ennis RD Mildons Point NSW 2061', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0150', name: '이진주', phone: '0433 022 306', agedCare: false, address: 'Central Coast: 6 Kalua drive chittaway', grade: '일반', joinDate: '2025-04-21', memo: '수목금 혼스비로/나머지는 센트럴코스트로 1012/135-137 Pacific Highway, Hornsby,Nsw 2077' },
-  { id: 'C0151', name: '이영수', phone: '0435 836 177', agedCare: false, address: 'J602 27-28 George Street North Strathfield', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0152', name: 'Eddie', phone: '0451 236 322', agedCare: false, address: 'Shop 2 77 Berry Street North Sydney. Yurica Japanese Kitchen', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0153', name: '강민경', phone: '0433 662 723', agedCare: true, address: 'Suite 112B/20 Lexington Dr, Bella Vista NSW 2153', grade: '일반', joinDate: '2025-04-21', memo: '개인부담 $72/강민경LW코디/인보이스 2장으로나눠발행' },
-  { id: 'C0154', name: 'J burwood 타꾸미스시', phone: '0430 706 452', agedCare: false, address: 'U G24,1 Kingfisher Street Lidcombe 2141', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0155', name: 'office next', phone: '0402 474 478', agedCare: false, address: 'U13 231 Queen St Concord West', grade: '일반', joinDate: '2025-04-21', memo: '게이트에서 13# 누르면 됨' },
-  { id: 'C0156', name: 'Joanne', phone: '0430 016 312', agedCare: false, address: 'U1608 2B Help Street Chatwood', grade: '일반', joinDate: '2025-04-21', memo: '카톡 중복 신청 체크' },
-  { id: 'C0157', name: '김윤정', phone: '0434 162 835', agedCare: false, address: 'U223/20-34 albert road strathfield nsw', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0158', name: '송수영', phone: '0405 310 880', agedCare: false, address: 'U4, 20 dora crescent dundas NSW 2117', grade: '일반', joinDate: '2025-04-21', memo: '문자주문/픽업가능/배송여부확인' },
-  { id: 'C0159', name: '정은령', phone: '0413 789 641', agedCare: false, address: 'U701/2f Appleroth street Melrose Park', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0160', name: '김준경', phone: '0481 248 164', agedCare: false, address: 'U90 6-10 Ramsey street waitara', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0161', name: '미카엘라', phone: '0434 311 688', agedCare: false, address: 'Unit 1 1236-1244 Canterbury Rd Roselands 2196', grade: '일반', joinDate: '2025-04-21', memo: '5/10일전 배송' },
-  { id: 'C0162', name: '박종철', phone: '0425 833 510', agedCare: false, address: 'unit 1, 10-12 Carrington St, Wahroonga NSW 2076', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0163', name: 'BYOUNGHOI CHO', phone: '0451 057 995', agedCare: false, address: 'unit 1, 25-29, Nancarrow Ave. Ryde 2112', grade: '일반', joinDate: '2025-04-21', memo: '대표님 명함 전달' },
-  { id: 'C0164', name: '손규미', phone: '0424 393 500', agedCare: false, address: 'Unit 20/4-8 bobbin head road Pymble', grade: '일반', joinDate: '2025-04-21', memo: '카카오채널주문' },
-  { id: 'C0165', name: '이슬기', phone: '0432 115 986', agedCare: false, address: 'Unit 311 2C appleroth st Melrose park 2114', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0166', name: '김문수 삼대한의원', phone: '0481 252 425', agedCare: false, address: 'Unit 35/11 epping Park Drive Epping', grade: '일반', joinDate: '2025-04-21', memo: '한의원아님' },
-  { id: 'C0167', name: '이청(Ken)', phone: '0410 346 413', agedCare: false, address: 'Unit 6/24 Skarratt Street , silverwater', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0168', name: '이호준', phone: '0424 240 516', agedCare: false, address: 'unit 602. 42-50 Parramatta rd. Homebush', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0169', name: '이종순', phone: '0433 124 843', agedCare: true, address: 'unit 614/15 Barton Road, Artarmon', grade: '일반', joinDate: '2025-04-21', memo: '개인부담 $36 /강민경LW코디' },
-  { id: 'C0170', name: 'sue(조숙자)', phone: '0416 22 5757', agedCare: false, address: 'Unit 8/ 40-44 Fullers Road, Chatswood.', grade: '일반', joinDate: '2025-04-21', memo: '문자, 카톡 주문' },
-  { id: 'C0171', name: '손수미', phone: '0433 751 996', agedCare: false, address: 'Unit4/14-16 Station st. Homebush', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0172', name: '안젤라', phone: '0421 699 805', agedCare: false, address: 'Unit6/3Arthersleigh St. Burwood NSW2134', grade: '일반', joinDate: '2025-04-21', memo: '계좌이체' },
-  { id: 'C0173', name: '원영자', phone: '042 578 8500', agedCare: false, address: '픽업', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0174', name: '김혜자', phone: '0431 688 008', agedCare: false, address: '70 Victoria rd, Ermington', grade: '일반', joinDate: '2025-04-21', memo: '문자주문' },
-  { id: 'C0175', name: '김훈(대표님)', phone: '', agedCare: false, address: '', grade: '일반', joinDate: '2025-04-21', memo: '대표님 예약' },
-  { id: 'C0176', name: '선우성 Hurstville(대표님)', phone: '', agedCare: false, address: '', grade: '일반', joinDate: '2025-04-21', memo: '대표님 예약' },
-  { id: 'C0177', name: '엄주일(대표님)', phone: '', agedCare: false, address: '', grade: '일반', joinDate: '2025-04-21', memo: '대표님 예약' },
-  { id: 'C0178', name: '유진배', phone: '0415 701 340', agedCare: false, address: '502/17 Barton Rd, Artarmon', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0179', name: '유한관', phone: '0406 288 303', agedCare: true, address: '2/8-12 Fitzwilliam Rd.Toongabbie', grade: '일반', joinDate: '2025-04-21', memo: '개인부담 19.50/ ka지나코디(승조앤코디)' },
-  { id: 'C0180', name: '이카타리나', phone: '0413 223 447', agedCare: false, address: '4 Dalmar Place, Carlingford', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0181', name: '이풍자', phone: '0433 968 785', agedCare: false, address: '11 princess st, lidcombe', grade: '일반', joinDate: '2025-04-21', memo: '' },
-  { id: 'C0182', name: '손용주 (Yong Joo Son)', phone: '0411 793 733', agedCare: true, address: 'unit 217/2B Help Street, Chatswood, NSW, 2067', grade: '일반', joinDate: '2025-04-21', memo: '개인부담 $24/강민경LW코디' },
-  { id: 'C0183', name: '이명희', phone: '', agedCare: false, address: 'Campsie', grade: '일반', joinDate: '2025-04-22', memo: '신규-차량E' },
-  { id: 'C0184', name: '이성자', phone: '', agedCare: false, address: 'Five Dock', grade: '일반', joinDate: '2025-04-22', memo: '신규-차량D' }
-];
+// ============================================================
+// 📦 초기 데이터 - initialData.js에서 로드 (파일 분리로 성능 개선)
+// ============================================================
+import { INITIAL_CUSTOMERS, INITIAL_ITEMS, INITIAL_ORDERS } from './initialData.js';
 
-const INITIAL_ITEMS = [
-  { code: 'P001', name: '배추김치 4KG', spec: '배추김치 4kg', price: 70, realStock: 300, baechu: 1, chonggak: 0, memo: '냉장배송 / 기본상품', isSet: false },
-  { code: 'P002', name: '총각김치 2KG', spec: '총각김치 2kg', price: 55, realStock: 150, baechu: 0, chonggak: 1, memo: '냉장배송 / 기본상품', isSet: false },
-  { code: 'P003', name: '혼합세트 (배추4KG + 총각2KG)', spec: '배추김치4kg + 총각김치2kg', price: 120, realStock: null, baechu: 1, chonggak: 1, memo: '냉장배송 / 세트할인', isSet: true },
-  { code: 'P004', name: '배추김치 4KG - 2세트(할인)', spec: '배추김치 4kg x 2', price: 130, realStock: null, baechu: 2, chonggak: 0, memo: '냉장배송 / 세트할인', isSet: true },
-  { code: 'P005', name: '배추김치 4KG - 3세트(할인)', spec: '배추김치 4kg x 3', price: 180, realStock: null, baechu: 3, chonggak: 0, memo: '냉장배송 / 세트할인', isSet: true },
-  { code: 'P006', name: '총각김치 2KG - 2세트(할인)', spec: '총각김치 2kg x 2', price: 100, realStock: null, baechu: 0, chonggak: 2, memo: '냉장배송 / 세트할인', isSet: true },
-];
+// ============================================================
+// 🔧 개발 모드 로그 (프로덕션에서는 자동 비활성화)
+// ============================================================
+const DEBUG = false;  // true로 변경하면 디버그 로그 표시
+const log = DEBUG ? console.log : () => {};
+const warn = DEBUG ? console.warn : () => {};
+// console.error는 항상 유지 (에러는 반드시 봐야 함)
 
-const INITIAL_ORDERS = [
-  { id: 'ORD-0001', date: '2025-04-21', customerId: 'C0001', itemName: '배추김치 4KG - 3세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone2', isService: false, isPickup: false, cashReceived: 0, sequence: 17, arrivalTime: '10:28' },
-  { id: 'ORD-0002', date: '2025-04-21', customerId: 'C0002', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone3', isService: false, isPickup: false, cashReceived: 0, sequence: 2, arrivalTime: '08:08' },
-  { id: 'ORD-0003', date: '2025-04-21', customerId: 'C0003', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone3', isService: false, isPickup: false, cashReceived: 0, sequence: 5, arrivalTime: '08:40' },
-  { id: 'ORD-0004', date: '2025-04-21', customerId: 'C0004', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone6', isService: false, isPickup: false, cashReceived: 0, sequence: 4, arrivalTime: '08:33' },
-  { id: 'ORD-0005', date: '2025-04-21', customerId: 'C0005', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone3', isService: false, isPickup: false, cashReceived: 0, sequence: 29, arrivalTime: '12:40' },
-  { id: 'ORD-0006', date: '2025-04-21', customerId: 'C0006', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone2', isService: false, isPickup: false, cashReceived: 0, sequence: 24, arrivalTime: '11:46' },
-  { id: 'ORD-0007', date: '2025-04-21', customerId: 'C0007', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone4', isService: false, isPickup: false, cashReceived: 0, sequence: 22, arrivalTime: '11:26' },
-  { id: 'ORD-0008', date: '2025-04-21', customerId: 'C0008', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone5', isService: false, isPickup: false, cashReceived: 0, sequence: 29, arrivalTime: '12:18' },
-  { id: 'ORD-0009', date: '2025-04-21', customerId: 'C0009', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone6', isService: false, isPickup: false, cashReceived: 0, sequence: 13, arrivalTime: '11:12' },
-  { id: 'ORD-0010', date: '2025-04-21', customerId: 'C0010', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone1', isService: false, isPickup: false, cashReceived: 0, sequence: 2, arrivalTime: '08:08' },
-  { id: 'ORD-0011', date: '2025-04-21', customerId: 'C0011', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone4', isService: false, isPickup: false, cashReceived: 0, sequence: 26, arrivalTime: '12:05' },
-  { id: 'ORD-0012', date: '2025-04-21', customerId: 'C0012', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone6', isService: false, isPickup: false, cashReceived: 0, sequence: 6, arrivalTime: '08:58' },
-  { id: 'ORD-0013', date: '2025-04-21', customerId: 'C0013', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone6', isService: false, isPickup: false, cashReceived: 0, sequence: 2, arrivalTime: '08:08' },
-  { id: 'ORD-0014', date: '2025-04-21', customerId: 'C0014', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone4', isService: false, isPickup: false, cashReceived: 0, sequence: 12, arrivalTime: '09:49' },
-  { id: 'ORD-0015', date: '2025-04-21', customerId: 'C0015', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone3', isService: false, isPickup: false, cashReceived: 0, sequence: 15, arrivalTime: '10:11' },
-  { id: 'ORD-0016', date: '2025-04-21', customerId: 'C0016', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone5', isService: false, isPickup: false, cashReceived: 0, sequence: 26, arrivalTime: '11:49' },
-  { id: 'ORD-0017', date: '2025-04-21', customerId: 'C0017', itemName: '배추김치 4KG - 3세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone2', isService: false, isPickup: false, cashReceived: 0, sequence: 15, arrivalTime: '10:08' },
-  { id: 'ORD-0018', date: '2025-04-21', customerId: 'C0018', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone3', isService: false, isPickup: false, cashReceived: 0, sequence: 8, arrivalTime: '09:13' },
-  { id: 'ORD-0019', date: '2025-04-21', customerId: 'C0018', itemName: '총각김치 2KG', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone3', isService: false, isPickup: false, cashReceived: 0, sequence: 8, arrivalTime: '09:13' },
-  { id: 'ORD-0020', date: '2025-04-21', customerId: 'C0019', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '취소', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: '', isService: false, isPickup: false, cashReceived: 0 },
-  { id: 'ORD-0021', date: '2025-04-21', customerId: 'C0020', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone1', isService: false, isPickup: false, cashReceived: 0, sequence: 1, arrivalTime: '08:00' },
-  { id: 'ORD-0022', date: '2025-04-21', customerId: 'C0020', itemName: '총각김치 2KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone1', isService: false, isPickup: false, cashReceived: 0, sequence: 1, arrivalTime: '08:00' },
-  { id: 'ORD-0023', date: '2025-04-21', customerId: 'C0021', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone6', isService: false, isPickup: false, cashReceived: 0, sequence: 14, arrivalTime: '11:37' },
-  { id: 'ORD-0024', date: '2025-04-21', customerId: 'C0022', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone1', isService: false, isPickup: false, cashReceived: 0, sequence: 29, arrivalTime: '12:39' },
-  { id: 'ORD-0025', date: '2025-04-21', customerId: 'C0023', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone6', isService: false, isPickup: false, cashReceived: 0, sequence: 8, arrivalTime: '09:38' },
-  { id: 'ORD-0026', date: '2025-04-21', customerId: 'C0024', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone3', isService: false, isPickup: false, cashReceived: 0, sequence: 21, arrivalTime: '11:06' },
-  { id: 'ORD-0027', date: '2025-04-21', customerId: 'C0025', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone2', isService: false, isPickup: false, cashReceived: 0, sequence: 1, arrivalTime: '08:00' },
-  { id: 'ORD-0028', date: '2025-04-21', customerId: 'C0026', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone1', isService: false, isPickup: false, cashReceived: 0, sequence: 18, arrivalTime: '10:24' },
-  { id: 'ORD-0029', date: '2025-04-21', customerId: 'C0027', itemName: '배추김치 4KG - 3세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone4', isService: false, isPickup: false, cashReceived: 0, sequence: 9, arrivalTime: '09:23' },
-  { id: 'ORD-0030', date: '2025-04-21', customerId: 'C0027', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone4', isService: false, isPickup: false, cashReceived: 0, sequence: 9, arrivalTime: '09:23' },
-  { id: 'ORD-0031', date: '2025-04-21', customerId: 'C0028', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone6', isService: false, isPickup: false, cashReceived: 0, sequence: 16, arrivalTime: '11:58' },
-  { id: 'ORD-0032', date: '2025-04-21', customerId: 'C0029', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone4', isService: false, isPickup: false, cashReceived: 0, sequence: 29, arrivalTime: '12:30' },
-  { id: 'ORD-0033', date: '2025-04-21', customerId: 'C0030', itemName: '총각김치 2KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone2', isService: false, isPickup: false, cashReceived: 0, sequence: 16, arrivalTime: '10:18' },
-  { id: 'ORD-0034', date: '2025-04-21', customerId: 'C0031', itemName: '총각김치 2KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone1', isService: false, isPickup: false, cashReceived: 0, sequence: 10, arrivalTime: '09:12' },
-  { id: 'ORD-0035', date: '2025-04-21', customerId: 'C0032', itemName: '배추김치 4KG - 3세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone5', isService: false, isPickup: false, cashReceived: 0, sequence: 28, arrivalTime: '12:10' },
-  { id: 'ORD-0036', date: '2025-04-21', customerId: 'C0032', itemName: '총각김치 2KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone5', isService: false, isPickup: false, cashReceived: 0, sequence: 28, arrivalTime: '12:10' },
-  { id: 'ORD-0037', date: '2025-04-21', customerId: 'C0033', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone3', isService: false, isPickup: false, cashReceived: 0, sequence: 14, arrivalTime: '10:03' },
-  { id: 'ORD-0038', date: '2025-04-21', customerId: 'C0034', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone1', isService: false, isPickup: false, cashReceived: 0, sequence: 8, arrivalTime: '08:56' },
-  { id: 'ORD-0039', date: '2025-04-21', customerId: 'C0035', itemName: '총각김치 2KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone3', isService: false, isPickup: false, cashReceived: 0, sequence: 9, arrivalTime: '09:23' },
-  { id: 'ORD-0040', date: '2025-04-21', customerId: 'C0036', itemName: '총각김치 2KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone1', isService: false, isPickup: false, cashReceived: 0, sequence: 3, arrivalTime: '08:16' },
-  { id: 'ORD-0041', date: '2025-04-21', customerId: 'C0037', itemName: '총각김치 2KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone1', isService: false, isPickup: false, cashReceived: 0, sequence: 4, arrivalTime: '08:24' },
-  { id: 'ORD-0042', date: '2025-04-21', customerId: 'C0038', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone5', isService: false, isPickup: false, cashReceived: 0, sequence: 6, arrivalTime: '08:42' },
-  { id: 'ORD-0043', date: '2025-04-21', customerId: 'C0039', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone2', isService: false, isPickup: false, cashReceived: 0, sequence: 29, arrivalTime: '12:36' },
-  { id: 'ORD-0044', date: '2025-04-21', customerId: 'C0040', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone5', isService: false, isPickup: false, cashReceived: 0, sequence: 20, arrivalTime: '11:01' },
-  { id: 'ORD-0045', date: '2025-04-21', customerId: 'C0041', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone1', isService: false, isPickup: false, cashReceived: 0, sequence: 27, arrivalTime: '12:21' },
-  { id: 'ORD-0046', date: '2025-04-21', customerId: 'C0042', itemName: '배추김치 4KG - 3세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone4', isService: false, isPickup: false, cashReceived: 0, sequence: 11, arrivalTime: '09:41' },
-  { id: 'ORD-0047', date: '2025-04-21', customerId: 'C0043', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone3', isService: false, isPickup: false, cashReceived: 0, sequence: 30, arrivalTime: '13:07' },
-  { id: 'ORD-0048', date: '2025-04-21', customerId: 'C0044', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone6', isService: false, isPickup: false, cashReceived: 0, sequence: 1, arrivalTime: '08:00' },
-  { id: 'ORD-0049', date: '2025-04-21', customerId: 'C0045', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone6', isService: false, isPickup: false, cashReceived: 0, sequence: 19, arrivalTime: '12:59' },
-  { id: 'ORD-0050', date: '2025-04-21', customerId: 'C0046', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone6', isService: false, isPickup: false, cashReceived: 0, sequence: 3, arrivalTime: '08:18' },
-  { id: 'ORD-0051', date: '2025-04-21', customerId: 'C0047', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone6', isService: false, isPickup: false, cashReceived: 0, sequence: 18, arrivalTime: '12:45' },
-  { id: 'ORD-0052', date: '2025-04-21', customerId: 'C0048', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone2', isService: false, isPickup: false, cashReceived: 0, sequence: 3, arrivalTime: '08:18' },
-  { id: 'ORD-0053', date: '2025-04-21', customerId: 'C0049', itemName: '배추김치 4KG - 3세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone4', isService: false, isPickup: false, cashReceived: 0, sequence: 15, arrivalTime: '10:16' },
-  { id: 'ORD-0054', date: '2025-04-21', customerId: 'C0050', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone3', isService: false, isPickup: false, cashReceived: 0, sequence: 18, arrivalTime: '10:35' },
-  { id: 'ORD-0055', date: '2025-04-21', customerId: 'C0050', itemName: '총각김치 2KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone3', isService: false, isPickup: false, cashReceived: 0, sequence: 18, arrivalTime: '10:35' },
-  { id: 'ORD-0056', date: '2025-04-21', customerId: 'C0051', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone3', isService: false, isPickup: false, cashReceived: 0, sequence: 17, arrivalTime: '10:27' },
-  { id: 'ORD-0057', date: '2025-04-21', customerId: 'C0051', itemName: '총각김치 2KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone3', isService: false, isPickup: false, cashReceived: 0, sequence: 17, arrivalTime: '10:27' },
-  { id: 'ORD-0058', date: '2025-04-21', customerId: 'C0052', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone2', isService: false, isPickup: false, cashReceived: 0, sequence: 2, arrivalTime: '08:08' },
-  { id: 'ORD-0059', date: '2025-04-21', customerId: 'C0053', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone4', isService: false, isPickup: false, cashReceived: 0, sequence: 1, arrivalTime: '08:00' },
-  { id: 'ORD-0060', date: '2025-04-21', customerId: 'C0054', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone6', isService: false, isPickup: false, cashReceived: 0, sequence: 11, arrivalTime: '10:33' },
-  { id: 'ORD-0061', date: '2025-04-21', customerId: 'C0054', itemName: '총각김치 2KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone6', isService: false, isPickup: false, cashReceived: 0, sequence: 11, arrivalTime: '10:33' },
-  { id: 'ORD-0062', date: '2025-04-21', customerId: 'C0055', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone3', isService: false, isPickup: false, cashReceived: 0, sequence: 16, arrivalTime: '10:19' },
-  { id: 'ORD-0063', date: '2025-04-21', customerId: 'C0056', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '취소', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: '', isService: false, isPickup: false, cashReceived: 0 },
-  { id: 'ORD-0064', date: '2025-04-21', customerId: 'C0057', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone3', isService: false, isPickup: false, cashReceived: 0, sequence: 22, arrivalTime: '11:14' },
-  { id: 'ORD-0065', date: '2025-04-21', customerId: 'C0058', itemName: '배추김치 4KG - 3세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone3', isService: false, isPickup: false, cashReceived: 0, sequence: 26, arrivalTime: '12:04' },
-  { id: 'ORD-0066', date: '2025-04-21', customerId: 'C0059', itemName: '배추김치 4KG - 3세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone6', isService: false, isPickup: false, cashReceived: 0, sequence: 7, arrivalTime: '09:20' },
-  { id: 'ORD-0067', date: '2025-04-21', customerId: 'C0060', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone2', isService: false, isPickup: false, cashReceived: 0, sequence: 8, arrivalTime: '09:04' },
-  { id: 'ORD-0068', date: '2025-04-21', customerId: 'C0061', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone2', isService: false, isPickup: false, cashReceived: 0, sequence: 20, arrivalTime: '10:52' },
-  { id: 'ORD-0069', date: '2025-04-21', customerId: 'C0062', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone2', isService: false, isPickup: false, cashReceived: 0, sequence: 14, arrivalTime: '09:58' },
-  { id: 'ORD-0070', date: '2025-04-21', customerId: 'C0063', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone1', isService: false, isPickup: false, cashReceived: 0, sequence: 17, arrivalTime: '10:14' },
-  { id: 'ORD-0071', date: '2025-04-21', customerId: 'C0064', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone6', isService: false, isPickup: false, cashReceived: 0, sequence: 5, arrivalTime: '08:48' },
-  { id: 'ORD-0072', date: '2025-04-21', customerId: 'C0065', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone5', isService: false, isPickup: false, cashReceived: 0, sequence: 13, arrivalTime: '09:49' },
-  { id: 'ORD-0073', date: '2025-04-21', customerId: 'C0066', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone3', isService: false, isPickup: false, cashReceived: 0, sequence: 13, arrivalTime: '09:55' },
-  { id: 'ORD-0074', date: '2025-04-21', customerId: 'C0067', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone2', isService: false, isPickup: false, cashReceived: 0, sequence: 23, arrivalTime: '11:36' },
-  { id: 'ORD-0075', date: '2025-04-21', customerId: 'C0068', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone3', isService: false, isPickup: false, cashReceived: 0, sequence: 1, arrivalTime: '08:00' },
-  { id: 'ORD-0076', date: '2025-04-21', customerId: 'C0068', itemName: '총각김치 2KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone3', isService: false, isPickup: false, cashReceived: 0, sequence: 1, arrivalTime: '08:00' },
-  { id: 'ORD-0077', date: '2025-04-21', customerId: 'C0069', itemName: '배추김치 4KG', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone4', isService: false, isPickup: false, cashReceived: 0, sequence: 21, arrivalTime: '11:18' },
-  { id: 'ORD-0078', date: '2025-04-21', customerId: 'C0070', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone5', isService: false, isPickup: false, cashReceived: 0, sequence: 11, arrivalTime: '09:33' },
-  { id: 'ORD-0079', date: '2025-04-21', customerId: 'C0071', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone4', isService: false, isPickup: false, cashReceived: 0, sequence: 19, arrivalTime: '11:00' },
-  { id: 'ORD-0080', date: '2025-04-21', customerId: 'C0072', itemName: '배추김치 4KG - 3세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone4', isService: false, isPickup: false, cashReceived: 0, sequence: 4, arrivalTime: '08:41' },
-  { id: 'ORD-0081', date: '2025-04-21', customerId: 'C0073', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone2', isService: false, isPickup: false, cashReceived: 0, sequence: 5, arrivalTime: '08:38' },
-  { id: 'ORD-0082', date: '2025-04-21', customerId: 'C0074', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone5', isService: false, isPickup: false, cashReceived: 0, sequence: 16, arrivalTime: '10:22' },
-  { id: 'ORD-0083', date: '2025-04-21', customerId: 'C0075', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone2', isService: false, isPickup: false, cashReceived: 0, sequence: 9, arrivalTime: '09:12' },
-  { id: 'ORD-0084', date: '2025-04-21', customerId: 'C0076', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone5', isService: false, isPickup: false, cashReceived: 0, sequence: 10, arrivalTime: '09:25' },
-  { id: 'ORD-0085', date: '2025-04-21', customerId: 'C0077', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone1', isService: false, isPickup: false, cashReceived: 0, sequence: 31, arrivalTime: '12:55' },
-  { id: 'ORD-0086', date: '2025-04-21', customerId: 'C0078', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone5', isService: false, isPickup: false, cashReceived: 0, sequence: 21, arrivalTime: '11:09' },
-  { id: 'ORD-0087', date: '2025-04-21', customerId: 'C0079', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone3', isService: false, isPickup: false, cashReceived: 0, sequence: 10, arrivalTime: '09:31' },
-  { id: 'ORD-0088', date: '2025-04-21', customerId: 'C0080', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone6', isService: false, isPickup: false, cashReceived: 0, sequence: 15, arrivalTime: '11:48' },
-  { id: 'ORD-0089', date: '2025-04-21', customerId: 'C0081', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone4', isService: false, isPickup: false, cashReceived: 0, sequence: 5, arrivalTime: '08:49' },
-  { id: 'ORD-0090', date: '2025-04-21', customerId: 'C0082', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone1', isService: false, isPickup: false, cashReceived: 0, sequence: 11, arrivalTime: '09:20' },
-  { id: 'ORD-0091', date: '2025-04-21', customerId: 'C0083', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 2, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone2', isService: false, isPickup: false, cashReceived: 0, sequence: 25, arrivalTime: '11:56' },
-  { id: 'ORD-0092', date: '2025-04-21', customerId: 'C0084', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone3', isService: false, isPickup: false, cashReceived: 0, sequence: 28, arrivalTime: '12:32' },
-  { id: 'ORD-0093', date: '2025-04-21', customerId: 'C0085', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone3', isService: false, isPickup: false, cashReceived: 0, sequence: 4, arrivalTime: '08:30' },
-  { id: 'ORD-0094', date: '2025-04-21', customerId: 'C0086', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone4', isService: false, isPickup: false, cashReceived: 0, sequence: 30, arrivalTime: '12:40' },
-  { id: 'ORD-0095', date: '2025-04-21', customerId: 'C0087', itemName: '배추김치 4KG', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone1', isService: false, isPickup: false, cashReceived: 0, sequence: 25, arrivalTime: '11:52' },
-  { id: 'ORD-0096', date: '2025-04-21', customerId: 'C0088', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone1', isService: false, isPickup: false, cashReceived: 0, sequence: 28, arrivalTime: '12:29' },
-  { id: 'ORD-0097', date: '2025-04-21', customerId: 'C0088', itemName: '총각김치 2KG', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone1', isService: false, isPickup: false, cashReceived: 0, sequence: 28, arrivalTime: '12:29' },
-  { id: 'ORD-0098', date: '2025-04-21', customerId: 'C0089', itemName: '배추김치 4KG - 3세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone1', isService: false, isPickup: false, cashReceived: 0, sequence: 30, arrivalTime: '12:47' },
-  { id: 'ORD-0099', date: '2025-04-21', customerId: 'C0090', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone6', isService: false, isPickup: false, cashReceived: 0, sequence: 9, arrivalTime: '09:48' },
-  { id: 'ORD-0100', date: '2025-04-21', customerId: 'C0091', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone3', isService: false, isPickup: false, cashReceived: 0, sequence: 11, arrivalTime: '09:39' },
-  { id: 'ORD-0101', date: '2025-04-21', customerId: 'C0092', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone5', isService: false, isPickup: false, cashReceived: 0, sequence: 3, arrivalTime: '08:16' },
-  { id: 'ORD-0102', date: '2025-04-21', customerId: 'C0093', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone4', isService: false, isPickup: false, cashReceived: 0, sequence: 8, arrivalTime: '09:15' },
-  { id: 'ORD-0103', date: '2025-04-21', customerId: 'C0094', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone1', isService: false, isPickup: false, cashReceived: 0, sequence: 12, arrivalTime: '09:28' },
-  { id: 'ORD-0104', date: '2025-04-21', customerId: 'C0095', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone4', isService: false, isPickup: false, cashReceived: 0, sequence: 13, arrivalTime: '09:57' },
-  { id: 'ORD-0105', date: '2025-04-21', customerId: 'C0096', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone1', isService: false, isPickup: false, cashReceived: 0, sequence: 33, arrivalTime: '13:11' },
-  { id: 'ORD-0106', date: '2025-04-21', customerId: 'C0097', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '취소', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: '', isService: false, isPickup: false, cashReceived: 0 },
-  { id: 'ORD-0107', date: '2025-04-21', customerId: 'C0098', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone5', isService: false, isPickup: false, cashReceived: 0, sequence: 22, arrivalTime: '11:17' },
-  { id: 'ORD-0108', date: '2025-04-21', customerId: 'C0099', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone4', isService: false, isPickup: false, cashReceived: 0, sequence: 31, arrivalTime: '12:50' },
-  { id: 'ORD-0109', date: '2025-04-21', customerId: 'C0100', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone1', isService: false, isPickup: false, cashReceived: 0, sequence: 15, arrivalTime: '09:53' },
-  { id: 'ORD-0110', date: '2025-04-21', customerId: 'C0101', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone5', isService: false, isPickup: false, cashReceived: 0, sequence: 2, arrivalTime: '08:08' },
-  { id: 'ORD-0111', date: '2025-04-21', customerId: 'C0102', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone5', isService: false, isPickup: false, cashReceived: 0, sequence: 8, arrivalTime: '09:09' },
-  { id: 'ORD-0112', date: '2025-04-21', customerId: 'C0103', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone5', isService: false, isPickup: false, cashReceived: 0, sequence: 5, arrivalTime: '08:34' },
-  { id: 'ORD-0113', date: '2025-04-21', customerId: 'C0104', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone2', isService: false, isPickup: false, cashReceived: 0, sequence: 6, arrivalTime: '08:48' },
-  { id: 'ORD-0114', date: '2025-04-21', customerId: 'C0105', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone5', isService: false, isPickup: false, cashReceived: 0, sequence: 12, arrivalTime: '09:41' },
-  { id: 'ORD-0115', date: '2025-04-21', customerId: 'C0106', itemName: '배추김치 4KG - 3세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone3', isService: false, isPickup: false, cashReceived: 0, sequence: 6, arrivalTime: '08:50' },
-  { id: 'ORD-0116', date: '2025-04-21', customerId: 'C0106', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone3', isService: false, isPickup: false, cashReceived: 0, sequence: 6, arrivalTime: '08:50' },
-  { id: 'ORD-0117', date: '2025-04-21', customerId: 'C0107', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone5', isService: false, isPickup: false, cashReceived: 0, sequence: 17, arrivalTime: '10:30' },
-  { id: 'ORD-0118', date: '2025-04-21', customerId: 'C0108', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone5', isService: false, isPickup: false, cashReceived: 0, sequence: 14, arrivalTime: '09:57' },
-  { id: 'ORD-0119', date: '2025-04-21', customerId: 'C0108', itemName: '총각김치 2KG', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone5', isService: false, isPickup: false, cashReceived: 0, sequence: 14, arrivalTime: '09:57' },
-  { id: 'ORD-0120', date: '2025-04-21', customerId: 'C0109', itemName: '배추김치 4KG - 3세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone5', isService: false, isPickup: false, cashReceived: 0, sequence: 24, arrivalTime: '11:33' },
-  { id: 'ORD-0121', date: '2025-04-21', customerId: 'C0109', itemName: '총각김치 2KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone5', isService: false, isPickup: false, cashReceived: 0, sequence: 24, arrivalTime: '11:33' },
-  { id: 'ORD-0122', date: '2025-04-21', customerId: 'C0110', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone1', isService: false, isPickup: false, cashReceived: 0, sequence: 23, arrivalTime: '11:20' },
-  { id: 'ORD-0123', date: '2025-04-21', customerId: 'C0111', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone2', isService: false, isPickup: false, cashReceived: 0, sequence: 22, arrivalTime: '11:12' },
-  { id: 'ORD-0124', date: '2025-04-21', customerId: 'C0112', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone3', isService: false, isPickup: false, cashReceived: 0, sequence: 23, arrivalTime: '11:22' },
-  { id: 'ORD-0125', date: '2025-04-21', customerId: 'C0113', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone3', isService: false, isPickup: false, cashReceived: 0, sequence: 24, arrivalTime: '11:30' },
-  { id: 'ORD-0126', date: '2025-04-21', customerId: 'C0114', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone3', isService: false, isPickup: false, cashReceived: 0, sequence: 7, arrivalTime: '09:02' },
-  { id: 'ORD-0127', date: '2025-04-21', customerId: 'C0115', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone3', isService: false, isPickup: false, cashReceived: 0, sequence: 3, arrivalTime: '08:16' },
-  { id: 'ORD-0128', date: '2025-04-21', customerId: 'C0116', itemName: '배추김치 4KG - 3세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone1', isService: false, isPickup: false, cashReceived: 0, sequence: 6, arrivalTime: '08:40' },
-  { id: 'ORD-0129', date: '2025-04-21', customerId: 'C0116', itemName: '총각김치 2KG', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone1', isService: false, isPickup: false, cashReceived: 0, sequence: 6, arrivalTime: '08:40' },
-  { id: 'ORD-0130', date: '2025-04-21', customerId: 'C0117', itemName: '배추김치 4KG - 3세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone3', isService: false, isPickup: false, cashReceived: 0, sequence: 12, arrivalTime: '09:47' },
-  { id: 'ORD-0131', date: '2025-04-21', customerId: 'C0117', itemName: '총각김치 2KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone3', isService: false, isPickup: false, cashReceived: 0, sequence: 12, arrivalTime: '09:47' },
-  { id: 'ORD-0132', date: '2025-04-21', customerId: 'C0118', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone2', isService: false, isPickup: false, cashReceived: 0, sequence: 7, arrivalTime: '08:56' },
-  { id: 'ORD-0133', date: '2025-04-21', customerId: 'C0119', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone5', isService: false, isPickup: false, cashReceived: 0, sequence: 23, arrivalTime: '11:25' },
-  { id: 'ORD-0134', date: '2025-04-21', customerId: 'C0120', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone4', isService: false, isPickup: false, cashReceived: 0, sequence: 7, arrivalTime: '09:05' },
-  { id: 'ORD-0135', date: '2025-04-21', customerId: 'C0121', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone3', isService: false, isPickup: false, cashReceived: 0, sequence: 25, arrivalTime: '11:50' },
-  { id: 'ORD-0136', date: '2025-04-21', customerId: 'C0122', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone6', isService: false, isPickup: false, cashReceived: 0, sequence: 10, arrivalTime: '09:59' },
-  { id: 'ORD-0137', date: '2025-04-21', customerId: 'C0123', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone4', isService: false, isPickup: false, cashReceived: 0, sequence: 32, arrivalTime: '13:00' },
-  { id: 'ORD-0138', date: '2025-04-21', customerId: 'C0124', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone3', isService: false, isPickup: false, cashReceived: 0, sequence: 27, arrivalTime: '12:13' },
-  { id: 'ORD-0139', date: '2025-04-21', customerId: 'C0125', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone2', isService: false, isPickup: false, cashReceived: 0, sequence: 11, arrivalTime: '09:28' },
-  { id: 'ORD-0140', date: '2025-04-21', customerId: 'C0126', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone1', isService: false, isPickup: false, cashReceived: 0, sequence: 13, arrivalTime: '09:36' },
-  { id: 'ORD-0141', date: '2025-04-21', customerId: 'C0127', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone2', isService: false, isPickup: false, cashReceived: 0, sequence: 30, arrivalTime: '12:46' },
-  { id: 'ORD-0142', date: '2025-04-21', customerId: 'C0128', itemName: '배추김치 4KG - 3세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone4', isService: false, isPickup: false, cashReceived: 0, sequence: 6, arrivalTime: '08:57' },
-  { id: 'ORD-0143', date: '2025-04-21', customerId: 'C0129', itemName: '총각김치 2KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone4', isService: false, isPickup: false, cashReceived: 0, sequence: 3, arrivalTime: '08:33' },
-  { id: 'ORD-0144', date: '2025-04-21', customerId: 'C0130', itemName: '총각김치 2KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone3', isService: false, isPickup: false, cashReceived: 0, sequence: 20, arrivalTime: '10:58' },
-  { id: 'ORD-0145', date: '2025-04-21', customerId: 'C0130', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone3', isService: false, isPickup: false, cashReceived: 0, sequence: 20, arrivalTime: '10:58' },
-  { id: 'ORD-0146', date: '2025-04-21', customerId: 'C0131', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone2', isService: false, isPickup: false, cashReceived: 0, sequence: 18, arrivalTime: '10:36' },
-  { id: 'ORD-0147', date: '2025-04-21', customerId: 'C0132', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone1', isService: false, isPickup: false, cashReceived: 0, sequence: 16, arrivalTime: '10:02' },
-  { id: 'ORD-0148', date: '2025-04-21', customerId: 'C0133', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone4', isService: false, isPickup: false, cashReceived: 0, sequence: 17, arrivalTime: '10:36' },
-  { id: 'ORD-0149', date: '2025-04-21', customerId: 'C0134', itemName: '배추김치 4KG', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone2', isService: false, isPickup: false, cashReceived: 0, sequence: 21, arrivalTime: '11:02' },
-  { id: 'ORD-0150', date: '2025-04-21', customerId: 'C0135', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone4', isService: false, isPickup: false, cashReceived: 0, sequence: 24, arrivalTime: '11:42' },
-  { id: 'ORD-0151', date: '2025-04-21', customerId: 'C0136', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone4', isService: false, isPickup: false, cashReceived: 0, sequence: 28, arrivalTime: '12:22' },
-  { id: 'ORD-0152', date: '2025-04-21', customerId: 'C0136', itemName: '총각김치 2KG', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone4', isService: false, isPickup: false, cashReceived: 0, sequence: 28, arrivalTime: '12:22' },
-  { id: 'ORD-0153', date: '2025-04-21', customerId: 'C0137', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone1', isService: false, isPickup: false, cashReceived: 0, sequence: 32, arrivalTime: '13:03' },
-  { id: 'ORD-0154', date: '2025-04-21', customerId: 'C0138', itemName: '배추김치 4KG - 3세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone4', isService: false, isPickup: false, cashReceived: 0, sequence: 23, arrivalTime: '11:34' },
-  { id: 'ORD-0155', date: '2025-04-21', customerId: 'C0139', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone5', isService: false, isPickup: false, cashReceived: 0, sequence: 7, arrivalTime: '08:50' },
-  { id: 'ORD-0156', date: '2025-04-21', customerId: 'C0140', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone1', isService: false, isPickup: false, cashReceived: 0, sequence: 21, arrivalTime: '10:57' },
-  { id: 'ORD-0157', date: '2025-04-21', customerId: 'C0141', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone5', isService: false, isPickup: false, cashReceived: 0, sequence: 18, arrivalTime: '10:38' },
-  { id: 'ORD-0158', date: '2025-04-21', customerId: 'C0142', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone6', isService: false, isPickup: false, cashReceived: 0, sequence: 12, arrivalTime: '10:58' },
-  { id: 'ORD-0159', date: '2025-04-21', customerId: 'C0143', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone5', isService: false, isPickup: false, cashReceived: 0, sequence: 1, arrivalTime: '08:00' },
-  { id: 'ORD-0160', date: '2025-04-21', customerId: 'C0144', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone2', isService: false, isPickup: false, cashReceived: 0, sequence: 13, arrivalTime: '09:48' },
-  { id: 'ORD-0161', date: '2025-04-21', customerId: 'C0145', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone1', isService: false, isPickup: false, cashReceived: 0, sequence: 9, arrivalTime: '09:04' },
-  { id: 'ORD-0162', date: '2025-04-21', customerId: 'C0146', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone6', isService: false, isPickup: false, cashReceived: 0, sequence: 17, arrivalTime: '12:10' },
-  { id: 'ORD-0163', date: '2025-04-21', customerId: 'C0147', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone2', isService: false, isPickup: false, cashReceived: 0, sequence: 4, arrivalTime: '08:28' },
-  { id: 'ORD-0164', date: '2025-04-21', customerId: 'C0148', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone1', isService: false, isPickup: false, cashReceived: 0, sequence: 26, arrivalTime: '12:13' },
-  { id: 'ORD-0165', date: '2025-04-21', customerId: 'C0149', itemName: '배추김치 4KG - 3세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone1', isService: false, isPickup: false, cashReceived: 0, sequence: 20, arrivalTime: '10:46' },
-  { id: 'ORD-0166', date: '2025-04-21', customerId: 'C0149', itemName: '총각김치 2KG', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone1', isService: false, isPickup: false, cashReceived: 0, sequence: 20, arrivalTime: '10:46' },
-  { id: 'ORD-0167', date: '2025-04-21', customerId: 'C0150', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '취소', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: '', isService: false, isPickup: false, cashReceived: 0 },
-  { id: 'ORD-0168', date: '2025-04-21', customerId: 'C0151', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone5', isService: false, isPickup: false, cashReceived: 0, sequence: 30, arrivalTime: '12:26' },
-  { id: 'ORD-0169', date: '2025-04-21', customerId: 'C0152', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone1', isService: false, isPickup: false, cashReceived: 0, sequence: 19, arrivalTime: '10:38' },
-  { id: 'ORD-0170', date: '2025-04-21', customerId: 'C0153', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 3, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone3', isService: false, isPickup: false, cashReceived: 0, sequence: 19, arrivalTime: '10:47' },
-  { id: 'ORD-0171', date: '2025-04-21', customerId: 'C0154', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone5', isService: false, isPickup: false, cashReceived: 0, sequence: 15, arrivalTime: '10:05' },
-  { id: 'ORD-0172', date: '2025-04-21', customerId: 'C0154', itemName: '총각김치 2KG', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone5', isService: false, isPickup: false, cashReceived: 0, sequence: 15, arrivalTime: '10:05' },
-  { id: 'ORD-0173', date: '2025-04-21', customerId: 'C0155', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone4', isService: false, isPickup: false, cashReceived: 0, sequence: 25, arrivalTime: '11:50' },
-  { id: 'ORD-0174', date: '2025-04-21', customerId: 'C0156', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone2', isService: false, isPickup: false, cashReceived: 0, sequence: 26, arrivalTime: '12:06' },
-  { id: 'ORD-0175', date: '2025-04-21', customerId: 'C0157', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone5', isService: false, isPickup: false, cashReceived: 0, sequence: 27, arrivalTime: '12:02' },
-  { id: 'ORD-0176', date: '2025-04-21', customerId: 'C0158', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone5', isService: false, isPickup: false, cashReceived: 0, sequence: 4, arrivalTime: '08:26' },
-  { id: 'ORD-0177', date: '2025-04-21', customerId: 'C0159', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone5', isService: false, isPickup: false, cashReceived: 0, sequence: 32, arrivalTime: '12:52' },
-  { id: 'ORD-0178', date: '2025-04-21', customerId: 'C0160', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone1', isService: false, isPickup: false, cashReceived: 0, sequence: 5, arrivalTime: '08:32' },
-  { id: 'ORD-0179', date: '2025-04-21', customerId: 'C0161', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone5', isService: false, isPickup: false, cashReceived: 0, sequence: 19, arrivalTime: '10:49' },
-  { id: 'ORD-0180', date: '2025-04-21', customerId: 'C0162', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone1', isService: false, isPickup: false, cashReceived: 0, sequence: 7, arrivalTime: '08:48' },
-  { id: 'ORD-0181', date: '2025-04-21', customerId: 'C0163', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone2', isService: false, isPickup: false, cashReceived: 0, sequence: 19, arrivalTime: '10:44' },
-  { id: 'ORD-0182', date: '2025-04-21', customerId: 'C0163', itemName: '배추김치 4KG - 3세트(할인)', qty: 2, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone2', isService: false, isPickup: false, cashReceived: 0, sequence: 19, arrivalTime: '10:44' },
-  { id: 'ORD-0183', date: '2025-04-21', customerId: 'C0163', itemName: '총각김치 2KG', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone2', isService: false, isPickup: false, cashReceived: 0, sequence: 19, arrivalTime: '10:44' },
-  { id: 'ORD-0184', date: '2025-04-21', customerId: 'C0164', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone1', isService: false, isPickup: false, cashReceived: 0, sequence: 14, arrivalTime: '09:44' },
-  { id: 'ORD-0185', date: '2025-04-21', customerId: 'C0165', itemName: '배추김치 4KG', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone5', isService: false, isPickup: false, cashReceived: 0, sequence: 31, arrivalTime: '12:44' },
-  { id: 'ORD-0186', date: '2025-04-21', customerId: 'C0166', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone2', isService: false, isPickup: false, cashReceived: 0, sequence: 12, arrivalTime: '09:38' },
-  { id: 'ORD-0187', date: '2025-04-21', customerId: 'C0167', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone4', isService: false, isPickup: false, cashReceived: 0, sequence: 10, arrivalTime: '09:32' },
-  { id: 'ORD-0188', date: '2025-04-21', customerId: 'C0168', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone4', isService: false, isPickup: false, cashReceived: 0, sequence: 14, arrivalTime: '10:08' },
-  { id: 'ORD-0189', date: '2025-04-21', customerId: 'C0169', itemName: '배추김치 4KG - 3세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone1', isService: false, isPickup: false, cashReceived: 0, sequence: 22, arrivalTime: '11:10' },
-  { id: 'ORD-0190', date: '2025-04-21', customerId: 'C0170', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone2', isService: false, isPickup: false, cashReceived: 0, sequence: 27, arrivalTime: '12:16' },
-  { id: 'ORD-0191', date: '2025-04-21', customerId: 'C0171', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone4', isService: false, isPickup: false, cashReceived: 0, sequence: 16, arrivalTime: '10:24' },
-  { id: 'ORD-0192', date: '2025-04-21', customerId: 'C0172', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone4', isService: false, isPickup: false, cashReceived: 0, sequence: 18, arrivalTime: '10:46' },
-  { id: 'ORD-0193', date: '2025-04-21', customerId: 'C0173', itemName: '배추김치 4KG', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone6', isService: false, isPickup: false, cashReceived: 0 },
-  { id: 'ORD-0194', date: '2025-04-21', customerId: 'C0174', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone4', isService: false, isPickup: false, cashReceived: 0, sequence: 27, arrivalTime: '12:13' },
-  { id: 'ORD-0195', date: '2025-04-21', customerId: 'C0175', itemName: '배추김치 4KG', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone6', isService: false, isPickup: false, cashReceived: 0 },
-  { id: 'ORD-0196', date: '2025-04-21', customerId: 'C0176', itemName: '총각김치 2KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone6', isService: false, isPickup: false, cashReceived: 0 },
-  { id: 'ORD-0197', date: '2025-04-21', customerId: 'C0177', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone6', isService: false, isPickup: false, cashReceived: 0 },
-  { id: 'ORD-0198', date: '2025-04-21', customerId: 'C0178', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone1', isService: false, isPickup: false, cashReceived: 0, sequence: 24, arrivalTime: '11:30' },
-  { id: 'ORD-0199', date: '2025-04-21', customerId: 'C0179', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone4', isService: false, isPickup: false, cashReceived: 0, sequence: 2, arrivalTime: '08:23' },
-  { id: 'ORD-0200', date: '2025-04-21', customerId: 'C0180', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone2', isService: false, isPickup: false, cashReceived: 0, sequence: 10, arrivalTime: '09:20' },
-  { id: 'ORD-0201', date: '2025-04-21', customerId: 'C0181', itemName: '배추김치 4KG - 2세트(할인)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone5', isService: false, isPickup: false, cashReceived: 0, sequence: 9, arrivalTime: '09:17' },
-  { id: 'ORD-0202', date: '2025-04-21', customerId: 'C0182', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '', shipDate: '', arriveDate: '', shippingGroup: 'Zone2', isService: false, isPickup: false, cashReceived: 0, sequence: 28, arrivalTime: '12:26' },
-  { id: 'ORD-0203', date: '2025-04-22', customerId: 'C0183', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '신규 고객', shipDate: '', arriveDate: '', shippingGroup: 'Zone5', isService: false, isPickup: false, cashReceived: 0, sequence: 25, arrivalTime: '' },
-  { id: 'ORD-0204', date: '2025-04-22', customerId: 'C0184', itemName: '혼합세트 (배추4KG + 총각2KG)', qty: 1, shipStatus: '배송준비중', deliveryMethod: '', paymentType: '', paymentStatus: '미결제', deliveryMemo: '신규 고객', shipDate: '', arriveDate: '', shippingGroup: 'Zone4', isService: false, isPickup: false, cashReceived: 0, sequence: 20, arrivalTime: '' }
-];
 
 const STORAGE_KEYS = { customers: 'wh:v6:customers', items: 'wh:v6:items', orders: 'wh:v6:orders' };
 
@@ -424,14 +35,14 @@ async function loadData(key, fallback) {
       const local = window.localStorage.getItem(key);
       if (local) return JSON.parse(local);
     }
-  } catch (e) { console.warn('localStorage read failed', e); }
+  } catch (e) { warn('localStorage read failed', e); }
   // Claude의 window.storage 시도
   try {
     if (typeof window !== 'undefined' && window.storage && window.storage.get) {
       const r = await window.storage.get(key);
       return r ? JSON.parse(r.value) : fallback;
     }
-  } catch (e) { console.warn('window.storage read failed', e); }
+  } catch (e) { warn('window.storage read failed', e); }
   return fallback;
 }
 
@@ -442,13 +53,13 @@ async function saveData(key, data) {
     if (typeof window !== 'undefined' && window.localStorage) {
       window.localStorage.setItem(key, jsonStr);
     }
-  } catch (e) { console.warn('localStorage write failed', e); }
+  } catch (e) { warn('localStorage write failed', e); }
   // window.storage에도 저장 (Claude 환경 호환)
   try {
     if (typeof window !== 'undefined' && window.storage && window.storage.set) {
       await window.storage.set(key, jsonStr);
     }
-  } catch (e) { console.warn('window.storage write failed', e); }
+  } catch (e) { warn('window.storage write failed', e); }
 }
 
 async function deleteData(key) {
@@ -456,12 +67,12 @@ async function deleteData(key) {
     if (typeof window !== 'undefined' && window.localStorage) {
       window.localStorage.removeItem(key);
     }
-  } catch (e) { console.warn('localStorage delete failed', e); }
+  } catch (e) { warn('localStorage delete failed', e); }
   try {
     if (typeof window !== 'undefined' && window.storage && window.storage.delete) {
       await window.storage.delete(key);
     }
-  } catch (e) { console.warn('window.storage delete failed', e); }
+  } catch (e) { warn('window.storage delete failed', e); }
 }
 
 const formatWon = (n) => '$' + new Intl.NumberFormat('en-AU').format(n || 0);
@@ -1509,7 +1120,7 @@ export default function App() {
           const handleFirebaseError = (err) => {
             const errCode = err?.code || '';
             if (errCode.includes('resource-exhausted') || errCode.includes('permission-denied') || errCode.includes('unavailable')) {
-              console.warn('⚠️ Firebase 오류 - 로컬 모드로 전환:', errCode);
+              warn('⚠️ Firebase 오류 - 로컬 모드로 전환:', errCode);
               setSyncStatus('error');
             }
           };
@@ -1538,7 +1149,7 @@ export default function App() {
               // 🆕 Supabase가 비어있을 때는 "마이그레이션 필요" 플래그만 설정
               // 실제 업로드는 사용자 확인 후 수동으로만
               if (!initialSyncDoneRef.current) {
-                console.warn('⚠️ Supabase가 비어있습니다. 초기 데이터를 업로드하려면 "즉시 저장" 버튼을 클릭하세요.');
+                warn('⚠️ Supabase가 비어있습니다. 초기 데이터를 업로드하려면 "즉시 저장" 버튼을 클릭하세요.');
                 initialSyncDoneRef.current = true;  // 한 번만 경고
               }
             }
@@ -1639,7 +1250,7 @@ export default function App() {
       setSaveState('saving');
       saveBatch(TABLES.customers, resolved)
         .then(result => {
-          console.log(`✓ customers 저장됨: ${result?.saved || 0}건`);
+          log(`✓ customers 저장됨: ${result?.saved || 0}건`);
           setSaveState('saved');
           setLastSaveTime(Date.now());
         })
@@ -1666,7 +1277,7 @@ export default function App() {
       setSaveState('saving');
       saveBatch(TABLES.items, cleaned)
         .then(result => {
-          console.log(`✓ items 저장됨: ${result?.saved || 0}건`);
+          log(`✓ items 저장됨: ${result?.saved || 0}건`);
           setSaveState('saved');
           setLastSaveTime(Date.now());
         })
@@ -1688,7 +1299,7 @@ export default function App() {
       setSaveState('saving');
       saveBatch(TABLES.orders, resolved)
         .then(result => {
-          console.log(`✓ orders 저장됨: ${result?.saved || 0}건`);
+          log(`✓ orders 저장됨: ${result?.saved || 0}건`);
           setSaveState('saved');
           setLastSaveTime(Date.now());
         })
@@ -1710,7 +1321,7 @@ export default function App() {
       setSaveState('saving');
       saveBatch(TABLES.drivers, resolved)
         .then(result => {
-          console.log(`✓ drivers 저장됨: ${result?.saved || 0}건`);
+          log(`✓ drivers 저장됨: ${result?.saved || 0}건`);
           setSaveState('saved');
           setLastSaveTime(Date.now());
         })
@@ -1779,8 +1390,8 @@ export default function App() {
 
     setRefreshing(true);
     try {
-      console.log('🔄 ========== 수동 새로고침 시작 ==========');
-      console.log(`현재 로컬 상태: 고객 ${customers.length}명, 주문 ${orders.length}건`);
+      log('🔄 ========== 수동 새로고침 시작 ==========');
+      log(`현재 로컬 상태: 고객 ${customers.length}명, 주문 ${orders.length}건`);
 
       const [customers2, items2, orders2, drivers2] = await Promise.all([
         fetchAll(TABLES.customers),
@@ -1789,7 +1400,7 @@ export default function App() {
         fetchAll(TABLES.drivers),
       ]);
 
-      console.log(`Supabase 데이터: 고객 ${customers2.length}명, 주문 ${orders2.length}건`);
+      log(`Supabase 데이터: 고객 ${customers2.length}명, 주문 ${orders2.length}건`);
 
       // 🔍 주문 diff 상세 분석
       const localOrderIds = new Set(orders.map(o => o.id));
@@ -1798,10 +1409,10 @@ export default function App() {
       const onlyCloud = [...cloudOrderIds].filter(id => !localOrderIds.has(id));
 
       if (onlyLocal.length > 0) {
-        console.warn(`⚠️ 로컬에만 있는 주문 ${onlyLocal.length}건:`, onlyLocal.slice(0, 5));
+        warn(`⚠️ 로컬에만 있는 주문 ${onlyLocal.length}건:`, onlyLocal.slice(0, 5));
       }
       if (onlyCloud.length > 0) {
-        console.log(`🆕 클라우드에만 있는 주문 ${onlyCloud.length}건:`, onlyCloud.slice(0, 5));
+        log(`🆕 클라우드에만 있는 주문 ${onlyCloud.length}건:`, onlyCloud.slice(0, 5));
       }
 
       // 같은 ID인데 내용이 다른 주문 찾기
@@ -1811,7 +1422,7 @@ export default function App() {
         return localMap[o.id] && localMap[o.id] !== JSON.stringify(o);
       });
       if (diffOrders.length > 0) {
-        console.log(`🔄 내용이 다른 주문 ${diffOrders.length}건`);
+        log(`🔄 내용이 다른 주문 ${diffOrders.length}건`);
       }
 
       // Firebase 에코 방지 플래그 설정
@@ -1829,7 +1440,7 @@ export default function App() {
 
       setTimeout(() => { isReceivingFromFirebaseRef.current = false; }, 100);
 
-      console.log('🔄 ========== 새로고침 완료 ==========');
+      log('🔄 ========== 새로고침 완료 ==========');
       showToast(
         `✓ 새로고침 완료: 주문 ${orders2.length}건` +
         (onlyCloud.length > 0 ? ` (신규 ${onlyCloud.length}건)` : '') +
@@ -4573,6 +4184,7 @@ function Customers({ customers, setCustomers, items, orders, showToast, setOrder
   const [historyTarget, setHistoryTarget] = useState(null);
   const [displayLimit, setDisplayLimit] = useState(50);
   const [showDuplicates, setShowDuplicates] = useState(false);  // 🆕 중복 찾기 모달
+  const [showCleanup, setShowCleanup] = useState(false);  // 🆕 주문 없는 고객 정리 모달
 
   // 🆕 체크박스
   const [selectedIds, setSelectedIds] = useState(new Set());
@@ -4784,6 +4396,23 @@ function Customers({ customers, setCustomers, items, orders, showToast, setOrder
             >
               <AlertTriangle size={14} />
               중복 연락처 <span className="tabular-nums">{dupCount}건</span>
+            </button>
+          ) : null;
+        })()}
+
+        {/* 🆕 주문 없는 고객 정리 버튼 */}
+        {(() => {
+          const customerIdsWithOrders = new Set(orders.map(o => o.customerId));
+          const noOrderCount = customers.filter(c => !customerIdsWithOrders.has(c.id)).length;
+
+          return noOrderCount > 0 ? (
+            <button
+              onClick={() => setShowCleanup(true)}
+              className="flex items-center gap-2 px-3 py-2 bg-white hover:bg-[#FEF2F2] border border-[#FECACA] text-[#B91C1C] rounded-[8px] text-[13px] font-medium transition-colors"
+              title="주문 이력이 없는 고객 일괄 삭제"
+            >
+              <Trash2 size={14} />
+              주문 없는 고객 <span className="tabular-nums">{noOrderCount}명</span>
             </button>
           ) : null;
         })()}
@@ -5058,6 +4687,149 @@ function Customers({ customers, setCustomers, items, orders, showToast, setOrder
           onClose={() => setShowDuplicates(false)}
         />
       )}
+
+      {showCleanup && (
+        <CleanupNoOrderModal
+          customers={customers}
+          setCustomers={setCustomers}
+          orders={orders}
+          showToast={showToast}
+          onClose={() => setShowCleanup(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// 🧹 주문 없는 고객 정리 모달
+// ═══════════════════════════════════════════════════════════
+function CleanupNoOrderModal({ customers, setCustomers, orders, showToast, onClose }) {
+  const [confirmed, setConfirmed] = useState(false);
+
+  // 주문 있는 고객 / 없는 고객 분류
+  const { withOrders, withoutOrders } = useMemo(() => {
+    const customerIdsWithOrders = new Set(orders.map(o => o.customerId));
+    const withOrders = customers.filter(c => customerIdsWithOrders.has(c.id));
+    const withoutOrders = customers.filter(c => !customerIdsWithOrders.has(c.id));
+    return { withOrders, withoutOrders };
+  }, [customers, orders]);
+
+  const handleConfirmDelete = () => {
+    // 주문 있는 고객만 남기기
+    setCustomers(withOrders);
+    showToast(`✓ ${withoutOrders.length}명 삭제 완료 · 남은 고객 ${withOrders.length}명`);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-[16px] shadow-2xl w-full max-w-2xl max-h-[88vh] overflow-y-auto scrollbar-slim" onClick={e => e.stopPropagation()}>
+        <div className="sticky top-0 bg-white px-6 py-4 border-b border-[#E4E4E7] flex items-center justify-between z-10">
+          <div>
+            <h2 className="text-[18px] font-semibold text-[#09090B] tracking-tight">주문 없는 고객 정리</h2>
+            <div className="text-[13px] text-[#71717A] mt-0.5">주문 이력이 없는 고객을 일괄 삭제합니다</div>
+          </div>
+          <button onClick={onClose} className="p-1.5 hover:bg-[#F4F4F5] rounded-[6px] transition-colors">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-5">
+          {/* 경고 박스 */}
+          <div className="p-4 bg-[#FEF2F2] border border-[#FECACA] rounded-[10px]">
+            <div className="flex items-start gap-2">
+              <AlertTriangle size={16} className="text-[#B91C1C] mt-0.5 flex-shrink-0" />
+              <div className="text-[13px] text-[#991B1B] leading-relaxed">
+                <div className="font-semibold mb-1">⚠️ 삭제 전 확인해주세요</div>
+                <div>• 주문 이력이 없는 고객이 <strong>영구 삭제</strong>됩니다</div>
+                <div>• 삭제된 고객은 복구할 수 없습니다</div>
+                <div>• 필요시 <strong>먼저 백업</strong>을 권장합니다 (좌측 "백업 내보내기")</div>
+                <div>• 나중에 신규 고객은 하나씩 추가하세요</div>
+              </div>
+            </div>
+          </div>
+
+          {/* 통계 카드 */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="bg-white border border-[#E4E4E7] rounded-[12px] p-4">
+              <div className="text-[12px] font-medium text-[#71717A] mb-2">현재 전체</div>
+              <div className="text-[28px] font-semibold text-[#09090B] tabular-nums tracking-tight">{customers.length}</div>
+              <div className="text-[10px] text-[#A1A1AA] mt-1">명</div>
+            </div>
+            <div className="bg-[#F0FDF4] border border-[#BBF7D0] rounded-[12px] p-4">
+              <div className="text-[12px] font-medium text-[#15803D] mb-2">유지 (주문 있음)</div>
+              <div className="text-[28px] font-semibold text-[#166534] tabular-nums tracking-tight">{withOrders.length}</div>
+              <div className="text-[10px] text-[#15803D] mt-1">명</div>
+            </div>
+            <div className="bg-[#FEF2F2] border border-[#FECACA] rounded-[12px] p-4">
+              <div className="text-[12px] font-medium text-[#B91C1C] mb-2">삭제 (주문 없음)</div>
+              <div className="text-[28px] font-semibold text-[#991B1B] tabular-nums tracking-tight">{withoutOrders.length}</div>
+              <div className="text-[10px] text-[#B91C1C] mt-1">명</div>
+            </div>
+          </div>
+
+          {/* 삭제 대상 미리보기 (처음 20명) */}
+          {withoutOrders.length > 0 && (
+            <div>
+              <div className="text-[13px] font-semibold text-[#09090B] mb-2">
+                삭제될 고객 샘플 <span className="text-[#71717A] ml-1 tabular-nums font-normal">
+                  (처음 20명 / 총 {withoutOrders.length}명)
+                </span>
+              </div>
+              <div className="bg-white border border-[#E4E4E7] rounded-[10px] p-3 space-y-1 max-h-60 overflow-y-auto scrollbar-slim">
+                {withoutOrders.slice(0, 20).map(c => (
+                  <div key={c.id} className="text-[12px] flex items-center justify-between py-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-[#A1A1AA] font-mono">{c.id}</span>
+                      <span className="font-medium text-[#09090B]">{c.name}</span>
+                    </div>
+                    <span className="text-[11px] text-[#71717A] truncate max-w-[200px]">{c.phone}</span>
+                  </div>
+                ))}
+                {withoutOrders.length > 20 && (
+                  <div className="text-center text-[11px] text-[#A1A1AA] pt-2 border-t border-[#E4E4E7] mt-2">
+                    ... 외 {withoutOrders.length - 20}명
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* 확인 체크박스 */}
+          <div className="p-3 bg-[#FAFAFA] border border-[#E4E4E7] rounded-[10px]">
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={confirmed}
+                onChange={e => setConfirmed(e.target.checked)}
+                className="w-4 h-4 mt-0.5 accent-[#09090B]"
+              />
+              <span className="text-[13px] text-[#09090B] leading-relaxed">
+                위 {withoutOrders.length}명의 고객을 <strong>영구 삭제</strong>하는 것에 동의합니다.
+                삭제 후 복구할 수 없음을 이해했습니다.
+              </span>
+            </label>
+          </div>
+        </div>
+
+        {/* 하단 버튼 */}
+        <div className="sticky bottom-0 bg-white px-6 py-4 border-t border-[#E4E4E7] flex items-center justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-[13px] font-medium text-[#52525B] hover:bg-[#F4F4F5] rounded-[8px] transition-colors"
+          >
+            취소
+          </button>
+          <button
+            onClick={handleConfirmDelete}
+            disabled={!confirmed || withoutOrders.length === 0}
+            className="px-5 py-2 bg-[#B91C1C] hover:bg-[#991B1B] text-white rounded-[8px] text-[13px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {withoutOrders.length}명 삭제하기
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -9995,7 +9767,7 @@ function parseFullReplaceExcel(wb, customers, items, orders) {
   });
 
   // 디버그 로그
-  console.log('[통합 업로드]', {
+  log('[통합 업로드]', {
     엑셀주문수: excelOrders.length,
     배송대상기존주문: targetOrderIds.size,
     유지될주문: keptOrderIds.size,
