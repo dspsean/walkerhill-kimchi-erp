@@ -119,8 +119,14 @@ function getActiveGift(gifts) {
 // 🎁 사은품 지급 현황 계산 (대시보드/사은품 페이지 공통)
 // - giftId 매칭 우선 + 이름 fallback (과거 데이터 호환)
 // - 취소 주문만 제외 (B2B/입고대기/서비스 모두 포함 - 재고 나감)
+// - 🆕 입고대기 상태는 "예약", 그 외는 "지급완료"로 자동 분류
 function calcGiftStats(gift, orders) {
-  if (!gift) return { givenQty: 0, recipientCount: 0, remaining: 0, linkedOrders: [] };
+  if (!gift) return {
+    givenQty: 0, recipientCount: 0,
+    reservedQty: 0, reservedCount: 0,
+    totalUsed: 0, totalRecipients: 0,
+    remaining: 0, linkedOrders: []
+  };
 
   const linkedOrders = orders.filter(o => {
     if (o.shipStatus === '취소') return false;
@@ -132,11 +138,26 @@ function calcGiftStats(gift, orders) {
     return false;
   });
 
-  const givenQty = linkedOrders.reduce((s, o) => s + (o.giftQty || 0), 0);
-  const recipientCount = new Set(linkedOrders.map(o => o.customerId)).size;
-  const remaining = Math.max(0, (gift.totalStock || 0) - givenQty);
+  // 🆕 입고대기 = 예약, 그 외 = 지급완료 (자동 분류)
+  const givenOrders = linkedOrders.filter(o => o.shipStatus !== '입고대기');
+  const reservedOrders = linkedOrders.filter(o => o.shipStatus === '입고대기');
 
-  return { givenQty, recipientCount, remaining, linkedOrders };
+  const givenQty = givenOrders.reduce((s, o) => s + (o.giftQty || 0), 0);
+  const recipientCount = new Set(givenOrders.map(o => o.customerId)).size;
+
+  const reservedQty = reservedOrders.reduce((s, o) => s + (o.giftQty || 0), 0);
+  const reservedCount = new Set(reservedOrders.map(o => o.customerId)).size;
+
+  const totalUsed = givenQty + reservedQty;
+  const totalRecipients = new Set(linkedOrders.map(o => o.customerId)).size;
+  const remaining = Math.max(0, (gift.totalStock || 0) - totalUsed);
+
+  return {
+    givenQty, recipientCount,
+    reservedQty, reservedCount,
+    totalUsed, totalRecipients,
+    remaining, linkedOrders,
+  };
 }
 
 // 주문 합계 기반 사은품 자동 수량 계산
@@ -2734,8 +2755,8 @@ function Dashboard({ customers, items, orders, gifts = [], setView }) {
         if (!activeGift) return null;
 
         // 🎁 공통 계산 함수 사용 (사은품 페이지와 동일 로직)
-        const { givenQty, recipientCount, remaining } = calcGiftStats(activeGift, orders);
-        const pct = activeGift.totalStock > 0 ? (givenQty / activeGift.totalStock) * 100 : 0;
+        const { givenQty, recipientCount, reservedQty, totalUsed, remaining } = calcGiftStats(activeGift, orders);
+        const pct = activeGift.totalStock > 0 ? (totalUsed / activeGift.totalStock) * 100 : 0;
 
         return (
           <div className="bg-gradient-to-r from-pink-50 via-rose-50 to-pink-50 border-2 border-pink-200 rounded-2xl p-5">
@@ -2756,15 +2777,12 @@ function Dashboard({ customers, items, orders, gifts = [], setView }) {
             </div>
 
             <div className="grid grid-cols-4 gap-3">
-              {/* 남은 재고 */}
+              {/* 재고 사용 현황 (지급 + 예약) */}
               <div className="bg-white rounded-xl p-3 border border-pink-100">
-                <div className="text-[10px] font-bold text-pink-700 mb-1">남은 재고</div>
-                <div className={`text-2xl font-bold tabular-nums ${
-                  remaining === 0 ? 'text-red-700' :
-                  remaining <= 50 ? 'text-amber-700' :
-                  'text-emerald-700'
-                }`}>
-                  {remaining}<span className="text-xs font-normal text-stone-400 ml-0.5">/{activeGift.totalStock}개</span>
+                <div className="text-[10px] font-bold text-pink-700 mb-1">재고 사용 현황</div>
+                <div className="text-2xl font-bold tabular-nums">
+                  <span className="text-red-700">{totalUsed}</span>
+                  <span className="text-xs font-normal text-stone-400 ml-0.5">/{activeGift.totalStock}개</span>
                 </div>
                 <div className="mt-2 h-1.5 bg-stone-100 rounded-full overflow-hidden">
                   <div
@@ -2776,24 +2794,62 @@ function Dashboard({ customers, items, orders, gifts = [], setView }) {
                     style={{ width: `${pct}%` }}
                   />
                 </div>
+                <div className={`text-[10px] mt-1.5 font-semibold tabular-nums ${
+                  remaining === 0 ? 'text-red-700' :
+                  remaining <= 50 ? 'text-amber-700' :
+                  'text-emerald-700'
+                }`}>
+                  {remaining}개 남음 · {pct.toFixed(0)}% 사용
+                </div>
+                {reservedQty > 0 && (
+                  <div className="mt-1.5 pt-1.5 border-t border-stone-100 text-[10px] text-stone-600 tabular-nums">
+                    <div className="flex justify-between">
+                      <span>지급</span>
+                      <span className="font-semibold">{givenQty}개</span>
+                    </div>
+                    <div className="flex justify-between text-amber-700">
+                      <span>예약</span>
+                      <span className="font-semibold">{reservedQty}개</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
-              {/* 지급 건수 */}
+              {/* 지급 완료 (명) */}
               <div className="bg-white rounded-xl p-3 border border-pink-100">
                 <div className="text-[10px] font-bold text-pink-700 mb-1">지급 완료</div>
                 <div className="text-2xl font-bold text-stone-800 tabular-nums">
                   {recipientCount}<span className="text-xs font-normal text-stone-400 ml-0.5">명</span>
                 </div>
-                <div className="text-[10px] text-stone-500 mt-2">{givenQty}개 지급됨</div>
+                {reservedCount > 0 ? (
+                  <div className="text-[10px] text-stone-500 mt-1">+ 예약 <span className="text-amber-700 font-semibold">{reservedCount}명</span></div>
+                ) : (
+                  <div className="text-[10px] text-stone-500 mt-1">실제 배송됨</div>
+                )}
+              </div>
+
+              {/* 지급 + 예약 (개) */}
+              <div className="bg-white rounded-xl p-3 border border-pink-100">
+                <div className="text-[10px] font-bold text-pink-700 mb-1">지급 + 예약</div>
+                <div className="text-2xl font-bold text-stone-800 tabular-nums">
+                  {totalUsed}<span className="text-xs font-normal text-stone-400 ml-0.5">개</span>
+                </div>
+                {reservedQty > 0 ? (
+                  <div className="text-[10px] text-stone-500 mt-1 tabular-nums">
+                    지급 {givenQty} + 예약 <span className="text-amber-700 font-semibold">{reservedQty}</span>
+                  </div>
+                ) : (
+                  <div className="text-[10px] text-stone-500 mt-1">지급됨 {givenQty}개</div>
+                )}
               </div>
 
               {/* 지급 기준 */}
-              <div className="col-span-2 bg-white rounded-xl p-3 border border-pink-100">
+              <div className="bg-white rounded-xl p-3 border border-pink-100">
                 <div className="text-[10px] font-bold text-pink-700 mb-1.5">📋 자동 지급 기준</div>
                 <div className="space-y-1">
                   {(activeGift.tiers || DEFAULT_GIFT_TIERS).sort((a, b) => a.minAmount - b.minAmount).map((tier, idx) => (
                     <div key={idx} className="flex items-center justify-between text-[11px]">
-                      <span className="text-stone-700">${tier.minAmount} 이상 주문</span>
+                      <span className="text-stone-700">${tier.minAmount} 이상</span>
                       <span className="font-bold text-pink-700">{tier.qty}개 지급</span>
                     </div>
                   ))}
@@ -7617,11 +7673,13 @@ function Gifts({ gifts, setGifts, orders, setOrders, customers, items, showToast
   // 각 이벤트별 지급 현황 계산 (공통 함수 사용)
   const giftStats = useMemo(() => {
     return gifts.map(g => {
-      const { givenQty, recipientCount, remaining } = calcGiftStats(g, orders);
+      const { givenQty, recipientCount, reservedQty, totalUsed, remaining } = calcGiftStats(g, orders);
       return {
         ...g,
         givenQty,
         recipientCount,
+        reservedQty,
+        totalUsed,
         remaining,
       };
     });
@@ -7976,7 +8034,7 @@ function Gifts({ gifts, setGifts, orders, setOrders, customers, items, showToast
 // 🎁 사은품 카드
 // ============================================================
 function GiftCard({ gift, onEdit, onToggle, onDelete, inactive }) {
-  const pct = gift.totalStock > 0 ? (gift.givenQty / gift.totalStock) * 100 : 0;
+  const pct = gift.totalStock > 0 ? ((gift.totalUsed || gift.givenQty) / gift.totalStock) * 100 : 0;
 
   return (
     <div className={`bg-white rounded-2xl border-2 p-5 transition-all ${
@@ -8034,7 +8092,7 @@ function GiftCard({ gift, onEdit, onToggle, onDelete, inactive }) {
         <div className="flex items-center justify-between mb-1.5">
           <span className="text-xs font-semibold text-stone-600">재고 사용 현황</span>
           <span className="text-xs font-bold text-stone-800">
-            <span className="text-red-800">{gift.givenQty}</span>
+            <span className="text-red-800">{gift.totalUsed || gift.givenQty}</span>
             <span className="text-stone-400"> / {gift.totalStock}개</span>
           </span>
         </div>
@@ -8058,6 +8116,20 @@ function GiftCard({ gift, onEdit, onToggle, onDelete, inactive }) {
             {gift.remaining}개 {pct.toFixed(0)}% 사용
           </span>
         </div>
+
+        {/* 🆕 예약 수량 표시 (있을 때만) */}
+        {gift.reservedQty > 0 && (
+          <div className="mt-2 pt-2 border-t border-stone-100 grid grid-cols-2 gap-2 text-[11px]">
+            <div className="flex items-center justify-between">
+              <span className="text-stone-500">✓ 지급 완료</span>
+              <span className="font-semibold text-stone-800 tabular-nums">{gift.givenQty}개</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-amber-700">⏳ 예약</span>
+              <span className="font-semibold text-amber-700 tabular-nums">{gift.reservedQty}개</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 지급 기준 */}
@@ -8193,6 +8265,9 @@ function GiftFormModal({ editTarget, onSave, onClose }) {
                 className="w-full px-3 py-2 pr-12 border border-stone-200 rounded-lg text-lg font-bold focus:outline-none focus:border-red-700 focus:ring-2 focus:ring-red-100 tabular-nums"
               />
               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 text-sm">개</span>
+            </div>
+            <div className="mt-2 text-[11px] text-stone-500 bg-stone-50 border border-stone-200 rounded-lg px-3 py-2">
+              💡 <strong>입고대기</strong> 상태 주문의 사은품은 자동으로 <strong className="text-amber-700">예약 수량</strong>으로 집계되어 재고에서 미리 차감됩니다
             </div>
           </div>
 
