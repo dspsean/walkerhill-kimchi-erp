@@ -3199,15 +3199,13 @@ function Orders({ customers, items, orders, setOrders, gifts, setGifts, showToas
   }, [orders, search, yearFilter, monthFilter, zoneFilter, orderTypeFilter, productFilter, sortKey, sortDir, customerMap, priceMap]);
 
   // 🆕 상품별 판매 수량 집계 (productFilter 무시 · 다른 필터만 반영)
+  // ✨ items 테이블 기반 동적 카운팅: 거래처 전용 상품도 자동 포함
   const productCounts = useMemo(() => {
-    const counts = {
-      '배추김치 4KG': 0,
-      '배추김치 4KG - 2세트(할인)': 0,
-      '배추김치 4KG - 3세트(할인)': 0,
-      '총각김치 2KG': 0,
-      '총각김치 2KG - 2세트(할인)': 0,
-      '혼합세트 (배추4KG + 총각2KG)': 0,
-    };
+    // ① items 테이블 기반 초기화 (모든 상품 0으로 시작)
+    const counts = {};
+    items.forEach(it => {
+      counts[it.name] = 0;
+    });
 
     // productFilter만 제외한 필터 세트로 orders 필터링
     let baseFiltered = [...orders];
@@ -3235,24 +3233,27 @@ function Orders({ customers, items, orders, setOrders, gifts, setGifts, showToas
     }
 
     baseFiltered.forEach(o => {
-      // 취소 주문만 제외 (서비스는 실제 재고 나가므로 카운팅!)
+      // 취소만 제외 (서비스/B2B/입고대기 등 모두 포함 - 실제 재고 영향)
       if (o.shipStatus === '취소') return;
-      // 다품목 주문 처리
+      // 다품목 주문 처리 (items 배열)
       if (o.items && Array.isArray(o.items) && o.items.length > 0) {
         o.items.forEach(it => {
-          if (counts[it.itemName] !== undefined) {
-            counts[it.itemName] += it.qty || 0;
+          // items 테이블에 없는 상품도 동적 추가
+          if (counts[it.itemName] === undefined) {
+            counts[it.itemName] = 0;
           }
+          counts[it.itemName] += it.qty || 0;
         });
       } else {
         // 단일 품목
-        if (counts[o.itemName] !== undefined) {
-          counts[o.itemName] += o.qty || 0;
+        if (counts[o.itemName] === undefined) {
+          counts[o.itemName] = 0;
         }
+        counts[o.itemName] += o.qty || 0;
       }
     });
     return counts;
-  }, [orders, search, yearFilter, monthFilter, zoneFilter, orderTypeFilter, customerMap]);
+  }, [orders, items, search, yearFilter, monthFilter, zoneFilter, orderTypeFilter, customerMap]);
 
   useEffect(() => { setDisplayLimit(50); }, [search, yearFilter, monthFilter, zoneFilter, orderTypeFilter, productFilter]);
 
