@@ -2998,6 +2998,7 @@ function Orders({ customers, items, orders, setOrders, gifts, setGifts, showToas
   const [editTarget, setEditTarget] = useState(null);
   const [msgTarget, setMsgTarget] = useState(null);
   const [displayLimit, setDisplayLimit] = useState(50);
+  const [showDupOrders, setShowDupOrders] = useState(false);  // 🆕 중복 주문 정리 모달
 
   // 🆕 체크박스 선택 상태
   const [selectedIds, setSelectedIds] = useState(new Set());
@@ -3362,6 +3363,34 @@ function Orders({ customers, items, orders, setOrders, gifts, setGifts, showToas
             className="w-full pl-9 pr-4 py-2 bg-white border border-[#E4E4E7] rounded-[8px] text-[14px] placeholder:text-[#A1A1AA] focus:outline-none focus:border-[#09090B] transition-colors"
           />
         </div>
+
+        {/* 🆕 중복 주문 정리 버튼 - 항상 표시 (모달에서 기간 직접 설정 가능) */}
+        {(() => {
+          // 현재 필터링된 주문에서 고객별 중복 감지 (표시용 카운트)
+          const customerOrderCount = {};
+          filtered.forEach(o => {
+            if (!o.customerId) return;
+            if (!customerOrderCount[o.customerId]) customerOrderCount[o.customerId] = 0;
+            customerOrderCount[o.customerId]++;
+          });
+          const dupCustomerCount = Object.values(customerOrderCount).filter(c => c > 1).length;
+
+          return (
+            <button
+              onClick={() => setShowDupOrders(true)}
+              className={`flex items-center gap-2 px-3 py-2 rounded-[8px] text-[13px] font-medium transition-colors ${
+                dupCustomerCount > 0
+                  ? 'bg-white hover:bg-[#FFFBEB] border border-[#FDE68A] text-[#B45309]'
+                  : 'bg-white hover:bg-[#FAFAFA] border border-[#E4E4E7] text-[#52525B]'
+              }`}
+              title="같은 고객의 중복 주문을 정리합니다 (기간 설정 가능)"
+            >
+              {dupCustomerCount > 0 ? <AlertTriangle size={14} /> : <Copy size={14} />}
+              중복 주문 {dupCustomerCount > 0 && <span className="tabular-nums">{dupCustomerCount}명</span>}
+            </button>
+          );
+        })()}
+
         <button
           onClick={() => { setEditTarget(null); setShowForm(true); }}
           className="flex items-center gap-2 px-4 py-2 bg-[#09090B] hover:bg-black text-white rounded-[8px] text-[14px] font-medium transition-colors"
@@ -3735,6 +3764,417 @@ function Orders({ customers, items, orders, setOrders, gifts, setGifts, showToas
           onClose={() => setMsgTarget(null)}
         />
       )}
+
+      {/* 🆕 중복 주문 정리 모달 */}
+      {showDupOrders && (
+        <DuplicateOrdersModal
+          orders={filtered}
+          allOrders={orders}
+          customers={customers}
+          setOrders={setOrders}
+          filterLabel={(() => {
+            const parts = [];
+            if (yearFilter && monthFilter) parts.push(`${yearFilter}년 ${monthFilter}월`);
+            else if (yearFilter) parts.push(`${yearFilter}년`);
+            else if (monthFilter) parts.push(`${monthFilter}월`);
+            if (zoneFilter) parts.push(zoneFilter);
+            if (productFilter) parts.push(productFilter);
+            return parts.length > 0 ? parts.join(' · ') : '현재 필터 기준';
+          })()}
+          showToast={showToast}
+          onClose={() => setShowDupOrders(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// 🔁 중복 주문 정리 모달
+// ═══════════════════════════════════════════════════════════
+function DuplicateOrdersModal({ orders, allOrders, customers, setOrders, filterLabel, showToast, onClose }) {
+  // 🆕 사용자 직접 기간 설정 (기본: 최근 3개월)
+  const getDefaultDates = () => {
+    const today = new Date();
+    const threeMonthsAgo = new Date(today);
+    threeMonthsAgo.setMonth(today.getMonth() - 3);
+    return {
+      from: threeMonthsAgo.toISOString().slice(0, 10),
+      to: today.toISOString().slice(0, 10),
+    };
+  };
+  const defaultDates = getDefaultDates();
+  const [fromDate, setFromDate] = useState(defaultDates.from);
+  const [toDate, setToDate] = useState(defaultDates.to);
+  const [useCustomRange, setUseCustomRange] = useState(false);  // 직접 설정 / 현재 필터
+
+  // 프리셋 날짜 버튼
+  const setPreset = (preset) => {
+    const today = new Date();
+    const fromD = new Date(today);
+    switch (preset) {
+      case 'week':
+        fromD.setDate(today.getDate() - 7);
+        break;
+      case 'month':
+        fromD.setMonth(today.getMonth() - 1);
+        break;
+      case '3months':
+        fromD.setMonth(today.getMonth() - 3);
+        break;
+      case '6months':
+        fromD.setMonth(today.getMonth() - 6);
+        break;
+      case 'year':
+        fromD.setFullYear(today.getFullYear() - 1);
+        break;
+      case 'all':
+        fromD.setFullYear(2000);  // 아주 오래 전
+        break;
+      default:
+        return;
+    }
+    setFromDate(fromD.toISOString().slice(0, 10));
+    setToDate(today.toISOString().slice(0, 10));
+    setUseCustomRange(true);
+  };
+
+  // 🆕 실제 검색 대상 주문: 직접 기간 설정이면 allOrders에서 필터, 아니면 현재 필터된 orders 사용
+  const searchOrders = useMemo(() => {
+    if (!useCustomRange) return orders;
+    // 날짜 범위로 필터링
+    return allOrders.filter(o => {
+      if (!o.date) return false;
+      return o.date >= fromDate && o.date <= toDate;
+    });
+  }, [useCustomRange, orders, allOrders, fromDate, toDate]);
+
+  // 고객별 중복 주문 그룹
+  const duplicateGroups = useMemo(() => {
+    const byCustomer = {};
+    searchOrders.forEach(o => {
+      if (!o.customerId) return;
+      if (!byCustomer[o.customerId]) byCustomer[o.customerId] = [];
+      byCustomer[o.customerId].push(o);
+    });
+
+    // 2건 이상인 고객만 중복으로 간주
+    return Object.entries(byCustomer)
+      .filter(([_, ords]) => ords.length > 1)
+      .map(([customerId, ords]) => {
+        const customer = customers.find(c => c.id === customerId);
+        // 최신순 정렬 (날짜+ID)
+        const sortedOrders = [...ords].sort((a, b) => {
+          if (a.date !== b.date) return (b.date || '').localeCompare(a.date || '');
+          return (b.id || '').localeCompare(a.id || '');
+        });
+        return {
+          customerId,
+          customerName: customer?.name || '(삭제된 고객)',
+          customerPhone: customer?.phone || '',
+          orders: sortedOrders,
+          totalAmount: sortedOrders.reduce((sum, o) => sum + (o.total || 0), 0),
+        };
+      })
+      .sort((a, b) => b.orders.length - a.orders.length);  // 중복 많은 순
+  }, [searchOrders, customers]);
+
+  // 각 주문의 체크 상태: 기본은 "가장 최신 주문만 유지"
+  const [keepIds, setKeepIds] = useState(new Set());
+
+  // 🆕 duplicateGroups 변경 시 자동으로 최신만 유지 (기간 바뀔 때마다)
+  useEffect(() => {
+    const keep = new Set();
+    duplicateGroups.forEach(group => {
+      if (group.orders[0]) keep.add(group.orders[0].id);
+    });
+    setKeepIds(keep);
+  }, [duplicateGroups]);
+
+  const toggleKeep = (orderId) => {
+    setKeepIds(prev => {
+      const next = new Set(prev);
+      if (next.has(orderId)) next.delete(orderId);
+      else next.add(orderId);
+      return next;
+    });
+  };
+
+  // 전체 주문 중 삭제 대상
+  const totalOrders = duplicateGroups.reduce((sum, g) => sum + g.orders.length, 0);
+  const willKeep = duplicateGroups.reduce((sum, g) =>
+    sum + g.orders.filter(o => keepIds.has(o.id)).length, 0
+  );
+  const willDelete = totalOrders - willKeep;
+
+  const handleConfirmDelete = () => {
+    if (willDelete === 0) {
+      alert('삭제할 주문이 없습니다');
+      return;
+    }
+
+    const rangeLabel = useCustomRange
+      ? `${fromDate} ~ ${toDate}`
+      : filterLabel;
+
+    if (!confirm(
+      `⚠️ ${willDelete}건의 주문을 영구 삭제합니다.\n\n` +
+      `• 검색 범위: ${rangeLabel}\n` +
+      `• 유지: ${willKeep}건\n` +
+      `• 삭제: ${willDelete}건\n\n` +
+      `복구할 수 없습니다. 계속할까요?`
+    )) return;
+
+    // 삭제할 주문 ID 목록
+    const deleteIds = new Set();
+    duplicateGroups.forEach(g => {
+      g.orders.forEach(o => {
+        if (!keepIds.has(o.id)) deleteIds.add(o.id);
+      });
+    });
+
+    // 전체 주문에서 삭제 대상 제거
+    const remaining = allOrders.filter(o => !deleteIds.has(o.id));
+    setOrders(remaining);
+
+    showToast(`✓ ${willDelete}건 삭제 완료 · ${duplicateGroups.length}명 정리`);
+    onClose();
+  };
+
+  const formatDate = (d) => {
+    if (!d) return '';
+    const parts = d.split('-');
+    return parts.length === 3 ? `${parts[1]}/${parts[2]}` : d;
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-[16px] shadow-2xl w-full max-w-3xl max-h-[88vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        {/* 헤더 */}
+        <div className="px-6 py-4 border-b border-[#E4E4E7] flex items-center justify-between">
+          <div>
+            <h2 className="text-[18px] font-semibold text-[#09090B] tracking-tight">중복 주문 정리</h2>
+            <div className="text-[13px] text-[#71717A] mt-0.5">
+              같은 고객의 중복 주문을 확인하고 정리합니다
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 hover:bg-[#F4F4F5] rounded-[6px] transition-colors">
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* 🆕 검색 범위 설정 */}
+        <div className="px-6 pt-5 pb-1 space-y-3 shrink-0">
+          <div className="bg-[#FAFAFA] border border-[#E4E4E7] rounded-[10px] p-3">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="text-[12px] font-semibold text-[#52525B]">검색 범위</div>
+              {/* 모드 토글 */}
+              <div className="flex items-center gap-1 ml-auto">
+                <button
+                  onClick={() => setUseCustomRange(false)}
+                  className={`px-2.5 py-1 rounded-[6px] text-[11px] font-medium transition-colors ${
+                    !useCustomRange ? 'bg-[#09090B] text-white' : 'bg-white text-[#71717A] border border-[#E4E4E7] hover:bg-[#F4F4F5]'
+                  }`}
+                >
+                  현재 필터 ({filterLabel})
+                </button>
+                <button
+                  onClick={() => setUseCustomRange(true)}
+                  className={`px-2.5 py-1 rounded-[6px] text-[11px] font-medium transition-colors ${
+                    useCustomRange ? 'bg-[#09090B] text-white' : 'bg-white text-[#71717A] border border-[#E4E4E7] hover:bg-[#F4F4F5]'
+                  }`}
+                >
+                  직접 설정
+                </button>
+              </div>
+            </div>
+
+            {useCustomRange && (
+              <>
+                {/* 날짜 입력 */}
+                <div className="flex items-center gap-2 mb-2">
+                  <input
+                    type="date"
+                    value={fromDate}
+                    onChange={(e) => setFromDate(e.target.value)}
+                    className="px-3 py-1.5 bg-white border border-[#E4E4E7] rounded-[6px] text-[12px] tabular-nums focus:outline-none focus:ring-2 focus:ring-[#09090B]/20"
+                  />
+                  <span className="text-[12px] text-[#71717A]">~</span>
+                  <input
+                    type="date"
+                    value={toDate}
+                    onChange={(e) => setToDate(e.target.value)}
+                    className="px-3 py-1.5 bg-white border border-[#E4E4E7] rounded-[6px] text-[12px] tabular-nums focus:outline-none focus:ring-2 focus:ring-[#09090B]/20"
+                  />
+                  <div className="text-[11px] text-[#A1A1AA] ml-auto tabular-nums">
+                    검색 대상: <span className="font-semibold text-[#52525B]">{searchOrders.length}건</span>
+                  </div>
+                </div>
+
+                {/* 프리셋 */}
+                <div className="flex items-center gap-1 flex-wrap">
+                  {[
+                    { id: 'week', label: '최근 7일' },
+                    { id: 'month', label: '최근 1개월' },
+                    { id: '3months', label: '최근 3개월' },
+                    { id: '6months', label: '최근 6개월' },
+                    { id: 'year', label: '최근 1년' },
+                    { id: 'all', label: '전체 기간' },
+                  ].map(p => (
+                    <button
+                      key={p.id}
+                      onClick={() => setPreset(p.id)}
+                      className="px-2.5 py-1 bg-white hover:bg-[#F4F4F5] border border-[#E4E4E7] text-[#71717A] hover:text-[#09090B] rounded-[6px] text-[11px] font-medium transition-colors"
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {!useCustomRange && (
+              <div className="text-[11px] text-[#71717A]">
+                주문관리에서 적용한 필터 기준으로 검색합니다 (<span className="font-semibold text-[#52525B]">{searchOrders.length}건</span>)
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* 안내 + 통계 */}
+        <div className="px-6 pt-2 space-y-3 shrink-0">
+          <div className="p-3 bg-[#FFFBEB] border border-[#FDE68A] rounded-[8px] text-[12px] text-[#92400E] leading-relaxed flex items-start gap-2">
+            <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" />
+            <div>
+              <strong>체크한 주문만 유지</strong>되고, 체크 안 한 주문은 영구 삭제됩니다.
+              기본값은 <strong>가장 최신 주문만 유지</strong>입니다. 필요에 따라 체크를 조정하세요.
+            </div>
+          </div>
+
+          {/* 통계 */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="bg-white border border-[#E4E4E7] rounded-[10px] p-3">
+              <div className="text-[11px] font-medium text-[#71717A]">중복 고객</div>
+              <div className="text-[22px] font-semibold text-[#09090B] tabular-nums">{duplicateGroups.length}</div>
+              <div className="text-[10px] text-[#A1A1AA]">명</div>
+            </div>
+            <div className="bg-[#F0FDF4] border border-[#BBF7D0] rounded-[10px] p-3">
+              <div className="text-[11px] font-medium text-[#15803D]">유지</div>
+              <div className="text-[22px] font-semibold text-[#166534] tabular-nums">{willKeep}</div>
+              <div className="text-[10px] text-[#15803D]">건</div>
+            </div>
+            <div className="bg-[#FEF2F2] border border-[#FECACA] rounded-[10px] p-3">
+              <div className="text-[11px] font-medium text-[#B91C1C]">삭제</div>
+              <div className="text-[22px] font-semibold text-[#991B1B] tabular-nums">{willDelete}</div>
+              <div className="text-[10px] text-[#B91C1C]">건</div>
+            </div>
+          </div>
+        </div>
+
+        {/* 리스트 */}
+        <div className="flex-1 overflow-y-auto scrollbar-slim px-6 py-4">
+          {duplicateGroups.length === 0 ? (
+            <div className="text-center py-12">
+              <Check size={32} className="mx-auto text-[#22C55E] mb-2" />
+              <div className="text-[13px] text-[#52525B]">중복 주문이 없습니다</div>
+              <div className="text-[11px] text-[#A1A1AA] mt-1">현재 필터 기준으로 모든 고객이 1건씩만 주문했습니다</div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {duplicateGroups.map((group, gIdx) => {
+                const groupKeep = group.orders.filter(o => keepIds.has(o.id)).length;
+                const groupDelete = group.orders.length - groupKeep;
+                return (
+                  <div key={group.customerId} className="border border-[#E4E4E7] rounded-[10px] overflow-hidden">
+                    {/* 고객 헤더 */}
+                    <div className="px-4 py-2.5 bg-[#FAFAFA] border-b border-[#E4E4E7] flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[13px] font-semibold text-[#09090B]">{group.customerName}</span>
+                        <span className="text-[11px] text-[#71717A] font-mono">{group.customerId}</span>
+                        {group.customerPhone && (
+                          <span className="text-[11px] text-[#A1A1AA]">· {group.customerPhone}</span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-[#71717A]">
+                        총 <span className="font-semibold text-[#09090B] tabular-nums">{group.orders.length}건</span>
+                        <span className="mx-1.5 text-[#D4D4D8]">/</span>
+                        유지 <span className="font-semibold text-[#166534] tabular-nums">{groupKeep}</span>
+                        <span className="mx-1.5 text-[#D4D4D8]">·</span>
+                        삭제 <span className="font-semibold text-[#991B1B] tabular-nums">{groupDelete}</span>
+                      </div>
+                    </div>
+
+                    {/* 주문 리스트 */}
+                    <div className="divide-y divide-[#F4F4F5]">
+                      {group.orders.map((o, idx) => {
+                        const isKept = keepIds.has(o.id);
+                        const isLatest = idx === 0;
+                        return (
+                          <label
+                            key={o.id}
+                            className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors ${
+                              isKept ? 'bg-white hover:bg-[#F0FDF4]' : 'bg-[#FAFAFA] hover:bg-[#FEF2F2]'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isKept}
+                              onChange={() => toggleKeep(o.id)}
+                              className="w-4 h-4 rounded accent-[#09090B] cursor-pointer"
+                            />
+                            <span className="font-mono text-[12px] font-semibold text-[#09090B] w-20 tabular-nums">{o.id}</span>
+                            <span className="text-[12px] text-[#52525B] w-16 tabular-nums">{formatDate(o.date)}</span>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium w-14 text-center flex-shrink-0 ${
+                              o.shipStatus === '배송완료' ? 'bg-[#F0FDF4] text-[#15803D] border border-[#BBF7D0]' :
+                              o.shipStatus === '배송중' ? 'bg-[#EFF6FF] text-[#1D4ED8] border border-[#BFDBFE]' :
+                              o.shipStatus === '취소' ? 'bg-[#FEF2F2] text-[#991B1B] border border-[#FECACA]' :
+                              o.shipStatus === '서비스' ? 'bg-[#FDF4FF] text-[#9333EA] border border-[#E9D5FF]' :
+                              'bg-[#FFFBEB] text-[#B45309] border border-[#FDE68A]'
+                            }`}>
+                              {o.shipStatus || '준비중'}
+                            </span>
+                            <span className="flex-1 text-[12px] text-[#52525B] truncate">
+                              {o.itemName || '-'} × {o.qty || 0}
+                            </span>
+                            <span className="text-[12px] font-semibold text-[#09090B] tabular-nums w-20 text-right">
+                              ${(o.total || 0).toLocaleString()}
+                            </span>
+                            {isLatest && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#09090B] text-white font-semibold w-10 text-center">최신</span>
+                            )}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* 하단 버튼 */}
+        <div className="px-6 py-4 bg-[#FAFAFA] border-t border-[#E4E4E7] flex items-center justify-between shrink-0">
+          <div className="text-[12px] text-[#71717A]">
+            💡 {useCustomRange ? `${fromDate} ~ ${toDate}` : filterLabel} 기준 중복만 표시
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 bg-white hover:bg-[#F4F4F5] border border-[#E4E4E7] text-[#52525B] rounded-[8px] text-[13px] font-medium transition-colors"
+            >
+              취소
+            </button>
+            <button
+              onClick={handleConfirmDelete}
+              disabled={willDelete === 0}
+              className="px-4 py-2 bg-[#09090B] hover:bg-black disabled:bg-[#D4D4D8] disabled:cursor-not-allowed text-white rounded-[8px] text-[13px] font-medium transition-colors"
+            >
+              체크한 것만 유지 · {willDelete}건 삭제
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
