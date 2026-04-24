@@ -225,6 +225,9 @@ export async function saveBatch(tableName, rows) {
 
 // 실제 저장 로직 분리 (백그라운드 실행)
 async function _saveBatchInternal(tableName, rows) {
+  // 🛡️ 업로드 진행 중에는 echo suppress 유지 (덮어쓰기 방지)
+  _suppressFetchUntil[tableName] = Date.now() + 30000; // 일단 30초로 확장
+
   try {
     // items 테이블의 경우 code를 id로 사용
     const normalizedRows = rows.map(row => {
@@ -263,6 +266,8 @@ async function _saveBatchInternal(tableName, rows) {
 
     if (changedRows.length === 0) {
       _lastSavedRows[tableName] = currentMap;
+      // 저장할 것 없으면 suppress 즉시 해제
+      _suppressFetchUntil[tableName] = 0;
       return;
     }
 
@@ -289,6 +294,9 @@ async function _saveBatchInternal(tableName, rows) {
           if (error) throw error;
           uploadedCount += chunk.length;
           success = true;
+          // 🛡️ 업로드 중에도 suppress 갱신 (Realtime echo 방지)
+          _suppressFetchUntil[tableName] = Date.now() + 5000;
+
           if (chunks.length > 5 && idx % 5 === 0) {
             console.log(`  ⏳ ${tableName}: ${uploadedCount}/${changedRows.length} (${Math.round(uploadedCount / changedRows.length * 100)}%)`);
           }
@@ -311,8 +319,12 @@ async function _saveBatchInternal(tableName, rows) {
 
     _lastSavedRows[tableName] = currentMap;
     console.log(`✓ ${tableName} ${uploadedCount}/${changedRows.length}건 업로드 완료`);
+
+    // 🛡️ 업로드 완료 후에도 echo가 돌아올 시간 확보 (Supabase Realtime 지연 고려)
+    _suppressFetchUntil[tableName] = Date.now() + 5000;
   } catch (err) {
     console.error(`Error batch saving ${tableName}:`, err);
+    // 에러 시에도 suppress는 유지 (부분 업로드된 데이터 보호)
   }
 }
 
