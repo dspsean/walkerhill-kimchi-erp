@@ -5,6 +5,7 @@ import {
   isSupabaseConfigured,
   subscribeToTable,
   saveBatch,
+  suppressRealtimeEcho,
   TABLES,
 } from './supabase.js';
 
@@ -1576,6 +1577,7 @@ export default function App() {
     _setCustomersInternal(resolved);
     saveData(STORAGE_KEYS.customers, resolved);
     if (isSupabaseConfigured && initialSyncDoneRef.current) {
+      suppressRealtimeEcho(TABLES.customers, 3000);
       saveBatch(TABLES.customers, resolved);
     }
   };
@@ -1590,6 +1592,7 @@ export default function App() {
     _setItemsInternal(cleaned);
     saveData(STORAGE_KEYS.items, cleaned);
     if (isSupabaseConfigured && initialSyncDoneRef.current) {
+      suppressRealtimeEcho(TABLES.items, 3000);
       saveBatch(TABLES.items, cleaned);
     }
   };
@@ -1599,6 +1602,7 @@ export default function App() {
     _setOrdersInternal(resolved);
     saveData(STORAGE_KEYS.orders, resolved);
     if (isSupabaseConfigured && initialSyncDoneRef.current) {
+      suppressRealtimeEcho(TABLES.orders, 3000);
       saveBatch(TABLES.orders, resolved);
     }
   };
@@ -1608,6 +1612,7 @@ export default function App() {
     _setDriversInternal(resolved);
     saveData(DRIVERS_KEY, resolved);
     if (isSupabaseConfigured && initialSyncDoneRef.current) {
+      suppressRealtimeEcho(TABLES.drivers, 3000);
       saveBatch(TABLES.drivers, resolved);
     }
   };
@@ -3089,6 +3094,21 @@ function OrderFormModal({ customers, items, editTarget, gifts = [], orders = [],
     return [{ itemName: '', qty: 1, perBox: 10 }];
   });
 
+  // 🧠 품목별 최근 사용한 박스당 수량 기억 (localStorage)
+  const recallPerBox = (itemName, customerId) => {
+    try {
+      const key = `wh:perBox:${customerId || 'default'}:${itemName}`;
+      const stored = localStorage.getItem(key);
+      return stored ? parseInt(stored) : null;
+    } catch { return null; }
+  };
+  const rememberPerBox = (itemName, customerId, perBox) => {
+    try {
+      const key = `wh:perBox:${customerId || 'default'}:${itemName}`;
+      localStorage.setItem(key, String(perBox));
+    } catch {}
+  };
+
   const [isService, setIsService] = useState(editTarget?.isService || false);
   const [isPickup, setIsPickup] = useState(editTarget?.isPickup || false);
   // 🏢 B2B / 선주문 관련
@@ -3134,6 +3154,13 @@ function OrderFormModal({ customers, items, editTarget, gifts = [], orders = [],
   const isB2B = !!selectedCustomer?.isB2B;
   const discountRate = selectedCustomer?.b2bDiscount || 0;
 
+  // 🚀 성능 최적화: items를 Map으로 캐싱 (find 반복 방지)
+  const itemMap = useMemo(() => {
+    const map = new Map();
+    items.forEach(i => { map.set(i.name, i); });
+    return map;
+  }, [items]);
+
   // 품목 추가/제거/수정
   const addOrderItem = () => {
     setOrderItems([...orderItems, { itemName: '', qty: 1, perBox: 10 }]);
@@ -3145,20 +3172,34 @@ function OrderFormModal({ customers, items, editTarget, gifts = [], orders = [],
   const updateOrderItem = (idx, key, value) => {
     const next = [...orderItems];
     next[idx] = { ...next[idx], [key]: value };
+
+    // 🧠 품목 변경 시 해당 품목의 마지막 박스당 수량 복원
+    if (key === 'itemName' && value) {
+      const remembered = recallPerBox(value, customerId);
+      if (remembered) {
+        next[idx].perBox = remembered;
+      }
+    }
+    // 박스당 수량 변경 시 기억
+    if (key === 'perBox' && next[idx].itemName) {
+      rememberPerBox(next[idx].itemName, customerId, value);
+    }
+
     setOrderItems(next);
   };
 
-  // 각 품목별 계산
+  // 각 품목별 계산 (itemMap 사용으로 O(1))
   const orderItemsWithCalc = useMemo(() => {
     return orderItems.map(oi => {
-      const item = items.find(i => i.name === oi.itemName);
+      const item = itemMap.get(oi.itemName);
       const basePrice = item?.price || 0;
       const unitPrice = item ? getEffectivePrice(item, selectedCustomer) : 0;
       const qty = Number(oi.qty) || 0;
-      const perBox = Number(oi.perBox) || 10;
-      const boxCount = qty / perBox;
+      const perBox = Number(oi.perBox) || 1;
       const itemTotal = unitPrice * qty;
       const itemSaved = (basePrice - unitPrice) * qty;
+      const boxCountFloor = perBox > 0 ? Math.floor(qty / perBox) : 0;
+      const remainder = perBox > 0 ? qty % perBox : qty;
       return {
         ...oi,
         item,
@@ -3166,45 +3207,52 @@ function OrderFormModal({ customers, items, editTarget, gifts = [], orders = [],
         unitPrice,
         qty,
         perBox,
-        boxCount,
-        boxCountFloor: Math.floor(boxCount),
-        boxCountCeil: Math.ceil(boxCount),
-        isExactBox: boxCount === Math.floor(boxCount) && boxCount > 0,
-        remainder: qty % perBox,
+        boxCountFloor,
+        boxCountCeil: boxCountFloor + (remainder > 0 ? 1 : 0),
+        isExactBox: remainder === 0 && qty > 0,
+        remainder,
         itemTotal,
         itemSaved,
       };
     });
-  }, [orderItems, items, selectedCustomer]);
+  }, [orderItems, itemMap, selectedCustomer]);
 
   // 전체 합계
-  const grandTotal = orderItemsWithCalc.reduce((s, oi) => s + oi.itemTotal, 0);
-  const totalSaved = orderItemsWithCalc.reduce((s, oi) => s + oi.itemSaved, 0);
-  const totalQty = orderItemsWithCalc.reduce((s, oi) => s + oi.qty, 0);
+  const { grandTotal, totalSaved, totalQty } = useMemo(() => {
+    let gt = 0, ts = 0, tq = 0;
+    orderItemsWithCalc.forEach(oi => {
+      gt += oi.itemTotal;
+      ts += oi.itemSaved;
+      tq += oi.qty;
+    });
+    return { grandTotal: gt, totalSaved: ts, totalQty: tq };
+  }, [orderItemsWithCalc]);
 
-  // 박스 주문 여부 (B2B + 박스 단위로 주문한 경우)
-  const hasBulkOrder = isB2B && orderItemsWithCalc.some(oi => oi.qty >= oi.perBox);
+  // 박스 주문 여부
+  const hasBulkOrder = isB2B && orderItemsWithCalc.some(oi => oi.qty >= oi.perBox && oi.perBox > 1);
 
-  // 분할 배송 유효성 (첫 품목 기준으로 유지)
+  // 분할 배송 유효성
   const splitTotal = splitDeliveries.reduce((s, d) => s + (Number(d.qty) || 0), 0);
   const splitValid = !showSplitUI || splitTotal === totalQty;
 
-  // 저장 가능 여부
   const hasValidItem = orderItemsWithCalc.some(oi => oi.itemName && oi.qty > 0);
   const canSubmit = customerId && hasValidItem && splitValid &&
     (!isPreOrder || !!expectedStockDate);
 
-  // 🎁 사은품 자동 계산
+  // 🎁 사은품 자동 계산 - 고객ID 바뀔 때만 계산 (orderItems는 별도)
   const customerOtherOrdersTotal = useMemo(() => {
     if (!customerId) return 0;
-    const otherIds = editTarget ? new Set([editTarget.id]) : new Set();
-    return orders
-      .filter(o => o.customerId === customerId && !o.isService && o.shipStatus !== '취소' && !otherIds.has(o.id))
-      .reduce((s, o) => {
-        const it = items.find(i => i.name === o.itemName);
-        return s + (it?.price || 0) * o.qty;
-      }, 0);
-  }, [customerId, orders, items, editTarget]);
+    const editId = editTarget?.id;
+    let total = 0;
+    for (const o of orders) {
+      if (o.customerId !== customerId) continue;
+      if (o.isService || o.shipStatus === '취소') continue;
+      if (editId && o.id === editId) continue;
+      const it = itemMap.get(o.itemName);
+      total += (it?.price || 0) * o.qty;
+    }
+    return total;
+  }, [customerId, orders, itemMap, editTarget]);
 
   const currentOrderTotal = isService ? 0 : grandTotal;
   const totalForGift = customerOtherOrdersTotal + currentOrderTotal;
