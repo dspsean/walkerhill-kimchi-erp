@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Search, Plus, Edit2, Trash2, Copy, Check, Package, Users, ShoppingCart, Truck, BarChart3, Download, X, Send, AlertTriangle, TrendingUp, Bell, FileDown, RotateCcw, History, LogOut, Cloud, CloudOff } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2, Copy, Check, Package, Users, ShoppingCart, Truck, BarChart3, Download, X, Send, AlertTriangle, TrendingUp, Bell, FileDown, RotateCcw, History, LogOut, Cloud, CloudOff, Save, Loader2, AlertCircle } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
   isSupabaseConfigured,
@@ -1457,6 +1457,12 @@ export default function App() {
   // Firebase에서 받은 데이터로 업데이트 중인지 여부 (무한루프 방지)
   const isReceivingFromFirebaseRef = useRef(false);
 
+  // 💾 저장 상태 추적 (Notion/Linear 스타일)
+  // 'saved' = 저장됨 / 'saving' = 저장 중 / 'dirty' = 미저장 변경있음 / 'error' = 실패
+  const [saveState, setSaveState] = useState('saved');
+  const [lastSaveTime, setLastSaveTime] = useState(Date.now());
+  const saveTimerRef = useRef(null);
+
   // ⚡ 데이터 로드 - Firebase 연결된 경우 실시간 구독, 아니면 localStorage
   useEffect(() => {
     let unsubCustomers = null;
@@ -1593,6 +1599,21 @@ export default function App() {
     };
   }, []);
 
+  // 🔧 저장 상태 마킹 헬퍼
+  // - Firebase에서 받은 업데이트는 제외 (이미 저장된 것)
+  // - saveBatch는 debounce 500ms → 즉시 'saving' 표시
+  const markDirtyAndSave = () => {
+    if (isReceivingFromFirebaseRef.current) return;  // 외부 변경은 무시
+    if (!isSupabaseConfigured || !initialSyncDoneRef.current) return;
+    setSaveState('saving');
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    // saveBatch는 debounce 500ms 후 실행 → 1초 후 saved 표시
+    saveTimerRef.current = setTimeout(() => {
+      setSaveState('saved');
+      setLastSaveTime(Date.now());
+    }, 1000);
+  };
+
   // 🔧 공개 setter들 - 로컬 저장 + Firebase 저장
   // (Firestore onSnapshot은 내용 비교로 무한루프 방지)
   const setCustomers = (newValue) => {
@@ -1602,6 +1623,7 @@ export default function App() {
     if (isSupabaseConfigured && initialSyncDoneRef.current) {
       suppressRealtimeEcho(TABLES.customers, 3000);
       saveBatch(TABLES.customers, resolved);
+      markDirtyAndSave();
     }
   };
 
@@ -1617,6 +1639,7 @@ export default function App() {
     if (isSupabaseConfigured && initialSyncDoneRef.current) {
       suppressRealtimeEcho(TABLES.items, 3000);
       saveBatch(TABLES.items, cleaned);
+      markDirtyAndSave();
     }
   };
 
@@ -1627,6 +1650,7 @@ export default function App() {
     if (isSupabaseConfigured && initialSyncDoneRef.current) {
       suppressRealtimeEcho(TABLES.orders, 3000);
       saveBatch(TABLES.orders, resolved);
+      markDirtyAndSave();
     }
   };
 
@@ -1637,8 +1661,55 @@ export default function App() {
     if (isSupabaseConfigured && initialSyncDoneRef.current) {
       suppressRealtimeEcho(TABLES.drivers, 3000);
       saveBatch(TABLES.drivers, resolved);
+      markDirtyAndSave();
     }
   };
+
+  // 💾 즉시 저장 (수동 트리거 - 데이터 다시 저장)
+  const handleSaveNow = async () => {
+    if (!isSupabaseConfigured || !initialSyncDoneRef.current) {
+      showToast('클라우드 연결이 필요합니다', 'error');
+      return;
+    }
+    if (saveState === 'saving') return;  // 이미 저장 중
+
+    setSaveState('saving');
+    try {
+      // 모든 데이터 강제 재저장
+      suppressRealtimeEcho(TABLES.customers, 3000);
+      suppressRealtimeEcho(TABLES.items, 3000);
+      suppressRealtimeEcho(TABLES.orders, 3000);
+      suppressRealtimeEcho(TABLES.drivers, 3000);
+      saveBatch(TABLES.customers, customers);
+      saveBatch(TABLES.items, items.map(({ availStock, ...rest }) => rest));
+      saveBatch(TABLES.orders, orders);
+      saveBatch(TABLES.drivers, drivers);
+
+      // saveBatch는 debounce 500ms + 실제 저장 시간 필요
+      setTimeout(() => {
+        setSaveState('saved');
+        setLastSaveTime(Date.now());
+        showToast('✓ 저장 완료');
+      }, 1200);
+    } catch (err) {
+      console.error('저장 실패:', err);
+      setSaveState('error');
+      showToast('저장 실패. 다시 시도해주세요.', 'error');
+    }
+  };
+
+  // 💡 페이지 이탈 시 미저장 경고
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (saveState === 'saving' || saveState === 'dirty') {
+        e.preventDefault();
+        e.returnValue = '저장 중인 변경사항이 있습니다. 정말 나가시겠습니까?';
+        return e.returnValue;
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [saveState]);
 
   // 🎁 사은품 저장 래퍼 (localStorage만)
   const saveGifts = (newGifts) => {
@@ -2049,6 +2120,51 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-2">
+            {/* 💾 저장 상태 버튼 (Notion/Linear 스타일) */}
+            {isSupabaseConfigured && (
+              <button
+                onClick={handleSaveNow}
+                disabled={saveState === 'saving'}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] text-[12px] font-medium border transition-colors ${
+                  saveState === 'saved'
+                    ? 'bg-white text-[#52525B] border-[#E4E4E7] hover:bg-[#FAFAFA] hover:text-[#09090B]'
+                    : saveState === 'saving'
+                    ? 'bg-[#EFF6FF] text-[#1D4ED8] border-[#BFDBFE] cursor-wait'
+                    : saveState === 'error'
+                    ? 'bg-[#FEF2F2] text-[#B91C1C] border-[#FECACA] hover:bg-[#FEE2E2]'
+                    : 'bg-[#09090B] text-white border-[#09090B] hover:bg-black'
+                }`}
+                title={
+                  saveState === 'saved' ? '모든 변경사항 저장됨 (클릭하여 다시 저장)' :
+                  saveState === 'saving' ? '저장 중...' :
+                  saveState === 'error' ? '저장 실패 - 클릭하여 재시도' :
+                  '미저장 변경사항 있음 - 클릭하여 저장'
+                }
+              >
+                {saveState === 'saved' ? (
+                  <>
+                    <Check size={12} strokeWidth={2.5} />
+                    <span>저장됨</span>
+                  </>
+                ) : saveState === 'saving' ? (
+                  <>
+                    <Loader2 size={12} className="animate-spin" />
+                    <span>저장 중</span>
+                  </>
+                ) : saveState === 'error' ? (
+                  <>
+                    <AlertCircle size={12} />
+                    <span>재시도</span>
+                  </>
+                ) : (
+                  <>
+                    <Save size={12} />
+                    <span>저장</span>
+                  </>
+                )}
+              </button>
+            )}
+
             {/* 실시간 동기화 상태 */}
             {isSupabaseConfigured ? (
               <div className={`flex items-center gap-2 px-3 py-1.5 rounded-[8px] text-[12px] font-medium border ${
