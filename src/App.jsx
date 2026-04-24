@@ -116,6 +116,29 @@ function getActiveGift(gifts) {
   return gifts.find(g => g.active && g.remaining > 0) || null;
 }
 
+// 🎁 사은품 지급 현황 계산 (대시보드/사은품 페이지 공통)
+// - giftId 매칭 우선 + 이름 fallback (과거 데이터 호환)
+// - 취소 주문만 제외 (B2B/입고대기/서비스 모두 포함 - 재고 나감)
+function calcGiftStats(gift, orders) {
+  if (!gift) return { givenQty: 0, recipientCount: 0, remaining: 0, linkedOrders: [] };
+
+  const linkedOrders = orders.filter(o => {
+    if (o.shipStatus === '취소') return false;
+    if (!o.giftQty || o.giftQty <= 0) return false;
+    // ID 매칭 우선
+    if (o.giftId && o.giftId === gift.id) return true;
+    // ID 없으면 이름으로 매칭 (과거 데이터 안전망)
+    if (!o.giftId && o.giftName && o.giftName === gift.name) return true;
+    return false;
+  });
+
+  const givenQty = linkedOrders.reduce((s, o) => s + (o.giftQty || 0), 0);
+  const recipientCount = new Set(linkedOrders.map(o => o.customerId)).size;
+  const remaining = Math.max(0, (gift.totalStock || 0) - givenQty);
+
+  return { givenQty, recipientCount, remaining, linkedOrders };
+}
+
 // 주문 합계 기반 사은품 자동 수량 계산
 function calcGiftQtyByAmount(orderTotal, tiers) {
   if (!tiers || tiers.length === 0) return 0;
@@ -2710,11 +2733,8 @@ function Dashboard({ customers, items, orders, gifts = [], setView }) {
         const activeGift = gifts.find(g => g.active);
         if (!activeGift) return null;
 
-        // 지급 현황 계산
-        const linkedOrders = orders.filter(o => o.giftId === activeGift.id && o.giftQty > 0 && o.shipStatus !== '취소');
-        const givenQty = linkedOrders.reduce((s, o) => s + (o.giftQty || 0), 0);
-        const recipientCount = new Set(linkedOrders.map(o => o.customerId)).size;
-        const remaining = Math.max(0, (activeGift.totalStock || 0) - givenQty);
+        // 🎁 공통 계산 함수 사용 (사은품 페이지와 동일 로직)
+        const { givenQty, recipientCount, remaining } = calcGiftStats(activeGift, orders);
         const pct = activeGift.totalStock > 0 ? (givenQty / activeGift.totalStock) * 100 : 0;
 
         return (
@@ -3356,20 +3376,30 @@ function Orders({ customers, items, orders, setOrders, gifts, setGifts, showToas
             </div>
           </div>
         </div>
-        <div className="grid grid-cols-6 divide-x divide-[#E4E4E7]">
-          {[
-            { name: '배추김치 4KG', label: '배추김치 4KG', short: '1세트' },
-            { name: '배추김치 4KG - 2세트(할인)', label: '배추김치 4KG', short: '2세트' },
-            { name: '배추김치 4KG - 3세트(할인)', label: '배추김치 4KG', short: '3세트' },
-            { name: '총각김치 2KG', label: '총각김치 2KG', short: '1세트' },
-            { name: '총각김치 2KG - 2세트(할인)', label: '총각김치 2KG', short: '2세트' },
-            { name: '혼합세트 (배추4KG + 총각2KG)', label: '혼합세트', short: '배추+총각' },
-          ].map(p => {
+        <div
+          className="grid divide-x divide-[#E4E4E7]"
+          style={{ gridTemplateColumns: `repeat(${Math.max(items.length, 1)}, minmax(0, 1fr))` }}
+        >
+          {items.map(p => {
             const isActive = productFilter === p.name;
-            const count = productCounts[p.name];
+            const count = productCounts[p.name] || 0;
+            // 상품명 파싱: '배추김치 4KG - 2세트(할인)' → label='배추김치 4KG', short='2세트'
+            let label = p.name;
+            let short = '';
+            const match = p.name.match(/^(.+?)\s*-\s*(.+?)(?:\(할인\))?$/);
+            if (match) {
+              label = match[1].trim();
+              short = match[2].trim();
+            } else if (p.name.includes('혼합세트')) {
+              label = '혼합세트';
+              short = '배추+총각';
+            } else {
+              // '배추김치 4KG' 같은 단일 상품: label은 그대로, short는 '1세트'
+              short = '1세트';
+            }
             return (
               <button
-                key={p.name}
+                key={p.code || p.name}
                 onClick={() => setProductFilter(isActive ? '' : p.name)}
                 disabled={count === 0}
                 className={`px-4 py-3 text-left transition-colors ${
@@ -3379,12 +3409,13 @@ function Orders({ customers, items, orders, setOrders, gifts, setGifts, showToas
                       ? 'opacity-40 cursor-not-allowed'
                       : 'hover:bg-[#FAFAFA] cursor-pointer'
                 }`}
+                title={p.name}
               >
-                <div className={`text-[11px] font-medium mb-0.5 ${isActive ? 'text-white/70' : 'text-[#71717A]'}`}>
-                  {p.label}
+                <div className={`text-[11px] font-medium mb-0.5 truncate ${isActive ? 'text-white/70' : 'text-[#71717A]'}`}>
+                  {label}
                 </div>
-                <div className={`text-[10px] mb-1.5 ${isActive ? 'text-white/50' : 'text-[#A1A1AA]'}`}>
-                  {p.short}
+                <div className={`text-[10px] mb-1.5 truncate ${isActive ? 'text-white/50' : 'text-[#A1A1AA]'}`}>
+                  {short}
                 </div>
                 <div className={`text-[22px] font-semibold tabular-nums tracking-tight ${isActive ? 'text-white' : 'text-[#09090B]'}`}>
                   {count}
@@ -7583,18 +7614,15 @@ function Gifts({ gifts, setGifts, orders, setOrders, customers, items, showToast
   const [editTarget, setEditTarget] = useState(null);
   const [showApplyConfirm, setShowApplyConfirm] = useState(null); // 소급 적용 확인
 
-  // 각 이벤트별 지급 현황 계산
+  // 각 이벤트별 지급 현황 계산 (공통 함수 사용)
   const giftStats = useMemo(() => {
     return gifts.map(g => {
-      // 이 사은품이 지급된 주문들
-      const linkedOrders = orders.filter(o => o.giftId === g.id && o.giftQty > 0 && o.shipStatus !== '취소');
-      const givenQty = linkedOrders.reduce((s, o) => s + (o.giftQty || 0), 0);
-      const recipientCount = new Set(linkedOrders.map(o => o.customerId)).size;
+      const { givenQty, recipientCount, remaining } = calcGiftStats(g, orders);
       return {
         ...g,
         givenQty,
         recipientCount,
-        remaining: Math.max(0, (g.totalStock || 0) - givenQty),
+        remaining,
       };
     });
   }, [gifts, orders]);
