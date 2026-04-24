@@ -3394,9 +3394,12 @@ function Orders({ customers, items, orders, setOrders, gifts, setGifts, showToas
                     <td className="px-4 py-3 text-stone-700">
                       {Array.isArray(o.items) && o.items.length > 1 ? (
                         <div className="space-y-0.5">
+                          <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-[4px] bg-[#EFF6FF] border border-[#BFDBFE] text-[#1D4ED8] text-[10px] font-medium mb-0.5">
+                            <Package size={9} strokeWidth={2.5} />
+                            품목 {o.items.length}종
+                          </div>
                           {o.items.map((it, i) => (
                             <div key={i} className="text-xs">
-                              {i === 0 && <span className="text-[9px] px-1 py-0.5 mr-1 rounded bg-amber-100 text-amber-800 font-bold">{o.items.length}개</span>}
                               {it.itemName}
                             </div>
                           ))}
