@@ -798,15 +798,43 @@ function shipStatusStyle(s) {
 // ============================================================
 // 🔐 보안 설정
 // ============================================================
-// ⚠️ 관리자 비밀번호 변경 방법: 아래 PASSWORD 값을 원하는 비밀번호로 수정
-const PASSWORD = 'lock7lock^^';
+// ⚠️ 관리자 비밀번호 변경 방법:
+//   1. 앱 사이드바 하단의 🔐 비밀번호 변경 버튼 사용 (권장)
+//   2. 또는 아래 DEFAULT_PASSWORD 값을 수정 후 재배포
+const DEFAULT_PASSWORD = 'admin1234';  // 초기/폴백 비밀번호
 const SESSION_HOURS = 24; // 1일 자동로그인
 const MAX_ATTEMPTS = 5; // 최대 시도 횟수
 const LOCKOUT_MINUTES = 10; // 차단 시간
 
 const AUTH_KEY = 'wh:auth:session';
 const ATTEMPT_KEY = 'wh:auth:attempts';
+const PASSWORD_KEY = 'wh:auth:password';  // 🆕 커스텀 비밀번호 저장
 const DRIVERS_KEY = 'wh:v6:drivers';
+
+// 🔐 현재 관리자 비밀번호 가져오기 (localStorage 우선)
+function getAdminPassword() {
+  try {
+    const custom = localStorage.getItem(PASSWORD_KEY);
+    return custom || DEFAULT_PASSWORD;
+  } catch {
+    return DEFAULT_PASSWORD;
+  }
+}
+
+// 🔐 관리자 비밀번호 변경
+function setAdminPassword(newPassword) {
+  try {
+    if (newPassword === DEFAULT_PASSWORD) {
+      // 기본값과 같으면 저장 안 하고 삭제 (깔끔하게)
+      localStorage.removeItem(PASSWORD_KEY);
+    } else {
+      localStorage.setItem(PASSWORD_KEY, newPassword);
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 // 🚚 기본 배송기사 계정 (엑셀 기반 차량 A~F 배정)
 const INITIAL_DRIVERS = [
@@ -852,6 +880,215 @@ function verifyDriver(password, drivers) {
   return drivers.find(d => d.password === password) || null;
 }
 
+// ============================================================
+// 🔐 관리자 비밀번호 변경 모달
+// ============================================================
+function ChangePasswordModal({ onClose, showToast }) {
+  const [currentPwd, setCurrentPwd] = useState('');
+  const [newPwd, setNewPwd] = useState('');
+  const [confirmPwd, setConfirmPwd] = useState('');
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+  const [error, setError] = useState('');
+
+  // 비밀번호 강도 체크
+  const getStrength = (pwd) => {
+    if (!pwd) return { level: 0, label: '', color: '' };
+    let score = 0;
+    if (pwd.length >= 8) score++;
+    if (pwd.length >= 12) score++;
+    if (/[a-z]/.test(pwd)) score++;
+    if (/[A-Z]/.test(pwd)) score++;
+    if (/[0-9]/.test(pwd)) score++;
+    if (/[^a-zA-Z0-9]/.test(pwd)) score++;
+
+    if (score <= 2) return { level: 1, label: '약함', color: 'bg-red-500', textColor: 'text-red-700' };
+    if (score <= 4) return { level: 2, label: '보통', color: 'bg-amber-500', textColor: 'text-amber-700' };
+    return { level: 3, label: '강함', color: 'bg-emerald-500', textColor: 'text-emerald-700' };
+  };
+
+  const strength = getStrength(newPwd);
+
+  const handleSubmit = () => {
+    setError('');
+
+    // 1. 현재 비밀번호 확인
+    if (currentPwd !== getAdminPassword()) {
+      setError('현재 비밀번호가 일치하지 않습니다');
+      return;
+    }
+
+    // 2. 새 비밀번호 유효성
+    if (!newPwd || newPwd.length < 6) {
+      setError('새 비밀번호는 최소 6자 이상이어야 합니다');
+      return;
+    }
+
+    // 3. 확인 비밀번호 일치
+    if (newPwd !== confirmPwd) {
+      setError('새 비밀번호가 일치하지 않습니다');
+      return;
+    }
+
+    // 4. 현재와 같으면 안 됨
+    if (newPwd === currentPwd) {
+      setError('현재 비밀번호와 다른 비밀번호를 사용하세요');
+      return;
+    }
+
+    // 저장
+    if (setAdminPassword(newPwd)) {
+      showToast('🔐 비밀번호가 변경되었습니다');
+      onClose();
+    } else {
+      setError('비밀번호 저장에 실패했습니다');
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-stone-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <div className="px-6 py-5 border-b border-stone-200 flex items-center justify-between">
+          <div>
+            <h2 className="font-serif-ko text-lg font-bold text-stone-800">🔐 비밀번호 변경</h2>
+            <div className="text-xs text-stone-500 mt-0.5">관리자 로그인 비밀번호를 변경합니다</div>
+          </div>
+          <button onClick={onClose} className="p-1.5 hover:bg-stone-100 rounded-lg"><X size={18} /></button>
+        </div>
+
+        <div className="p-6 space-y-4">
+          {/* 현재 비밀번호 */}
+          <div>
+            <label className="block text-xs font-semibold text-stone-600 mb-1.5">현재 비밀번호 *</label>
+            <div className="relative">
+              <input
+                type={showCurrent ? 'text' : 'password'}
+                value={currentPwd}
+                onChange={e => { setCurrentPwd(e.target.value); setError(''); }}
+                placeholder="현재 비밀번호 입력"
+                className="w-full px-3 py-2.5 pr-10 border-2 border-stone-200 rounded-lg text-sm focus:outline-none focus:border-red-700 focus:ring-2 focus:ring-red-100"
+                autoFocus
+              />
+              <button
+                type="button"
+                onClick={() => setShowCurrent(!showCurrent)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-stone-500 hover:text-stone-700"
+              >
+                {showCurrent ? '🙈 숨기기' : '👁️ 보기'}
+              </button>
+            </div>
+          </div>
+
+          {/* 새 비밀번호 */}
+          <div>
+            <label className="block text-xs font-semibold text-stone-600 mb-1.5">새 비밀번호 *</label>
+            <div className="relative">
+              <input
+                type={showNew ? 'text' : 'password'}
+                value={newPwd}
+                onChange={e => { setNewPwd(e.target.value); setError(''); }}
+                placeholder="6자 이상, 영문+숫자+특수문자 추천"
+                className="w-full px-3 py-2.5 pr-10 border-2 border-stone-200 rounded-lg text-sm focus:outline-none focus:border-red-700 focus:ring-2 focus:ring-red-100"
+              />
+              <button
+                type="button"
+                onClick={() => setShowNew(!showNew)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-stone-500 hover:text-stone-700"
+              >
+                {showNew ? '🙈 숨기기' : '👁️ 보기'}
+              </button>
+            </div>
+
+            {/* 비밀번호 강도 표시 */}
+            {newPwd && (
+              <div className="mt-2 space-y-1">
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-1.5 bg-stone-100 rounded-full overflow-hidden">
+                    <div className={`h-full transition-all ${strength.color}`} style={{width: `${(strength.level / 3) * 100}%`}} />
+                  </div>
+                  <span className={`text-[10px] font-bold ${strength.textColor}`}>{strength.label}</span>
+                </div>
+                <div className="flex flex-wrap gap-2 text-[10px]">
+                  <span className={newPwd.length >= 8 ? 'text-emerald-700' : 'text-stone-400'}>
+                    {newPwd.length >= 8 ? '✓' : '○'} 8자 이상
+                  </span>
+                  <span className={/[A-Z]/.test(newPwd) ? 'text-emerald-700' : 'text-stone-400'}>
+                    {/[A-Z]/.test(newPwd) ? '✓' : '○'} 대문자
+                  </span>
+                  <span className={/[0-9]/.test(newPwd) ? 'text-emerald-700' : 'text-stone-400'}>
+                    {/[0-9]/.test(newPwd) ? '✓' : '○'} 숫자
+                  </span>
+                  <span className={/[^a-zA-Z0-9]/.test(newPwd) ? 'text-emerald-700' : 'text-stone-400'}>
+                    {/[^a-zA-Z0-9]/.test(newPwd) ? '✓' : '○'} 특수문자
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 새 비밀번호 확인 */}
+          <div>
+            <label className="block text-xs font-semibold text-stone-600 mb-1.5">새 비밀번호 확인 *</label>
+            <input
+              type={showNew ? 'text' : 'password'}
+              value={confirmPwd}
+              onChange={e => { setConfirmPwd(e.target.value); setError(''); }}
+              placeholder="새 비밀번호 다시 입력"
+              className={`w-full px-3 py-2.5 border-2 rounded-lg text-sm focus:outline-none focus:ring-2 ${
+                confirmPwd && confirmPwd === newPwd
+                  ? 'border-emerald-500 focus:ring-emerald-100'
+                  : confirmPwd && confirmPwd !== newPwd
+                  ? 'border-red-500 focus:ring-red-100'
+                  : 'border-stone-200 focus:border-red-700 focus:ring-red-100'
+              }`}
+            />
+            {confirmPwd && confirmPwd !== newPwd && (
+              <div className="text-[10px] text-red-600 mt-1">⚠️ 비밀번호가 일치하지 않습니다</div>
+            )}
+            {confirmPwd && confirmPwd === newPwd && newPwd && (
+              <div className="text-[10px] text-emerald-600 mt-1">✓ 비밀번호가 일치합니다</div>
+            )}
+          </div>
+
+          {/* 에러 메시지 */}
+          {error && (
+            <div className="p-2.5 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 font-semibold">
+              ⚠️ {error}
+            </div>
+          )}
+
+          {/* 경고 */}
+          <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-[10px] text-amber-800 space-y-1">
+            <div className="font-bold">💡 주의사항</div>
+            <ul className="list-disc list-inside space-y-0.5 pl-1">
+              <li>비밀번호는 이 기기(브라우저)에만 저장됩니다</li>
+              <li>다른 기기에서는 기본 비밀번호로 로그인 후 다시 설정하세요</li>
+              <li>브라우저 데이터 삭제 시 기본 비밀번호로 돌아갑니다</li>
+              <li>비밀번호를 잊어버리면 복구할 수 없으니 안전하게 보관하세요</li>
+            </ul>
+          </div>
+        </div>
+
+        <div className="px-6 py-4 border-t border-stone-200 flex items-center justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm text-stone-600 hover:bg-stone-100 rounded-lg"
+          >
+            취소
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={!currentPwd || !newPwd || !confirmPwd || newPwd !== confirmPwd || newPwd.length < 6}
+            className="px-5 py-2 bg-red-800 text-white rounded-lg text-sm font-semibold hover:bg-red-900 active:scale-95 transition-all disabled:bg-stone-300 disabled:cursor-not-allowed"
+          >
+            🔐 변경하기
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function LoginScreen({ onSuccess, drivers = [] }) {
   const [input, setInput] = useState('');
   const [error, setError] = useState('');
@@ -881,7 +1118,7 @@ function LoginScreen({ onSuccess, drivers = [] }) {
     if (isLocked) return;
 
     // 1. 관리자 비밀번호 확인
-    if (input === PASSWORD) {
+    if (input === getAdminPassword()) {
       saveAuthSession({ role: 'admin' });
       saveAttempts({ count: 0, lockedUntil: 0 });
       onSuccess({ role: 'admin' });
@@ -1041,6 +1278,7 @@ export default function App() {
   const [loaded, setLoaded] = useState(false);
   const [toast, setToast] = useState(null);
   const [resetConfirm, setResetConfirm] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
 
   // 로그인 체크 (앱 시작 시)
   useEffect(() => {
@@ -1417,6 +1655,13 @@ export default function App() {
             <span>{resetConfirm ? '한번 더 클릭 → 정말 초기화!' : '데이터 초기화'}</span>
           </button>
           <button
+            onClick={() => setShowChangePassword(true)}
+            className="w-full flex items-center gap-2 px-3 py-2 bg-stone-50 hover:bg-indigo-50 hover:text-indigo-700 text-stone-500 rounded-lg text-xs font-medium transition-all border border-stone-100"
+          >
+            <span className="text-sm">🔐</span>
+            <span>비밀번호 변경</span>
+          </button>
+          <button
             onClick={handleLogout}
             className="w-full flex items-center gap-2 px-3 py-2 bg-stone-50 hover:bg-red-50 hover:text-red-700 text-stone-500 rounded-lg text-xs font-medium transition-all border border-stone-100"
           >
@@ -1505,6 +1750,13 @@ export default function App() {
         }`}>
           {toast.msg}
         </div>
+      )}
+
+      {showChangePassword && (
+        <ChangePasswordModal
+          onClose={() => setShowChangePassword(false)}
+          showToast={showToast}
+        />
       )}
     </div>
   );
