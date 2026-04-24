@@ -159,15 +159,33 @@ export async function saveBatch(tableName, rows) {
 
         console.log(`📤 ${tableName}: ${changedRows.length}/${rows.length}건 변경됨, 업로드 중...`);
 
-        // Supabase upsert는 한 번에 1000건까지 가능
+        // Supabase upsert: 100건씩 순차 업로드 + 딜레이 (리소스 오버플로우 방지)
+        const CHUNK_SIZE = 100;
+        const DELAY_MS = 200;
         const chunks = [];
-        for (let i = 0; i < changedRows.length; i += 500) {
-          chunks.push(changedRows.slice(i, i + 500));
+        for (let i = 0; i < changedRows.length; i += CHUNK_SIZE) {
+          chunks.push(changedRows.slice(i, i + CHUNK_SIZE));
         }
 
-        for (const chunk of chunks) {
-          const { error } = await supabase.from(tableName).upsert(chunk);
-          if (error) throw error;
+        let uploadedCount = 0;
+        for (let idx = 0; idx < chunks.length; idx++) {
+          const chunk = chunks[idx];
+          try {
+            const { error } = await supabase.from(tableName).upsert(chunk);
+            if (error) throw error;
+            uploadedCount += chunk.length;
+            // 진행 로그 (10% 단위)
+            if (chunks.length > 5) {
+              console.log(`  ⏳ ${tableName}: ${uploadedCount}/${changedRows.length} (${Math.round(uploadedCount / changedRows.length * 100)}%)`);
+            }
+          } catch (err) {
+            console.error(`  ❌ ${tableName} 청크 ${idx + 1} 실패:`, err);
+            throw err;
+          }
+          // 마지막 청크가 아니면 딜레이
+          if (idx < chunks.length - 1) {
+            await new Promise(r => setTimeout(r, DELAY_MS));
+          }
         }
 
         _lastSavedRows[tableName] = currentMap;
