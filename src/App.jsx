@@ -1466,6 +1466,7 @@ export default function App() {
                 return data;
               });
               setTimeout(() => { isReceivingFromFirebaseRef.current = false; }, 100);
+              initialSyncDoneRef.current = true;  // 🔑 동기화 완료 플래그
             }
           }, handleFirebaseError);
 
@@ -1478,6 +1479,7 @@ export default function App() {
                 return data;
               });
               setTimeout(() => { isReceivingFromFirebaseRef.current = false; }, 100);
+              initialSyncDoneRef.current = true;  // 🔑 동기화 완료 플래그
             }
           }, handleFirebaseError);
 
@@ -1490,8 +1492,17 @@ export default function App() {
                 return data;
               });
               setTimeout(() => { isReceivingFromFirebaseRef.current = false; }, 100);
+              initialSyncDoneRef.current = true;  // 🔑 동기화 완료 플래그
             }
           }, handleFirebaseError);
+
+          // 🛡️ 안전망: 5초 후 강제로 initialSyncDone 활성화 (subscribe 응답 없어도 저장은 가능하게)
+          setTimeout(() => {
+            if (!initialSyncDoneRef.current) {
+              warn('⚠️ Supabase 응답 없음 - 5초 후 강제 동기화 활성화');
+              initialSyncDoneRef.current = true;
+            }
+          }, 5000);
         } catch (err) {
           console.error('Firebase 연결 실패, 로컬 모드로 전환:', err);
           setSyncStatus('error');
