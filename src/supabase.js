@@ -50,7 +50,8 @@ export const TABLES = {
   orders: 'orders',
   drivers: 'drivers',
   gifts: 'gifts',  // 🎁 사은품 이벤트
-  auditLogs: 'audit_logs',  // 🆕 변경 이력 추적
+  appSettings: 'app_settings',  // ⚙️ 앱 설정 통합 (비밀번호/사용자명/박스수량 등)
+  auditLogs: 'audit_logs',  // 📋 변경 이력 추적
 };
 
 // ============================================================
@@ -513,5 +514,113 @@ export async function fetchAuditLogs({ limit = 100, userName, entityType, fromDa
   } catch (err) {
     console.error('Fetch audit logs error:', err);
     return [];
+  }
+}
+
+
+// ============================================================
+// ⚙️ 앱 설정 통합 동기화 (비밀번호/사용자명/박스수량 등)
+// ============================================================
+
+/**
+ * 설정값 가져오기 (단일 키)
+ * @returns {Promise<any|null>}
+ */
+export async function getSetting(key) {
+  if (!supabase) return null;
+  try {
+    const { data, error } = await supabase
+      .from(TABLES.appSettings)
+      .select('value')
+      .eq('id', key)
+      .maybeSingle();
+    if (error) {
+      console.error(`getSetting(${key}) error:`, error);
+      return null;
+    }
+    return data ? data.value : null;
+  } catch (err) {
+    console.error(`getSetting(${key}) error:`, err);
+    return null;
+  }
+}
+
+/**
+ * 설정값 저장 (단일 키)
+ */
+export async function setSetting(key, value, description) {
+  if (!supabase) return false;
+  try {
+    suppressRealtimeEcho(TABLES.appSettings, 3000);
+    const { error } = await supabase
+      .from(TABLES.appSettings)
+      .upsert({
+        id: key,
+        value: value,
+        description: description || null,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'id' });
+    if (error) throw error;
+    return true;
+  } catch (err) {
+    console.error(`setSetting(${key}) error:`, err);
+    return false;
+  }
+}
+
+/**
+ * 모든 설정값 가져오기 (객체로 반환)
+ * @returns {Promise<Object>} { key1: value1, key2: value2, ... }
+ */
+export async function getAllSettings() {
+  if (!supabase) return {};
+  try {
+    const { data, error } = await supabase
+      .from(TABLES.appSettings)
+      .select('*');
+    if (error) throw error;
+    const result = {};
+    (data || []).forEach(row => {
+      result[row.id] = row.value;
+    });
+    return result;
+  } catch (err) {
+    console.error('getAllSettings error:', err);
+    return {};
+  }
+}
+
+/**
+ * 설정 변경 실시간 구독
+ * @param {Function} onChange - (key, value) => void
+ * @returns {Function} unsubscribe
+ */
+export function subscribeToSettings(onChange) {
+  if (!supabase) return () => {};
+  try {
+    const channel = supabase
+      .channel('app_settings_changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: TABLES.appSettings },
+        (payload) => {
+          // suppress 윈도우 체크 (자기가 저장한 변경 무시)
+          if (Date.now() < (_suppressFetchUntil[TABLES.appSettings] || 0)) {
+            return;
+          }
+          if (payload.eventType === 'DELETE') {
+            onChange(payload.old.id, null);
+          } else {
+            onChange(payload.new.id, payload.new.value);
+          }
+        }
+      )
+      .subscribe();
+    return () => {
+      try { supabase.removeChannel(channel); } catch {}
+    };
+  } catch (err) {
+    console.error('subscribeToSettings error:', err);
+    return () => {};
   }
 }
