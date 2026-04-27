@@ -447,7 +447,7 @@ function exportToExcel(customers, items, orders) {
   const d = String(now.getDate()).padStart(2, '0');
   const hh = String(now.getHours()).padStart(2, '0');
   const mm = String(now.getMinutes()).padStart(2, '0');
-  const filename = `워커힐김치_백업_${y}${m}${d}_${hh}${mm}.xlsx`;
+  const filename = `김치하우스_백업_${y}${m}${d}_${hh}${mm}.xlsx`;
 
   XLSX.writeFile(wb, filename);
   return filename;
@@ -1196,11 +1196,16 @@ function LoginScreen({ onSuccess, drivers = [] }) {
       <div className={`w-full max-w-[420px] ${shake ? 'shake' : ''}`}>
         {/* 로고 + 타이틀 */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-white shadow-sm border border-[#E4E4E7] mb-4 text-3xl">
-            🥬
+          <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-white shadow-sm border border-[#E4E4E7] mb-4 overflow-hidden p-1.5">
+            <img
+              src="/icon-192.png"
+              alt="김치하우스"
+              className="w-full h-full object-contain"
+              onError={(e) => { e.target.style.display = 'none'; e.target.parentElement.innerHTML = '<span class=\"text-3xl\">🏠</span>'; }}
+            />
           </div>
-          <h1 className="text-[24px] font-bold text-[#09090B] tracking-tight mb-1">워커힐김치</h1>
-          <div className="text-[11px] tracking-[0.4em] text-[#71717A] font-medium uppercase pl-1">OMS System</div>
+          <h1 className="text-[24px] font-bold text-[#09090B] tracking-tight mb-1">김치하우스</h1>
+          <div className="text-[11px] tracking-[0.4em] text-[#71717A] font-medium uppercase pl-1">Kimchi House AU</div>
         </div>
 
         {/* 메인 카드 */}
@@ -1369,7 +1374,7 @@ function LoginScreen({ onSuccess, drivers = [] }) {
         </div>
 
         <div className="text-center mt-6 text-[11px] text-[#A1A1AA]">
-          © 2026 워커힐김치 OMS
+          © 2026 Kimchi House AU
         </div>
       </div>
     </div>
@@ -1594,6 +1599,7 @@ export default function App() {
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [showEditUsers, setShowEditUsers] = useState(false);  // 🆕 사용자 관리 모달
   const [adminUsers, setAdminUsers] = useState(() => getAdminUsers());  // 🆕 사용자 목록
+  const [sidebarOpen, setSidebarOpen] = useState(false);  // 📱 모바일/태블릿 사이드바
 
   // 로그인 체크 (앱 시작 시)
   useEffect(() => {
@@ -2418,6 +2424,80 @@ export default function App() {
         .scrollbar-slim::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 4px; }
         .scrollbar-slim::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }
 
+        /* 📱 스크롤바 숨김 (모바일/태블릿) */
+        .scrollbar-hide {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+        .scrollbar-hide::-webkit-scrollbar {
+          display: none;
+        }
+
+        /* 📱 터치 디바이스 최적화 */
+        @media (hover: none) and (pointer: coarse) {
+          /* 터치 시 호버 효과 제거 */
+          button, a, input, select, textarea {
+            -webkit-tap-highlight-color: transparent;
+          }
+          /* 부드러운 스크롤 */
+          * {
+            -webkit-overflow-scrolling: touch;
+          }
+          /* 터치 타겟 최소 사이즈 보장 */
+          button, a {
+            min-height: 36px;
+          }
+          /* 작은 아이콘 버튼은 예외 (최소 32px) */
+          button.p-1,
+          button.p-1\.5 {
+            min-height: 32px;
+            min-width: 32px;
+          }
+        }
+
+        /* 📱 iOS Safari 입력 필드 자동 줌 방지 */
+        @media (max-width: 1024px) {
+          input[type="text"],
+          input[type="number"],
+          input[type="password"],
+          input[type="email"],
+          input[type="tel"],
+          input[type="search"],
+          input[type="date"],
+          textarea,
+          select {
+            font-size: 16px !important;
+          }
+        }
+
+        /* 📱 모달 - 작은 화면에서 더 큰 영역 사용 */
+        @media (max-width: 640px) {
+          .modal-mobile-full {
+            max-width: 100% !important;
+            max-height: 100vh !important;
+            border-radius: 0 !important;
+          }
+        }
+
+        /* 📱 테이블 - 모바일/태블릿에서 가로 스크롤 강제 */
+        @media (max-width: 1024px) {
+          .table-scroll-mobile {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+          }
+          .table-scroll-mobile table {
+            min-width: 600px;
+          }
+        }
+
+        /* 📱 가로/세로 모드 안전 */
+        @media (orientation: portrait) {
+          .landscape-only { display: none !important; }
+        }
+        @media (orientation: landscape) {
+          .portrait-only { display: none !important; }
+        }
+
         ::-webkit-scrollbar { width: 12px; height: 12px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb {
@@ -2487,21 +2567,46 @@ export default function App() {
         .btn-secondary:hover { background: var(--bg-muted); border-color: var(--border-default); }
       `}</style>
 
-      <aside className="fixed left-0 top-0 h-full w-64 bg-white border-r border-[#E4E4E7] flex flex-col z-20">
+      {/* 📱 모바일/태블릿 오버레이 */}
+      {sidebarOpen && (
+        <div
+          className="lg:hidden fixed inset-0 bg-black/40 z-30"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      <aside className={`fixed left-0 top-0 h-full w-[260px] bg-white border-r border-[#E4E4E7] flex flex-col z-40 transition-transform duration-300 ${
+        sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+      }`}>
+        {/* 📱 모바일 닫기 버튼 */}
+        <button
+          onClick={() => setSidebarOpen(false)}
+          className="lg:hidden absolute top-3 right-3 p-2 hover:bg-[#F4F4F5] rounded-lg"
+        >
+          <X size={18} />
+        </button>
         {/* 로고 섹션 - 미니멀 */}
         <button
           onClick={() => {
             setView('dashboard');
+            setSidebarOpen(false);
             setTimeout(() => window.location.reload(), 50);
           }}
           className="px-5 pt-6 pb-5 border-b border-[#E4E4E7] hover:bg-[#FAFAFA] transition-colors text-left w-full"
           title="대시보드로 이동"
         >
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-[#09090B] flex items-center justify-center text-white text-[14px] font-semibold">W</div>
+            <div className="w-9 h-9 rounded-lg bg-white border border-[#E4E4E7] flex items-center justify-center overflow-hidden p-1">
+              <img
+                src="/icon-192.png"
+                alt="김치하우스"
+                className="w-full h-full object-contain"
+                onError={(e) => { e.target.style.display = 'none'; e.target.parentElement.innerHTML = '<span class=\"text-[14px] font-semibold text-[#09090B]\">K</span>'; }}
+              />
+            </div>
             <div>
-              <div className="text-[15px] font-semibold text-[#09090B] leading-tight">Walkerhill</div>
-              <div className="text-[11px] text-[#71717A] mt-0.5 font-medium">Kimchi OMS</div>
+              <div className="text-[15px] font-semibold text-[#09090B] leading-tight">김치하우스</div>
+              <div className="text-[11px] text-[#71717A] mt-0.5 font-medium">Kimchi House AU</div>
             </div>
           </div>
         </button>
@@ -2513,7 +2618,7 @@ export default function App() {
             {nav.map(({ id, label, icon: Icon, shortcut }) => (
               <button
                 key={id}
-                onClick={() => setView(id)}
+                onClick={() => { setView(id); setSidebarOpen(false); }}
                 className={`group w-full flex items-center gap-2.5 px-3 py-2 rounded-[8px] text-[14px] transition-colors ${
                   view === id
                     ? 'bg-[#09090B] text-white'
@@ -2637,13 +2742,25 @@ export default function App() {
         </div>
       </aside>
 
-      <main className="ml-64 min-h-screen bg-[#FAFAFA]">
-        <header className="sticky top-0 z-10 bg-white border-b border-[#E4E4E7] px-8 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-[20px] font-semibold text-[#09090B] tracking-tight leading-tight">
+      <main className="lg:ml-[260px] min-h-screen bg-[#FAFAFA]">
+        <header className="sticky top-0 z-10 bg-white border-b border-[#E4E4E7] px-4 lg:px-8 py-3 lg:py-4 flex items-center justify-between gap-3">
+          {/* 📱 햄버거 메뉴 (모바일/태블릿만) */}
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="lg:hidden p-2 -ml-2 hover:bg-[#F4F4F5] rounded-lg active:scale-95 transition-all"
+            aria-label="메뉴 열기"
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="3" y1="6" x2="21" y2="6" />
+              <line x1="3" y1="12" x2="21" y2="12" />
+              <line x1="3" y1="18" x2="21" y2="18" />
+            </svg>
+          </button>
+          <div className="flex-1 min-w-0">
+            <h1 className="text-[18px] lg:text-[20px] font-semibold text-[#09090B] tracking-tight leading-tight truncate">
               {nav.find(n => n.id === view)?.label}
             </h1>
-            <div className="text-[13px] text-[#71717A] mt-0.5">
+            <div className="text-[12px] lg:text-[13px] text-[#71717A] mt-0.5 truncate hidden sm:block">
               {view === 'dashboard' && '매출 · 주문 · 배송 현황을 한눈에 확인하세요'}
               {view === 'orders' && '주문을 등록하고 관리하세요'}
               {view === 'customers' && '고객 정보를 관리하세요'}
@@ -2655,17 +2772,17 @@ export default function App() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
             {/* 🔄 새로고침 버튼 (다른 PC 변경사항 즉시 반영) */}
             {isSupabaseConfigured && (
               <button
                 onClick={handleRefresh}
                 disabled={refreshing}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] text-[12px] font-medium bg-white text-[#52525B] border border-[#E4E4E7] hover:bg-[#FAFAFA] hover:text-[#09090B] transition-colors disabled:opacity-50"
+                className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] text-[12px] font-medium bg-white text-[#52525B] border border-[#E4E4E7] hover:bg-[#FAFAFA] hover:text-[#09090B] transition-colors disabled:opacity-50"
                 title="다른 기기의 변경사항 즉시 불러오기"
               >
                 <RotateCcw size={12} className={refreshing ? 'animate-spin' : ''} />
-                <span>{refreshing ? '불러오는 중' : '새로고침'}</span>
+                <span className="hidden sm:inline">{refreshing ? '불러오는 중' : '새로고침'}</span>
               </button>
             )}
 
@@ -2674,7 +2791,7 @@ export default function App() {
               <button
                 onClick={handleSaveNow}
                 disabled={saveState === 'saving'}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] text-[12px] font-medium border transition-colors ${
+                className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] text-[12px] font-medium border transition-colors ${
                   saveState === 'saved'
                     ? 'bg-white text-[#52525B] border-[#E4E4E7] hover:bg-[#FAFAFA] hover:text-[#09090B]'
                     : saveState === 'saving'
@@ -2693,30 +2810,30 @@ export default function App() {
                 {saveState === 'saved' ? (
                   <>
                     <Check size={12} strokeWidth={2.5} />
-                    <span>저장됨</span>
+                    <span className="hidden md:inline">저장됨</span>
                   </>
                 ) : saveState === 'saving' ? (
                   <>
                     <Loader2 size={12} className="animate-spin" />
-                    <span>저장 중</span>
+                    <span className="hidden md:inline">저장 중</span>
                   </>
                 ) : saveState === 'error' ? (
                   <>
                     <AlertCircle size={12} />
-                    <span>재시도</span>
+                    <span className="hidden md:inline">재시도</span>
                   </>
                 ) : (
                   <>
                     <Save size={12} />
-                    <span>저장</span>
+                    <span className="hidden md:inline">저장</span>
                   </>
                 )}
               </button>
             )}
 
-            {/* 실시간 동기화 상태 */}
+            {/* 실시간 동기화 상태 - 모바일에서 텍스트 숨김 */}
             {isSupabaseConfigured ? (
-              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-[8px] text-[12px] font-medium border ${
+              <div className={`flex-shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-[8px] text-[12px] font-medium border ${
                 syncStatus === 'synced' ? 'bg-white text-[#15803D] border-[#BBF7D0]' :
                 syncStatus === 'connecting' ? 'bg-white text-[#B45309] border-[#FEF3C7]' :
                 'bg-white text-[#B91C1C] border-[#FECACA]'
@@ -2727,39 +2844,40 @@ export default function App() {
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#22C55E] opacity-75"></span>
                       <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-[#16A34A]"></span>
                     </span>
-                    <span>실시간 연결</span>
+                    <span className="hidden md:inline">실시간 연결</span>
                   </>
                 ) : syncStatus === 'connecting' ? (
                   <>
                     <Cloud size={12} className="animate-pulse" />
-                    <span>연결 중</span>
+                    <span className="hidden md:inline">연결 중</span>
                   </>
                 ) : (
                   <>
                     <CloudOff size={12} />
-                    <span>오프라인</span>
+                    <span className="hidden md:inline">오프라인</span>
                   </>
                 )}
               </div>
             ) : (
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-[8px] text-[12px] font-medium bg-white text-[#71717A] border border-[#E4E4E7]">
+              <div className="flex-shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-[8px] text-[12px] font-medium bg-white text-[#71717A] border border-[#E4E4E7]">
                 <CloudOff size={12} />
-                <span>로컬 모드</span>
+                <span className="hidden md:inline">로컬 모드</span>
               </div>
             )}
 
             {lowStockCount > 0 && (
               <button
                 onClick={() => setView('items')}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-[#B45309] rounded-[8px] text-[12px] font-medium border border-[#FDE68A] hover:bg-[#FFFBEB] transition-colors"
+                className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-white text-[#B45309] rounded-[8px] text-[12px] font-medium border border-[#FDE68A] hover:bg-[#FFFBEB] transition-colors"
               >
                 <Bell size={12} />
-                재고 경보 {lowStockCount}
+                <span className="hidden md:inline">재고 경보</span>
+                <span>{lowStockCount}</span>
               </button>
             )}
 
-            {/* 오늘 날짜 */}
-            <div className="px-3 py-1.5 bg-white rounded-[8px] border border-[#E4E4E7]">
+            {/* 오늘 날짜 - 태블릿 가로 이상에서만 */}
+            <div className="hidden md:block flex-shrink-0 px-3 py-1.5 bg-white rounded-[8px] border border-[#E4E4E7]">
               <div className="text-[12px] font-medium text-[#09090B] tabular-nums">
                 {new Date().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })}
               </div>
@@ -2767,7 +2885,7 @@ export default function App() {
 
             {/* 🆕 현재 사용자 + 역할 표시 */}
             {currentUser && (
-              <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] text-[12px] font-medium ${
+              <div className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] text-[12px] font-medium ${
                 userRole === 'admin'
                   ? 'bg-[#09090B] text-white'
                   : 'bg-[#52525B] text-white'
@@ -2779,7 +2897,7 @@ export default function App() {
           </div>
         </header>
 
-        <div className="p-8 max-w-[1600px]">
+        <div className="p-4 lg:p-8 max-w-[1600px]">
           {view === 'dashboard' && <Dashboard customers={customers} items={itemsWithStock} orders={orders} gifts={gifts} setView={setView} />}
           {view === 'orders' && <Orders customers={customers} items={itemsWithStock} orders={orders} setOrders={setOrders} gifts={gifts} setGifts={saveGifts} showToast={showToast} />}
           {view === 'customers' && <Customers customers={customers} setCustomers={setCustomers} items={itemsWithStock} orders={orders} setOrders={setOrders} showToast={showToast} />}
@@ -5556,9 +5674,9 @@ function MessageModal({ order, customers, items, orders, onClose }) {
     ? `\n🎁 사은품: ${order.giftName} ${order.giftQty}개`
     : '';
 
-  const orderMsg = `[워커힐김치 주문 안내] ${c?.name}고객님, ${koDate(order.date)}에 ${order.itemName} ${order.qty}개 주문해주셨습니다. 총 $${formatNum(finalTotal)}${shippingLine} 입니다.${giftLine ? ' ' + giftLine.replace(/\n/g, ' ') : ''} 감사합니다~♥`;
-  const confirmMsg = `[워커힐김치 배송 전 확인] ${c?.name}고객님, 곧 배송 예정인 주문 내역을 확인 부탁드립니다.\n- 품목: ${order.itemName}\n- 수량: ${order.qty}개\n- 금액: $${formatNum(finalTotal)}${shippingLine}${giftLine}\n- 배송지: ${c?.address}\n내역이 맞으시면 "확인" 답장 부탁드려요~♥`;
-  const shipMsg = (order.shipStatus === '배송완료' || order.shipStatus === '배송중') ? `[워커힐김치 배송 안내] ${c?.name}고객님, 주문하신 ${order.itemName} x${order.qty}${giftLine ? ` + ${order.giftName} ${order.giftQty}개(사은품)` : ''}이(가) ${order.shipDate ? order.shipDate + ' 출고되었습니다. ' : '배송 중입니다. '}${order.deliveryMethod ? '(' + order.deliveryMethod + ') ' : ''}감사합니다~♥` : null;
+  const orderMsg = `[김치하우스 주문 안내] ${c?.name}고객님, ${koDate(order.date)}에 ${order.itemName} ${order.qty}개 주문해주셨습니다. 총 $${formatNum(finalTotal)}${shippingLine} 입니다.${giftLine ? ' ' + giftLine.replace(/\n/g, ' ') : ''} 감사합니다~♥`;
+  const confirmMsg = `[김치하우스 배송 전 확인] ${c?.name}고객님, 곧 배송 예정인 주문 내역을 확인 부탁드립니다.\n- 품목: ${order.itemName}\n- 수량: ${order.qty}개\n- 금액: $${formatNum(finalTotal)}${shippingLine}${giftLine}\n- 배송지: ${c?.address}\n내역이 맞으시면 "확인" 답장 부탁드려요~♥`;
+  const shipMsg = (order.shipStatus === '배송완료' || order.shipStatus === '배송중') ? `[김치하우스 배송 안내] ${c?.name}고객님, 주문하신 ${order.itemName} x${order.qty}${giftLine ? ` + ${order.giftName} ${order.giftQty}개(사은품)` : ''}이(가) ${order.shipDate ? order.shipDate + ' 출고되었습니다. ' : '배송 중입니다. '}${order.deliveryMethod ? '(' + order.deliveryMethod + ') ' : ''}감사합니다~♥` : null;
 
   const copy = (text) => {
     navigator.clipboard.writeText(text);
@@ -9939,8 +10057,8 @@ function DriverProfileView({ driver, stats, onLogout }) {
       </button>
 
       <div className="text-center text-[10px] text-stone-400 pt-2">
-        워커힐김치 OMS · 배송기사 앱<br/>
-        © 2026 Walkerhill Kimchi
+        김치하우스 OMS · 배송기사 앱<br/>
+        © 2026 Kimchi House AU
       </div>
     </div>
   );
@@ -10146,7 +10264,7 @@ function DriverDeliveryGroupCard({ group, customer, items, onGroupUpdate, onEdit
           )}
           {phone && (
             <a
-              href={`sms:${phone}?body=${encodeURIComponent(`[워커힐김치] ${customer?.name || ''}고객님, 주문하신 ${group.orders[0]?.itemName || ''} 외 ${group.orders.length - 1}건 배송 중입니다. 잠시 후 도착 예정입니다.`)}`}
+              href={`sms:${phone}?body=${encodeURIComponent(`[김치하우스] ${customer?.name || ''}고객님, 주문하신 ${group.orders[0]?.itemName || ''} 외 ${group.orders.length - 1}건 배송 중입니다. 잠시 후 도착 예정입니다.`)}`}
               className="flex items-center justify-center gap-1 px-2 py-2.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl text-xs font-bold active:scale-95 transition-all"
             >
               💬 문자
@@ -10459,7 +10577,7 @@ function BackupRestoreButton({ setCustomers, setItems, setOrders, showToast }) {
       setPreview(result);
     } catch (err) {
       console.error(err);
-      showToast('백업 파일 읽기 실패. "워커힐김치_백업_xxx.xlsx" 형식이 맞는지 확인해주세요.', 'error');
+      showToast('백업 파일 읽기 실패. "김치하우스_백업_xxx.xlsx" 형식이 맞는지 확인해주세요.', 'error');
     }
     setParsing(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -11645,7 +11763,7 @@ function generateBatchTemplate(customers, items, orders) {
 
   // 파일 다운로드
   const today = new Date().toISOString().slice(0, 10);
-  XLSX.writeFile(wb, `워커힐김치_배차양식_${today}.xlsx`);
+  XLSX.writeFile(wb, `김치하우스_배차양식_${today}.xlsx`);
 }
 
 // ============================================================
