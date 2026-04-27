@@ -10,6 +10,10 @@ import {
   fetchAll,
   logAudit,
   fetchAuditLogs,
+  getSetting,
+  setSetting,
+  getAllSettings,
+  subscribeToSettings,
   TABLES,
 } from './supabase.js';
 
@@ -638,7 +642,7 @@ function shipStatusStyle(s) {
 //   1. 앱 사이드바 하단의 🔐 비밀번호 변경 버튼 사용 (권장)
 //   2. 또는 아래 DEFAULT_PASSWORD 값을 수정 후 재배포
 const DEFAULT_PASSWORD = 'admin1234';  // 초기/폴백 비밀번호
-const SESSION_HOURS = 24; // 1일 자동로그인
+const SESSION_HOURS = 24; // 같은 탭 유지 시 24시간 (탭 닫으면 자동 만료)
 const MAX_ATTEMPTS = 5; // 최대 시도 횟수
 const LOCKOUT_MINUTES = 10; // 차단 시간
 
@@ -657,7 +661,7 @@ function getAdminPassword() {
   }
 }
 
-// 🔐 관리자 비밀번호 변경
+// 🔐 관리자 비밀번호 변경 (localStorage + Supabase 동기화)
 function setAdminPassword(newPassword) {
   try {
     if (newPassword === DEFAULT_PASSWORD) {
@@ -665,6 +669,12 @@ function setAdminPassword(newPassword) {
       localStorage.removeItem(PASSWORD_KEY);
     } else {
       localStorage.setItem(PASSWORD_KEY, newPassword);
+    }
+    // 🚀 Supabase 동기화 (다른 PC와 공유)
+    if (typeof setSetting === 'function') {
+      setSetting('admin_password', newPassword, '관리자 공용 비밀번호').catch(err => {
+        console.error('비밀번호 동기화 실패:', err);
+      });
     }
     return true;
   } catch {
@@ -677,13 +687,19 @@ const INITIAL_DRIVERS = [
   { id: 'D001', name: '기사', password: 'driverA', zones: [], phone: '', region: '' },
 ];
 
+// 🔐 로그인 세션 관리 (sessionStorage 기반)
+// - 같은 탭에서는 새로고침해도 로그인 유지 (24시간)
+// - 탭/브라우저 닫으면 자동 로그아웃 (sessionStorage가 자동 삭제)
+// - 다른 탭에서는 별도 로그인 필요 (보안)
+// - 링크 전달받은 사람은 무조건 로그인 화면 (다른 탭/창)
 function getAuthSession() {
   try {
-    const data = localStorage.getItem(AUTH_KEY);
+    // sessionStorage 우선 확인 (탭 단위 - 가장 안전)
+    const data = sessionStorage.getItem(AUTH_KEY);
     if (!data) return null;
     const session = JSON.parse(data);
     if (Date.now() > session.expires) {
-      localStorage.removeItem(AUTH_KEY);
+      sessionStorage.removeItem(AUTH_KEY);
       return null;
     }
     return session;
@@ -692,11 +708,14 @@ function getAuthSession() {
 
 function saveAuthSession(sessionData = {}) {
   const expires = Date.now() + SESSION_HOURS * 60 * 60 * 1000;
-  localStorage.setItem(AUTH_KEY, JSON.stringify({ expires, ...sessionData }));
+  // sessionStorage: 탭이 닫히면 자동 삭제 (보안 ↑)
+  sessionStorage.setItem(AUTH_KEY, JSON.stringify({ expires, ...sessionData }));
 }
 
 function clearAuthSession() {
-  localStorage.removeItem(AUTH_KEY);
+  sessionStorage.removeItem(AUTH_KEY);
+  // 🛡️ 호환성: 기존 localStorage 세션도 같이 정리 (마이그레이션)
+  try { localStorage.removeItem(AUTH_KEY); } catch {}
 }
 
 // 🆕 관리자 사용자 목록 (localStorage 기반 - 사용자 직접 편집)
@@ -719,6 +738,12 @@ function saveAdminUsers(users) {
   try {
     const cleaned = users.map(u => String(u).trim()).filter(u => u.length > 0);
     localStorage.setItem(ADMIN_USERS_KEY, JSON.stringify(cleaned));
+    // 🚀 Supabase 동기화 (다른 PC와 공유)
+    if (typeof setSetting === 'function') {
+      setSetting('admin_users', cleaned, '관리자 사용자 목록').catch(err => {
+        console.error('관리자 사용자 동기화 실패:', err);
+      });
+    }
     return cleaned;
   } catch {
     return users;
@@ -1384,6 +1409,7 @@ export default function App() {
     let unsubOrders = null;
     let unsubDrivers = null;
     let unsubGifts = null;
+    let unsubSettings = null;
 
     if (isSupabaseConfigured) {
       // 🔥 Firebase 실시간 구독 모드
@@ -1511,6 +1537,48 @@ export default function App() {
             }
           }, handleFirebaseError);
 
+          // ⚙️ 앱 설정 초기 로드 (비밀번호, 사용자 이름, 박스 수량 기억)
+          getAllSettings().then(settings => {
+            if (settings.admin_password !== undefined && settings.admin_password !== null) {
+              // 비밀번호: localStorage 동기화
+              const pwd = settings.admin_password;
+              if (pwd === DEFAULT_PASSWORD) {
+                localStorage.removeItem(PASSWORD_KEY);
+              } else if (pwd) {
+                localStorage.setItem(PASSWORD_KEY, pwd);
+              }
+            }
+            if (Array.isArray(settings.admin_users) && settings.admin_users.length > 0) {
+              // 사용자 이름 목록: localStorage 동기화
+              localStorage.setItem(ADMIN_USERS_KEY, JSON.stringify(settings.admin_users));
+            }
+            // 🧠 박스 수량 기억 동기화
+            if (settings.per_box_memory && typeof settings.per_box_memory === 'object') {
+              localStorage.setItem('wh:perBoxMemory', JSON.stringify(settings.per_box_memory));
+              log(`✓ 박스 수량 기억 ${Object.keys(settings.per_box_memory).length}건 로드`);
+            }
+          }).catch(err => {
+            warn('초기 설정 로드 실패:', err);
+          });
+
+          // ⚙️ 앱 설정 실시간 구독 (다른 PC에서 변경 시 즉시 반영)
+          unsubSettings = subscribeToSettings((key, value) => {
+            if (key === 'admin_password') {
+              if (value === DEFAULT_PASSWORD || value === null) {
+                localStorage.removeItem(PASSWORD_KEY);
+              } else if (value) {
+                localStorage.setItem(PASSWORD_KEY, value);
+              }
+              log(`✓ 비밀번호 동기화됨 (다른 PC에서 변경)`);
+            } else if (key === 'admin_users' && Array.isArray(value)) {
+              localStorage.setItem(ADMIN_USERS_KEY, JSON.stringify(value));
+              log(`✓ 관리자 이름 목록 동기화됨 (${value.length}명)`);
+            } else if (key === 'per_box_memory' && value && typeof value === 'object') {
+              localStorage.setItem('wh:perBoxMemory', JSON.stringify(value));
+              log(`✓ 박스 수량 기억 동기화됨 (${Object.keys(value).length}건)`);
+            }
+          });
+
           // 🛡️ 안전망: 5초 후 강제로 initialSyncDone 활성화 (subscribe 응답 없어도 저장은 가능하게)
           setTimeout(() => {
             if (!initialSyncDoneRef.current) {
@@ -1547,6 +1615,7 @@ export default function App() {
       if (unsubOrders) unsubOrders();
       if (unsubDrivers) unsubDrivers();
       if (unsubGifts) unsubGifts();
+      if (unsubSettings) unsubSettings();
     };
   }, []);
 
@@ -4389,18 +4458,49 @@ function OrderFormModal({ customers, items, editTarget, gifts = [], orders = [],
     return [{ itemName: '', qty: 1, perBox: 10 }];
   });
 
-  // 🧠 품목별 최근 사용한 박스당 수량 기억 (localStorage)
+  // 🧠 품목별 최근 사용한 박스당 수량 기억 (localStorage + Supabase 동기화)
+  // 키 구조: { "C0023:배추김치 4KG": 5, "default:총각김치 2KG": 3, ... }
+  const PER_BOX_KEY = 'wh:perBoxMemory';
+
   const recallPerBox = (itemName, customerId) => {
     try {
-      const key = `wh:perBox:${customerId || 'default'}:${itemName}`;
-      const stored = localStorage.getItem(key);
-      return stored ? parseInt(stored) : null;
+      const key = `${customerId || 'default'}:${itemName}`;
+      const stored = localStorage.getItem(PER_BOX_KEY);
+      if (stored) {
+        const memory = JSON.parse(stored);
+        if (memory[key]) return parseInt(memory[key]);
+      }
+      // 🔄 구버전 키도 fallback (기존 데이터 호환)
+      const oldKey = `wh:perBox:${customerId || 'default'}:${itemName}`;
+      const oldStored = localStorage.getItem(oldKey);
+      return oldStored ? parseInt(oldStored) : null;
     } catch { return null; }
   };
+
   const rememberPerBox = (itemName, customerId, perBox) => {
     try {
-      const key = `wh:perBox:${customerId || 'default'}:${itemName}`;
-      localStorage.setItem(key, String(perBox));
+      const key = `${customerId || 'default'}:${itemName}`;
+      const stored = localStorage.getItem(PER_BOX_KEY);
+      const memory = stored ? JSON.parse(stored) : {};
+      memory[key] = perBox;
+      // 메모리 크기 제한 (1000개 이상이면 오래된 것 제거)
+      const keys = Object.keys(memory);
+      if (keys.length > 1000) {
+        const toKeep = keys.slice(-800);  // 최근 800개만 유지
+        const trimmed = {};
+        toKeep.forEach(k => { trimmed[k] = memory[k]; });
+        localStorage.setItem(PER_BOX_KEY, JSON.stringify(trimmed));
+        // Supabase 동기화
+        if (typeof setSetting === 'function') {
+          setSetting('per_box_memory', trimmed, '품목별 박스당 수량 기억').catch(() => {});
+        }
+      } else {
+        localStorage.setItem(PER_BOX_KEY, JSON.stringify(memory));
+        // Supabase 동기화 (디바운스 효과를 위해 약간 지연)
+        if (typeof setSetting === 'function') {
+          setSetting('per_box_memory', memory, '품목별 박스당 수량 기억').catch(() => {});
+        }
+      }
     } catch {}
   };
 
