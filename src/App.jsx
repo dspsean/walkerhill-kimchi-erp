@@ -117,7 +117,15 @@ const DEFAULT_GIFT_TIERS = [
 
 // 현재 활성 사은품 이벤트 가져오기
 function getActiveGift(gifts) {
-  return gifts.find(g => g.active && g.remaining > 0) || null;
+  if (!gifts || !Array.isArray(gifts)) return null;
+  // active=true이고, remaining이 undefined거나 > 0인 사은품 반환
+  // (remaining이 명시적으로 0이면 재고 없음으로 제외)
+  return gifts.find(g => {
+    if (!g.active) return false;
+    // remaining 필드 자체가 없거나 (옛날 데이터) 0보다 크면 사용 가능
+    if (g.remaining === undefined || g.remaining === null) return true;
+    return g.remaining > 0;
+  }) || null;
 }
 
 // 🎁 사은품 지급 현황 계산 (대시보드/사은품 페이지 공통)
@@ -5886,11 +5894,38 @@ function OrderFormModal({ customers, items, editTarget, gifts = [], orders = [],
           {/* 🎁 사은품이 없을 때 안내 (디버깅용) */}
           {!activeGift && !isService && customerId && (
             <div className="rounded-2xl border border-dashed border-stone-200 bg-stone-50/30 px-4 py-3">
-              <div className="flex items-center gap-2 text-stone-500">
+              <div className="flex items-start gap-2 text-stone-500">
                 <span className="text-base">🎁</span>
-                <div className="text-xs">
-                  현재 활성 사은품이 없습니다.
-                  <span className="ml-1 text-stone-400">(사은품 페이지에서 설정 가능)</span>
+                <div className="text-xs flex-1">
+                  <div className="font-semibold text-stone-700">활성 사은품이 없습니다</div>
+                  <div className="text-[10px] text-stone-500 mt-1 leading-relaxed">
+                    {gifts.length === 0 ? (
+                      <span>📋 등록된 사은품이 없습니다 → 사이드바 [사은품] 메뉴에서 등록</span>
+                    ) : (
+                      <>
+                        등록된 사은품 {gifts.length}개:
+                        <ul className="mt-1 ml-3 space-y-0.5">
+                          {gifts.map((g, i) => (
+                            <li key={i} className="text-[10px]">
+                              • <strong>{g.name}</strong>:
+                              {' '}
+                              {g.active ? <span className="text-emerald-700 font-bold">✅ 활성</span> : <span className="text-stone-400">⏸️ 비활성</span>}
+                              {' · '}
+                              재고 <span className={`font-bold ${(g.remaining || 0) > 0 ? 'text-blue-700' : 'text-red-700'}`}>{g.remaining ?? '?'}</span>개
+                              {(!g.active || (g.remaining !== undefined && g.remaining <= 0)) && (
+                                <span className="ml-1 text-amber-700 text-[9px]">
+                                  → {!g.active ? '비활성 상태' : '재고 없음'}
+                                </span>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                        <div className="mt-2 text-[10px] text-blue-700">
+                          💡 [사은품] 메뉴에서 활성화 + 재고를 추가해주세요
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
