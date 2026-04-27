@@ -741,25 +741,62 @@ const DEFAULT_ADMIN_USERS = [
 ];
 
 // 🔧 마이그레이션: 옛날 데이터 (string 배열) → 새 객체 배열
+// 🛡️ 항상 3개 (Admin, User1, User2) 보장
 function migrateUsers(data) {
   if (!Array.isArray(data) || data.length === 0) return DEFAULT_ADMIN_USERS;
+
+  let users;
 
   // 첫 항목이 string이면 옛날 형식
   if (typeof data[0] === 'string') {
     // 첫 사용자를 admin, 나머지를 user로 변환
-    return data.map((name, idx) => ({
-      name: idx === 0 ? 'Admin' : `User${idx}`,  // 이름도 표준화
+    users = data.map((name, idx) => ({
+      name: idx === 0 ? 'Admin' : `User${idx}`,
       role: idx === 0 ? 'admin' : 'user',
-      password: 'admin1234',  // 모두 기본 비밀번호로 초기화 (보안상 권장)
+      password: 'admin1234',
+    }));
+  } else {
+    // 이미 객체 배열이면 그대로 (필드 누락 시 보충)
+    users = data.map((u, idx) => ({
+      name: u.name || `User${idx}`,
+      role: u.role || (idx === 0 ? 'admin' : 'user'),
+      password: u.password || 'admin1234',
     }));
   }
 
-  // 이미 객체 배열이면 그대로 (필드 누락 시 보충)
-  return data.map((u, idx) => ({
-    name: u.name || `User${idx}`,
-    role: u.role || (idx === 0 ? 'admin' : 'user'),
-    password: u.password || 'admin1234',
-  }));
+  // 🛡️ 3개 고정 보장: Admin 1개 + User 2개 = 3개
+  // Admin이 없으면 첫 항목을 Admin으로
+  if (!users.some(u => u.role === 'admin')) {
+    if (users.length > 0) {
+      users[0] = { ...users[0], role: 'admin', name: 'Admin' };
+    } else {
+      users.push({ name: 'Admin', role: 'admin', password: 'admin1234' });
+    }
+  }
+
+  // User가 2개 미만이면 부족한 만큼 추가 (User1, User2 형식)
+  const userCount = users.filter(u => u.role === 'user').length;
+  let addedUsers = 0;
+  while (users.filter(u => u.role === 'user').length < 2) {
+    addedUsers++;
+    let newUserName = `User${addedUsers}`;
+    // 이름 충돌 방지
+    let counter = addedUsers;
+    while (users.some(u => u.name === newUserName)) {
+      counter++;
+      newUserName = `User${counter}`;
+    }
+    users.push({ name: newUserName, role: 'user', password: 'admin1234' });
+  }
+
+  // 4개 이상이면 처음 3개만 (Admin 1 + User 2)
+  if (users.length > 3) {
+    const admin = users.find(u => u.role === 'admin');
+    const userList = users.filter(u => u.role === 'user').slice(0, 2);
+    users = [admin, ...userList];
+  }
+
+  return users;
 }
 
 function getAdminUsers() {
@@ -1452,18 +1489,23 @@ function EditUsersModal({ initialUsers, currentUser, onSave, onClose }) {
 
           {/* 고정 3계정 */}
           <div>
-            <label className="block text-[12px] font-semibold text-[#52525B] mb-2">고정 계정 (3개)</label>
+            <label className="block text-[12px] font-semibold text-[#52525B] mb-2">
+              계정 ({users.length}개 고정)
+            </label>
             <div className="space-y-2">
               {users.map((user, idx) => {
-                // 본인 계정 또는 Admin만 비밀번호 수정 가능
-                const canEditPwd = isAdmin || user.name === currentUser;
-                // Admin이 아니면 이름 변경 불가
-                const canEditName = isAdmin && !(user.role === 'admin' && user.name === 'Admin');
+                const isCurrentLogin = user.name === currentUser;
+                // Admin이 아니면 이름 변경 가능 (User1, User2 이름은 자유롭게)
+                const canEditName = !(user.role === 'admin' && user.name === 'Admin');
                 return (
-                  <div key={idx} className="border border-[#E4E4E7] rounded-[10px] p-3 bg-[#FAFAFA]">
+                  <div key={idx} className={`border rounded-[10px] p-3 ${
+                    isCurrentLogin
+                      ? 'border-[#09090B] bg-[#F4F4F5]'
+                      : 'border-[#E4E4E7] bg-[#FAFAFA]'
+                  }`}>
                     {/* 역할 + 이름 */}
                     <div className="flex items-center gap-2 mb-2">
-                      <span className={`text-[10px] px-2 py-0.5 rounded-[4px] font-bold ${
+                      <span className={`text-[10px] px-2 py-0.5 rounded-[4px] font-bold whitespace-nowrap ${
                         user.role === 'admin'
                           ? 'bg-[#09090B] text-white'
                           : 'bg-[#E4E4E7] text-[#52525B]'
@@ -1479,37 +1521,38 @@ function EditUsersModal({ initialUsers, currentUser, onSave, onClose }) {
                         placeholder="사용자명"
                         maxLength={20}
                       />
+                      {isCurrentLogin && (
+                        <span className="text-[9px] px-1.5 py-0.5 bg-[#22C55E] text-white rounded font-bold whitespace-nowrap">
+                          현재 로그인
+                        </span>
+                      )}
                     </div>
 
-                    {/* 비밀번호 */}
-                    {canEditPwd ? (
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] text-[#71717A] font-medium w-12">비번:</span>
-                        <input
-                          type={showPwd[idx] ? 'text' : 'password'}
-                          value={user.password}
-                          onChange={(e) => updateUserPassword(idx, e.target.value)}
-                          className="flex-1 px-3 py-1.5 bg-white border border-[#E4E4E7] rounded-[6px] text-[12px] font-mono focus:outline-none focus:ring-2 focus:ring-[#09090B]/20"
-                          placeholder="비밀번호 (최소 4자)"
-                          maxLength={50}
-                        />
-                        <button
-                          onClick={() => togglePwdVisibility(idx)}
-                          className="p-1.5 text-[#71717A] hover:bg-[#F4F4F5] rounded-[6px] transition-colors"
-                          title={showPwd[idx] ? '숨기기' : '표시'}
-                        >
-                          {showPwd[idx] ? '🙈' : '👁'}
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-2 text-[11px] text-[#A1A1AA]">
-                        <span className="w-12">비번:</span>
-                        <span>🔒 본인만 변경 가능</span>
-                      </div>
-                    )}
+                    {/* 비밀번호 (Admin은 모두 수정 가능) */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-[#71717A] font-medium w-12">비번:</span>
+                      <input
+                        type={showPwd[idx] ? 'text' : 'password'}
+                        value={user.password}
+                        onChange={(e) => updateUserPassword(idx, e.target.value)}
+                        className="flex-1 px-3 py-1.5 bg-white border border-[#E4E4E7] rounded-[6px] text-[12px] font-mono focus:outline-none focus:ring-2 focus:ring-[#09090B]/20"
+                        placeholder="비밀번호 (최소 4자)"
+                        maxLength={50}
+                      />
+                      <button
+                        onClick={() => togglePwdVisibility(idx)}
+                        className="p-1.5 text-[#71717A] hover:bg-[#F4F4F5] rounded-[6px] transition-colors"
+                        title={showPwd[idx] ? '숨기기' : '표시'}
+                      >
+                        {showPwd[idx] ? '🙈' : '👁'}
+                      </button>
+                    </div>
                   </div>
                 );
               })}
+            </div>
+            <div className="text-[10px] text-[#A1A1AA] mt-2 leading-relaxed">
+              💡 계정은 3개로 고정되어 있습니다. User1, User2의 이름과 비밀번호만 변경 가능합니다.
             </div>
           </div>
         </div>
