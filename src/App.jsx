@@ -4144,7 +4144,7 @@ function Orders({ customers, items, orders, setOrders, gifts, setGifts, showToas
                         {o.paymentStatus === 'paid' && (
                           <span
                             className="text-[9px] px-1 py-0.5 rounded bg-emerald-600 text-white font-bold"
-                            title={`${o.paymentMethod === 'cash' ? '현금' : '계좌이체'} · ${o.paymentDate || ''}${o.paymentMemo ? ' · ' + o.paymentMemo : ''}`}
+                            title={`이미 결제됨 (${o.paymentMethod === 'cash' ? '현금' : '계좌이체'})`}
                           >
                             💰 {o.paymentMethod === 'cash' ? '현금' : '입금'}
                           </span>
@@ -4810,15 +4810,11 @@ function OrderFormModal({ customers, items, editTarget, gifts = [], orders = [],
   const [giftQty, setGiftQty] = useState(
     editTarget?.giftQty !== undefined ? editTarget.giftQty : null
   );
-  // 💰 결제 관련 (배송 전 선결제)
+  // 💰 결제 관련 (배송 전 선결제) - 단순 체크만
   // paymentStatus: 'unpaid' | 'paid'
   // paymentMethod: null | 'transfer' | 'cash'
   const [paymentStatus, setPaymentStatus] = useState(editTarget?.paymentStatus || 'unpaid');
   const [paymentMethod, setPaymentMethod] = useState(editTarget?.paymentMethod || null);
-  const [paymentDate, setPaymentDate] = useState(
-    editTarget?.paymentDate || ''
-  );
-  const [paymentMemo, setPaymentMemo] = useState(editTarget?.paymentMemo || '');
 
   // 🔍 고객 검색 - debounce
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -5010,18 +5006,13 @@ function OrderFormModal({ customers, items, editTarget, gifts = [], orders = [],
       data.giftQty = 0;
     }
 
-    // 💰 결제 정보 (배송 전 선결제)
+    // 💰 결제 정보 (배송 전 선결제) - 단순 체크
     data.paymentStatus = paymentStatus;
     if (paymentStatus === 'paid') {
       data.paymentMethod = paymentMethod || 'transfer';  // 기본: 계좌이체
-      // 결제일자가 비어있으면 오늘로 자동 기록
-      data.paymentDate = paymentDate || new Date().toISOString().slice(0, 10);
-      if (paymentMemo) data.paymentMemo = paymentMemo;
     } else {
       // 미결제: 결제 정보 초기화
       data.paymentMethod = null;
-      data.paymentDate = null;
-      data.paymentMemo = null;
     }
 
     onSave(data);
@@ -5315,10 +5306,9 @@ function OrderFormModal({ customers, items, editTarget, gifts = [], orders = [],
                     onChange={e => {
                       const checked = e.target.checked;
                       setPaymentStatus(checked ? 'paid' : 'unpaid');
-                      // 체크 시 오늘 날짜 + 기본값 자동 설정
-                      if (checked) {
-                        if (!paymentDate) setPaymentDate(new Date().toISOString().slice(0, 10));
-                        if (!paymentMethod) setPaymentMethod('transfer');
+                      // 체크 시 기본값: 계좌이체
+                      if (checked && !paymentMethod) {
+                        setPaymentMethod('transfer');
                       }
                     }}
                     className="w-4 h-4 accent-emerald-700"
@@ -5332,66 +5322,39 @@ function OrderFormModal({ customers, items, editTarget, gifts = [], orders = [],
                     </div>
                     <div className="text-[10px] text-stone-500">
                       {paymentStatus === 'paid'
-                        ? '✓ 기사 화면에 "결제완료"로 표시됩니다'
+                        ? '✓ 기사 화면에 "이미 결제됨"으로 표시됩니다'
                         : '계좌이체/현금으로 미리 받은 경우 체크'}
                     </div>
                   </div>
                 </label>
 
-                {/* 선결제 체크 시 상세 입력 */}
+                {/* 선결제 체크 시 결제 수단 선택만 */}
                 {paymentStatus === 'paid' && (
-                  <div className="px-3 pb-3 pt-1 space-y-2 border-t border-emerald-200/60">
-                    {/* 결제 수단 선택 */}
-                    <div>
-                      <label className="block text-[11px] font-semibold text-stone-700 mb-1.5">결제 수단</label>
-                      <div className="grid grid-cols-2 gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => setPaymentMethod('transfer')}
-                          className={`px-3 py-2 rounded-lg text-xs font-medium border transition-all ${
-                            paymentMethod === 'transfer'
-                              ? 'bg-emerald-700 text-white border-emerald-700'
-                              : 'bg-white text-stone-700 border-stone-200 hover:border-stone-300'
-                          }`}
-                        >
-                          🏦 계좌이체
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setPaymentMethod('cash')}
-                          className={`px-3 py-2 rounded-lg text-xs font-medium border transition-all ${
-                            paymentMethod === 'cash'
-                              ? 'bg-emerald-700 text-white border-emerald-700'
-                              : 'bg-white text-stone-700 border-stone-200 hover:border-stone-300'
-                          }`}
-                        >
-                          💵 현금
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* 결제일자 */}
-                    <div>
-                      <label className="block text-[11px] font-semibold text-stone-700 mb-1.5">결제일자</label>
-                      <input
-                        type="date"
-                        value={paymentDate}
-                        onChange={e => setPaymentDate(e.target.value)}
-                        className="w-full px-3 py-1.5 bg-white border border-stone-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                      />
-                    </div>
-
-                    {/* 메모 (선택) */}
-                    <div>
-                      <label className="block text-[11px] font-semibold text-stone-700 mb-1.5">메모 <span className="text-stone-400 font-normal">(선택)</span></label>
-                      <input
-                        type="text"
-                        value={paymentMemo}
-                        onChange={e => setPaymentMemo(e.target.value)}
-                        placeholder="예: 카톡으로 입금 확인"
-                        className="w-full px-3 py-1.5 bg-white border border-stone-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                        maxLength={50}
-                      />
+                  <div className="px-3 pb-3 pt-1 border-t border-emerald-200/60">
+                    <label className="block text-[11px] font-semibold text-stone-700 mb-1.5 mt-2">결제 수단</label>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setPaymentMethod('transfer')}
+                        className={`px-3 py-2 rounded-lg text-xs font-medium border transition-all ${
+                          paymentMethod === 'transfer'
+                            ? 'bg-emerald-700 text-white border-emerald-700'
+                            : 'bg-white text-stone-700 border-stone-200 hover:border-stone-300'
+                        }`}
+                      >
+                        🏦 계좌이체
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPaymentMethod('cash')}
+                        className={`px-3 py-2 rounded-lg text-xs font-medium border transition-all ${
+                          paymentMethod === 'cash'
+                            ? 'bg-emerald-700 text-white border-emerald-700'
+                            : 'bg-white text-stone-700 border-stone-200 hover:border-stone-300'
+                        }`}
+                      >
+                        💵 현금
+                      </button>
                     </div>
                   </div>
                 )}
@@ -9505,8 +9468,6 @@ function DriverApp({ driver, customers, items, orders, setOrders, onLogout, show
         if (!groups[o.customerId].prepaidInfo) {
           groups[o.customerId].prepaidInfo = {
             method: o.paymentMethod || 'transfer',
-            date: o.paymentDate || '',
-            memo: o.paymentMemo || '',
             amount: 0,
           };
         }
@@ -10111,19 +10072,17 @@ function DriverDeliveryGroupCard({ group, customer, items, onGroupUpdate, onEdit
       <div className={`px-4 py-2.5 border-b border-stone-100 ${isFullyPaid ? 'bg-emerald-50' : isPartialPaid ? 'bg-amber-50' : 'bg-red-50'}`}>
         {/* 💰 선결제 표시 (있을 때만) */}
         {group.prepaidInfo && (
-          <div className="mb-2 px-2.5 py-1.5 bg-emerald-100 border border-emerald-300 rounded-lg flex items-center gap-2">
-            <span className="text-base">💰</span>
+          <div className="mb-2 px-3 py-2 bg-emerald-100 border-2 border-emerald-500 rounded-lg flex items-center gap-2">
+            <span className="text-xl">💰</span>
             <div className="flex-1 min-w-0">
-              <div className="text-[10px] font-bold text-emerald-900 flex items-center gap-1.5">
-                선결제 완료
-                <span className="text-[9px] px-1 py-0.5 bg-emerald-700 text-white rounded font-bold whitespace-nowrap">
-                  {group.prepaidInfo.method === 'cash' ? '💵 현금' : '🏦 입금'}
+              <div className="text-[12px] font-bold text-emerald-900 flex items-center gap-1.5">
+                이미 결제됨
+                <span className="text-[9px] px-1.5 py-0.5 bg-emerald-700 text-white rounded font-bold whitespace-nowrap">
+                  {group.prepaidInfo.method === 'cash' ? '💵 현금' : '🏦 계좌이체'}
                 </span>
               </div>
-              <div className="text-[10px] text-emerald-800 truncate">
-                {group.prepaidInfo.date && `${group.prepaidInfo.date} · `}
-                <span className="font-mono font-bold">${group.prepaidInfo.amount}</span>
-                {group.prepaidInfo.memo && ` · ${group.prepaidInfo.memo}`}
+              <div className="text-[11px] text-emerald-800 font-mono">
+                선결제 금액: <span className="font-bold">${group.prepaidInfo.amount}</span>
               </div>
             </div>
           </div>
