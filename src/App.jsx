@@ -3030,6 +3030,48 @@ function Dashboard({ customers, items, orders, gifts = [], setView }) {
     });
     const vipCount = Object.values(customerGrades).filter(g => g === 'VIP').length;
 
+    // 🆕 B2B/B2C 매출 분리
+    const customerMap = {};
+    customers.forEach(c => { customerMap[c.id] = c; });
+
+    let b2bSales = 0;
+    let b2bOrderCount = 0;
+    let b2cSales = 0;
+    let b2cOrderCount = 0;
+    const b2bSalesByCompany = {};  // 거래처별 매출 누적
+
+    paidOrders.forEach(o => {
+      const c = customerMap[o.customerId];
+      const orderAmount = (priceMap[o.itemName] || 0) * o.qty;
+      if (c?.isB2B) {
+        b2bSales += orderAmount;
+        b2bOrderCount += 1;
+        if (!b2bSalesByCompany[c.id]) {
+          b2bSalesByCompany[c.id] = { id: c.id, name: c.name, sales: 0, orders: 0 };
+        }
+        b2bSalesByCompany[c.id].sales += orderAmount;
+        b2bSalesByCompany[c.id].orders += 1;
+      } else {
+        b2cSales += orderAmount;
+        b2cOrderCount += 1;
+      }
+    });
+
+    // Top 5 거래처 매출
+    const b2bTop5 = Object.values(b2bSalesByCompany)
+      .sort((a, b) => b.sales - a.sales)
+      .slice(0, 5);
+
+    // 거래처 미수금 계산
+    const b2bUnpaidTotal = customers
+      .filter(c => c.isB2B)
+      .reduce((sum, c) => {
+        const customerOrders = paidOrders.filter(o => o.customerId === c.id);
+        const total = customerOrders.reduce((s, o) => s + (priceMap[o.itemName] || 0) * o.qty, 0);
+        const paid = customerOrders.reduce((s, o) => s + (o.cashReceived || 0) + (o.paymentStatus === 'paid' ? (priceMap[o.itemName] || 0) * o.qty : 0), 0);
+        return sum + Math.max(0, total - paid);
+      }, 0);
+
     return {
       totalOrders: paidOrders.length,
       totalSales,
@@ -3044,6 +3086,14 @@ function Dashboard({ customers, items, orders, gifts = [], setView }) {
       shippingFeeCount,
       pickupCount,
       customerGrades,
+      // 🆕 B2B/B2C 분리
+      b2bSales,
+      b2bOrderCount,
+      b2cSales,
+      b2cOrderCount,
+      b2bTop5,
+      b2bUnpaidTotal,
+      b2bCustomerCount: customers.filter(c => c.isB2B).length,
     };
   }, [customers, items, orders]);
 
@@ -3210,6 +3260,82 @@ function Dashboard({ customers, items, orders, gifts = [], setView }) {
               ${formatNum(stats.shippingFeeTotal)}
             </div>
             <div className="text-[12px] text-[#71717A] mt-1">{stats.shippingFeeCount}건 부과</div>
+          </div>
+        </div>
+
+        {/* 🆕 매출 분리 - 개인 vs 거래처 */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+          {/* 개인 매출 (B2C) */}
+          <div className="bg-white border border-[#E4E4E7] rounded-[12px] p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-base">👤</span>
+                <div className="text-[13px] font-semibold text-[#09090B]">개인 매출 (B2C)</div>
+              </div>
+              <span className="text-[10px] px-2 py-0.5 bg-[#F4F4F5] text-[#52525B] rounded-full font-medium">
+                {stats.totalSales > 0 ? ((stats.b2cSales / stats.totalSales) * 100).toFixed(1) : 0}%
+              </span>
+            </div>
+            <div className="text-[26px] font-semibold text-[#09090B] tabular-nums tracking-tight">
+              ${formatNum(stats.b2cSales)}
+            </div>
+            <div className="text-[12px] text-[#71717A] mt-1">
+              주문 {stats.b2cOrderCount}건 · 평균 ${formatNum(stats.b2cOrderCount > 0 ? Math.round(stats.b2cSales / stats.b2cOrderCount) : 0)}
+            </div>
+            <div className="mt-3 h-1.5 bg-[#F4F4F5] rounded-full overflow-hidden">
+              <div className="h-full bg-[#09090B] rounded-full" style={{ width: `${stats.totalSales > 0 ? (stats.b2cSales / stats.totalSales) * 100 : 0}%` }} />
+            </div>
+          </div>
+
+          {/* 거래처 매출 (B2B) */}
+          <div className="bg-white border border-[#E4E4E7] rounded-[12px] p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-base">🏢</span>
+                <div className="text-[13px] font-semibold text-[#09090B]">거래처 매출 (B2B)</div>
+              </div>
+              <span className="text-[10px] px-2 py-0.5 bg-[#F4F4F5] text-[#52525B] rounded-full font-medium">
+                {stats.totalSales > 0 ? ((stats.b2bSales / stats.totalSales) * 100).toFixed(1) : 0}%
+              </span>
+            </div>
+            <div className="text-[26px] font-semibold text-[#09090B] tabular-nums tracking-tight">
+              ${formatNum(stats.b2bSales)}
+            </div>
+            <div className="text-[12px] text-[#71717A] mt-1">
+              주문 {stats.b2bOrderCount}건 · 거래처 {stats.b2bCustomerCount}곳
+              {stats.b2bUnpaidTotal > 0 && (
+                <span className="ml-2 text-[#B91C1C] font-semibold">
+                  · 미수금 ${formatNum(stats.b2bUnpaidTotal)}
+                </span>
+              )}
+            </div>
+            <div className="mt-3 h-1.5 bg-[#F4F4F5] rounded-full overflow-hidden">
+              <div className="h-full bg-[#09090B] rounded-full" style={{ width: `${stats.totalSales > 0 ? (stats.b2bSales / stats.totalSales) * 100 : 0}%` }} />
+            </div>
+
+            {/* 🏆 거래처 Top 5 */}
+            {stats.b2bTop5.length > 0 && (
+              <div className="mt-4 pt-3 border-t border-[#E4E4E7]">
+                <div className="text-[11px] font-semibold text-[#52525B] mb-2 flex items-center gap-1.5">
+                  <span>🏆</span>
+                  <span>거래처 매출 Top {stats.b2bTop5.length}</span>
+                </div>
+                <div className="space-y-1.5">
+                  {stats.b2bTop5.map((b, idx) => (
+                    <div key={b.id} className="flex items-center justify-between text-[12px]">
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <span className="text-[10px] font-bold text-[#A1A1AA] w-3">{idx + 1}.</span>
+                        <span className="text-[#09090B] font-medium truncate">{b.name}</span>
+                        <span className="text-[10px] text-[#A1A1AA]">{b.orders}건</span>
+                      </div>
+                      <span className="text-[#09090B] font-semibold tabular-nums">
+                        ${formatNum(b.sales)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -5484,44 +5610,64 @@ function OrderFormModal({ customers, items, editTarget, gifts = [], orders = [],
                     </span>
                   )}
                 </div>
+              </div>
+            )}
 
-                {/* 🧾 영수증 장수 입력 (주문별) */}
-                <div className="mt-2 pt-2 border-t border-amber-200">
-                  <label className="block text-[11px] font-semibold text-amber-900 mb-1.5">
-                    🧾 영수증 장수 <span className="text-amber-600 font-normal">(이번 배송에 함께 전달)</span>
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setReceiptCount(Math.max(0, receiptCount - 1))}
-                      disabled={receiptCount <= 0}
-                      className="w-8 h-8 rounded-lg bg-white border border-amber-300 text-amber-700 hover:bg-amber-100 disabled:opacity-40 disabled:cursor-not-allowed font-bold transition-colors"
-                    >
-                      −
-                    </button>
-                    <input
-                      type="number"
-                      min="0"
-                      max="10"
-                      value={receiptCount}
-                      onChange={e => setReceiptCount(Math.max(0, Math.min(10, parseInt(e.target.value) || 0)))}
-                      className="flex-1 px-3 py-1.5 bg-white border border-amber-300 rounded-lg text-sm text-center font-bold tabular-nums focus:outline-none focus:ring-2 focus:ring-amber-500/30"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setReceiptCount(Math.min(10, receiptCount + 1))}
-                      disabled={receiptCount >= 10}
-                      className="w-8 h-8 rounded-lg bg-white border border-amber-300 text-amber-700 hover:bg-amber-100 disabled:opacity-40 disabled:cursor-not-allowed font-bold transition-colors"
-                    >
-                      +
-                    </button>
-                    <span className="text-xs font-semibold text-amber-700">장</span>
-                  </div>
-                  {receiptCount > 0 && (
-                    <div className="mt-1.5 text-[10px] text-blue-700 font-medium">
-                      ✓ 배송기사 화면에 "영수증 {receiptCount}장 전달" 강조 표시됩니다
+            {/* 🧾 영수증 장수 입력 (모든 주문에서 사용 가능) */}
+            {!isService && (
+              <div className={`rounded-xl border transition-all ${
+                receiptCount > 0
+                  ? 'bg-blue-50 border-blue-300'
+                  : 'bg-white border-stone-200'
+              }`}>
+                <div className="px-3 py-2.5">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-base">🧾</span>
+                      <div>
+                        <div className="text-xs font-semibold text-stone-900 flex items-center gap-1.5">
+                          영수증 장수
+                          {receiptCount > 0 && (
+                            <span className="text-[9px] px-1.5 py-0.5 bg-blue-700 text-white rounded font-bold">
+                              {receiptCount}장
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-stone-500">
+                          {receiptCount > 0
+                            ? '✓ 기사 화면에 "영수증 전달" 강조 표시'
+                            : '배송 시 영수증이 필요한 경우 입력'}
+                        </div>
+                      </div>
                     </div>
-                  )}
+
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setReceiptCount(Math.max(0, receiptCount - 1))}
+                        disabled={receiptCount <= 0}
+                        className="w-8 h-8 rounded-lg bg-white border border-stone-300 text-stone-700 hover:bg-stone-100 disabled:opacity-40 disabled:cursor-not-allowed font-bold transition-colors"
+                      >
+                        −
+                      </button>
+                      <input
+                        type="number"
+                        min="0"
+                        max="10"
+                        value={receiptCount}
+                        onChange={e => setReceiptCount(Math.max(0, Math.min(10, parseInt(e.target.value) || 0)))}
+                        className="w-14 px-2 py-1.5 bg-white border border-stone-300 rounded-lg text-sm text-center font-bold tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setReceiptCount(Math.min(10, receiptCount + 1))}
+                        disabled={receiptCount >= 10}
+                        className="w-8 h-8 rounded-lg bg-white border border-stone-300 text-stone-700 hover:bg-stone-100 disabled:opacity-40 disabled:cursor-not-allowed font-bold transition-colors"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
