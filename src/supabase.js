@@ -49,6 +49,7 @@ export const TABLES = {
   items: 'items',
   orders: 'orders',
   drivers: 'drivers',
+  gifts: 'gifts',  // 🎁 사은품 이벤트
   auditLogs: 'audit_logs',  // 🆕 변경 이력 추적
 };
 
