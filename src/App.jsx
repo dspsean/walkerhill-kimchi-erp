@@ -1059,7 +1059,6 @@ function ChangePasswordModal({ currentUser, onClose, showToast }) {
 
 function LoginScreen({ onSuccess, drivers = [] }) {
   const [adminUsers, setAdminUsers] = useState(() => getAdminUsers());
-  const [showEditUsers, setShowEditUsers] = useState(false);
   const [input, setInput] = useState('');
   const [userName, setUserName] = useState(adminUsers[0]?.name || 'Admin');
   const [error, setError] = useState('');
@@ -1320,16 +1319,6 @@ function LoginScreen({ onSuccess, drivers = [] }) {
                 >
                   로그인
                 </button>
-
-                {loginMode === 'staff' && (
-                  <button
-                    type="button"
-                    onClick={() => setShowEditUsers(true)}
-                    className="w-full mt-2.5 py-2 bg-transparent hover:bg-[#FAFAFA] text-[#71717A] hover:text-[#09090B] rounded-[8px] text-[12px] transition-colors"
-                  >
-                    사용자 관리
-                  </button>
-                )}
               </form>
 
               {/* 하단 안내 */}
@@ -1346,24 +1335,6 @@ function LoginScreen({ onSuccess, drivers = [] }) {
           © 2026 워커힐김치 OMS
         </div>
       </div>
-
-      {/* 🆕 이름 편집 모달 */}
-      {showEditUsers && (
-        <EditUsersModal
-          initialUsers={adminUsers}
-          currentUser={userName}
-          onSave={(newUsers) => {
-            const saved = saveAdminUsers(newUsers);
-            setAdminUsers(saved);
-            // 현재 선택한 이름이 삭제됐으면 첫 번째로 변경
-            if (!saved.some(u => u.name === userName)) {
-              setUserName(saved[0]?.name || 'Admin');
-            }
-            setShowEditUsers(false);
-          }}
-          onClose={() => setShowEditUsers(false)}
-        />
-      )}
     </div>
   );
 }
@@ -1377,9 +1348,31 @@ function EditUsersModal({ initialUsers, currentUser, onSave, onClose }) {
   // 비밀번호 표시 토글
   const [showPwd, setShowPwd] = useState({});
 
-  // 현재 로그인 사용자가 admin인지 확인
+  // 🔐 보안: 현재 로그인 사용자가 admin이 아니면 모달 자체를 막음
   const currentUserData = users.find(u => u.name === currentUser);
   const isAdmin = currentUserData?.role === 'admin';
+
+  // 🛡️ admin이 아니면 즉시 모달 닫기 (이중 방어)
+  if (!isAdmin) {
+    return (
+      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+        <div className="bg-white rounded-[16px] shadow-2xl w-full max-w-md p-6 text-center" onClick={e => e.stopPropagation()}>
+          <div className="text-5xl mb-3">🔒</div>
+          <h2 className="text-[16px] font-semibold text-[#09090B] mb-2">접근 권한이 없습니다</h2>
+          <p className="text-[13px] text-[#71717A] mb-5">
+            사용자 관리는 관리자(Admin)만 사용할 수 있습니다.<br/>
+            본인 비밀번호 변경은 사이드바의 '🔐 비밀번호 변경'을 이용해주세요.
+          </p>
+          <button
+            onClick={onClose}
+            className="px-5 py-2 bg-[#09090B] hover:bg-black text-white rounded-[8px] text-[13px] font-medium transition-colors"
+          >
+            확인
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const updateUserName = (idx, value) => {
     const target = users[idx];
@@ -1556,6 +1549,8 @@ export default function App() {
   const [loaded, setLoaded] = useState(false);
   const [toast, setToast] = useState(null);
   const [showChangePassword, setShowChangePassword] = useState(false);
+  const [showEditUsers, setShowEditUsers] = useState(false);  // 🆕 사용자 관리 모달
+  const [adminUsers, setAdminUsers] = useState(() => getAdminUsers());  // 🆕 사용자 목록
 
   // 로그인 체크 (앱 시작 시)
   useEffect(() => {
@@ -2573,6 +2568,17 @@ export default function App() {
               <span className="text-sm">🔐</span>
               <span className="flex-1 text-left">비밀번호 변경</span>
             </button>
+            {/* 사용자 관리: Admin만 */}
+            {userRole === 'admin' && (
+              <button
+                onClick={() => setShowEditUsers(true)}
+                className="w-full flex items-center gap-2 px-3 py-2 bg-stone-50 hover:bg-stone-100 text-stone-600 rounded-lg text-xs font-medium transition-all"
+              >
+                <span className="text-sm">👥</span>
+                <span className="flex-1 text-left">사용자 관리</span>
+                <span className="text-[8px] px-1 bg-[#09090B] text-white rounded font-bold">ADMIN</span>
+              </button>
+            )}
             <button
               onClick={handleLogout}
               className="w-full flex items-center gap-2 px-3 py-2 bg-stone-50 hover:bg-red-50 hover:text-red-700 text-stone-500 rounded-lg text-xs font-medium transition-all"
@@ -2755,6 +2761,21 @@ export default function App() {
           currentUser={currentUser}
           onClose={() => setShowChangePassword(false)}
           showToast={showToast}
+        />
+      )}
+
+      {/* 🆕 사용자 관리 모달 (Admin만) */}
+      {showEditUsers && userRole === 'admin' && (
+        <EditUsersModal
+          initialUsers={adminUsers}
+          currentUser={currentUser}
+          onSave={(newUsers) => {
+            const saved = saveAdminUsers(newUsers);
+            setAdminUsers(saved);
+            showToast('✓ 사용자 정보가 변경되었습니다');
+            setShowEditUsers(false);
+          }}
+          onClose={() => setShowEditUsers(false)}
         />
       )}
     </div>
