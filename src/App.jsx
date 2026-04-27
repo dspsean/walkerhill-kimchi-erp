@@ -4141,6 +4141,14 @@ function Orders({ customers, items, orders, setOrders, gifts, setGifts, showToas
                         {isWaitingStock && <span className="text-[9px] px-1 py-0.5 rounded bg-purple-500 text-white font-bold">⏳ 입고대기</span>}
                         {o.splitDeliveries?.length > 0 && <span className="text-[9px] px-1 py-0.5 rounded bg-indigo-500 text-white font-bold">📦 분할{o.splitDeliveries.length}회</span>}
                         {o.giftQty > 0 && <span className="text-[9px] px-1 py-0.5 rounded bg-pink-500 text-white font-bold" title={o.giftName || '사은품'}>🎁 {o.giftQty}</span>}
+                        {o.paymentStatus === 'paid' && (
+                          <span
+                            className="text-[9px] px-1 py-0.5 rounded bg-emerald-600 text-white font-bold"
+                            title={`${o.paymentMethod === 'cash' ? '현금' : '계좌이체'} · ${o.paymentDate || ''}${o.paymentMemo ? ' · ' + o.paymentMemo : ''}`}
+                          >
+                            💰 {o.paymentMethod === 'cash' ? '현금' : '입금'}
+                          </span>
+                        )}
                       </div>
                     </td>
                     <td className="px-4 py-3 text-stone-600 text-xs">
@@ -4802,6 +4810,15 @@ function OrderFormModal({ customers, items, editTarget, gifts = [], orders = [],
   const [giftQty, setGiftQty] = useState(
     editTarget?.giftQty !== undefined ? editTarget.giftQty : null
   );
+  // 💰 결제 관련 (배송 전 선결제)
+  // paymentStatus: 'unpaid' | 'paid'
+  // paymentMethod: null | 'transfer' | 'cash'
+  const [paymentStatus, setPaymentStatus] = useState(editTarget?.paymentStatus || 'unpaid');
+  const [paymentMethod, setPaymentMethod] = useState(editTarget?.paymentMethod || null);
+  const [paymentDate, setPaymentDate] = useState(
+    editTarget?.paymentDate || ''
+  );
+  const [paymentMemo, setPaymentMemo] = useState(editTarget?.paymentMemo || '');
 
   // 🔍 고객 검색 - debounce
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -4991,6 +5008,20 @@ function OrderFormModal({ customers, items, editTarget, gifts = [], orders = [],
       data.giftQty = effectiveGiftQty;
     } else if (giftQty !== null) {
       data.giftQty = 0;
+    }
+
+    // 💰 결제 정보 (배송 전 선결제)
+    data.paymentStatus = paymentStatus;
+    if (paymentStatus === 'paid') {
+      data.paymentMethod = paymentMethod || 'transfer';  // 기본: 계좌이체
+      // 결제일자가 비어있으면 오늘로 자동 기록
+      data.paymentDate = paymentDate || new Date().toISOString().slice(0, 10);
+      if (paymentMemo) data.paymentMemo = paymentMemo;
+    } else {
+      // 미결제: 결제 정보 초기화
+      data.paymentMethod = null;
+      data.paymentDate = null;
+      data.paymentMemo = null;
     }
 
     onSave(data);
@@ -5269,6 +5300,103 @@ function OrderFormModal({ customers, items, editTarget, gifts = [], orders = [],
                 </div>
               </label>
             </div>
+
+            {/* 💰 선결제 (배송 전 결제) */}
+            {!isService && (
+              <div className={`rounded-xl border transition-all ${
+                paymentStatus === 'paid'
+                  ? 'bg-emerald-50 border-emerald-300'
+                  : 'bg-white border-stone-200'
+              }`}>
+                <label className="flex items-center gap-2.5 px-3 py-2.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={paymentStatus === 'paid'}
+                    onChange={e => {
+                      const checked = e.target.checked;
+                      setPaymentStatus(checked ? 'paid' : 'unpaid');
+                      // 체크 시 오늘 날짜 + 기본값 자동 설정
+                      if (checked) {
+                        if (!paymentDate) setPaymentDate(new Date().toISOString().slice(0, 10));
+                        if (!paymentMethod) setPaymentMethod('transfer');
+                      }
+                    }}
+                    className="w-4 h-4 accent-emerald-700"
+                  />
+                  <div className="flex-1">
+                    <div className="text-xs font-semibold text-stone-900 flex items-center gap-1.5">
+                      💰 배송 전 선결제 완료
+                      {paymentStatus === 'paid' && (
+                        <span className="text-[9px] px-1.5 py-0.5 bg-emerald-700 text-white rounded font-bold">PAID</span>
+                      )}
+                    </div>
+                    <div className="text-[10px] text-stone-500">
+                      {paymentStatus === 'paid'
+                        ? '✓ 기사 화면에 "결제완료"로 표시됩니다'
+                        : '계좌이체/현금으로 미리 받은 경우 체크'}
+                    </div>
+                  </div>
+                </label>
+
+                {/* 선결제 체크 시 상세 입력 */}
+                {paymentStatus === 'paid' && (
+                  <div className="px-3 pb-3 pt-1 space-y-2 border-t border-emerald-200/60">
+                    {/* 결제 수단 선택 */}
+                    <div>
+                      <label className="block text-[11px] font-semibold text-stone-700 mb-1.5">결제 수단</label>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setPaymentMethod('transfer')}
+                          className={`px-3 py-2 rounded-lg text-xs font-medium border transition-all ${
+                            paymentMethod === 'transfer'
+                              ? 'bg-emerald-700 text-white border-emerald-700'
+                              : 'bg-white text-stone-700 border-stone-200 hover:border-stone-300'
+                          }`}
+                        >
+                          🏦 계좌이체
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPaymentMethod('cash')}
+                          className={`px-3 py-2 rounded-lg text-xs font-medium border transition-all ${
+                            paymentMethod === 'cash'
+                              ? 'bg-emerald-700 text-white border-emerald-700'
+                              : 'bg-white text-stone-700 border-stone-200 hover:border-stone-300'
+                          }`}
+                        >
+                          💵 현금
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 결제일자 */}
+                    <div>
+                      <label className="block text-[11px] font-semibold text-stone-700 mb-1.5">결제일자</label>
+                      <input
+                        type="date"
+                        value={paymentDate}
+                        onChange={e => setPaymentDate(e.target.value)}
+                        className="w-full px-3 py-1.5 bg-white border border-stone-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                      />
+                    </div>
+
+                    {/* 메모 (선택) */}
+                    <div>
+                      <label className="block text-[11px] font-semibold text-stone-700 mb-1.5">메모 <span className="text-stone-400 font-normal">(선택)</span></label>
+                      <input
+                        type="text"
+                        value={paymentMemo}
+                        onChange={e => setPaymentMemo(e.target.value)}
+                        placeholder="예: 카톡으로 입금 확인"
+                        className="w-full px-3 py-1.5 bg-white border border-stone-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                        maxLength={50}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* 🏢 B2B: 선주문 토글 */}
             {isB2B && (
@@ -9372,6 +9500,21 @@ function DriverApp({ driver, customers, items, orders, setOrders, onLogout, show
       }
       // 수금액 합산 (cashReceived 필드)
       groups[o.customerId].totalPaid += (o.cashReceived || 0);
+      // 💰 선결제 정보 (배송 전 결제 완료된 주문이 있는지)
+      if (o.paymentStatus === 'paid') {
+        if (!groups[o.customerId].prepaidInfo) {
+          groups[o.customerId].prepaidInfo = {
+            method: o.paymentMethod || 'transfer',
+            date: o.paymentDate || '',
+            memo: o.paymentMemo || '',
+            amount: 0,
+          };
+        }
+        // 선결제된 주문의 금액 합산
+        if (!o.isService) {
+          groups[o.customerId].prepaidInfo.amount += (priceMap[o.itemName] || 0) * o.qty;
+        }
+      }
       // 배송 상태는 "가장 진행 안 된" 것 기준 (대기 > 배송중 > 완료)
       const statusOrder = { '취소': 0, '배송완료': 1, '배송중': 2, '출고대기': 3, '배송준비중': 4, '반송': 5 };
       if ((statusOrder[o.shipStatus] || 4) > (statusOrder[groups[o.customerId].shipStatus] || 4)) {
@@ -9388,6 +9531,14 @@ function DriverApp({ driver, customers, items, orders, setOrders, onLogout, show
       const needsShipping = !hasPickupOnly && customerTotal < SHIPPING_THRESHOLD;
       g.shippingFee = needsShipping ? SHIPPING_FEE : 0;
       g.finalTotal = g.totalAmount + g.shippingFee;
+      // 💰 선결제 금액을 totalPaid에 자동 합산 (기사가 받을 필요 없음)
+      if (g.prepaidInfo) {
+        g.totalPaid += g.prepaidInfo.amount;
+        // 선결제 시 배송료가 있으면 함께 결제된 것으로 처리
+        if (g.shippingFee > 0 && g.prepaidInfo.amount >= g.totalAmount) {
+          g.totalPaid += g.shippingFee;
+        }
+      }
       g.remainingAmount = Math.max(0, g.finalTotal - g.totalPaid);
     });
 
@@ -9958,6 +10109,26 @@ function DriverDeliveryGroupCard({ group, customer, items, onGroupUpdate, onEdit
 
       {/* 💵 수금 상태 */}
       <div className={`px-4 py-2.5 border-b border-stone-100 ${isFullyPaid ? 'bg-emerald-50' : isPartialPaid ? 'bg-amber-50' : 'bg-red-50'}`}>
+        {/* 💰 선결제 표시 (있을 때만) */}
+        {group.prepaidInfo && (
+          <div className="mb-2 px-2.5 py-1.5 bg-emerald-100 border border-emerald-300 rounded-lg flex items-center gap-2">
+            <span className="text-base">💰</span>
+            <div className="flex-1 min-w-0">
+              <div className="text-[10px] font-bold text-emerald-900 flex items-center gap-1.5">
+                선결제 완료
+                <span className="text-[9px] px-1 py-0.5 bg-emerald-700 text-white rounded font-bold whitespace-nowrap">
+                  {group.prepaidInfo.method === 'cash' ? '💵 현금' : '🏦 입금'}
+                </span>
+              </div>
+              <div className="text-[10px] text-emerald-800 truncate">
+                {group.prepaidInfo.date && `${group.prepaidInfo.date} · `}
+                <span className="font-mono font-bold">${group.prepaidInfo.amount}</span>
+                {group.prepaidInfo.memo && ` · ${group.prepaidInfo.memo}`}
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="text-base">
@@ -9965,18 +10136,19 @@ function DriverDeliveryGroupCard({ group, customer, items, onGroupUpdate, onEdit
             </span>
             <div>
               <div className={`text-[10px] font-bold ${isFullyPaid ? 'text-emerald-800' : isPartialPaid ? 'text-amber-800' : 'text-red-800'}`}>
-                {isFullyPaid ? '결제 완료' : isPartialPaid ? `부분 결제 (${paymentPercent}%)` : '미결제'}
+                {isFullyPaid ? (group.prepaidInfo ? '결제 완료 (선결제)' : '결제 완료') : isPartialPaid ? `부분 결제 (${paymentPercent}%)` : '미결제'}
               </div>
               <div className={`text-[11px] font-mono tabular-nums ${isFullyPaid ? 'text-emerald-700' : isPartialPaid ? 'text-amber-700' : 'text-red-700'}`}>
                 받은 금액: <span className="font-bold">${group.totalPaid}</span> / ${group.finalTotal}
               </div>
             </div>
           </div>
-          {!group.hasService || group.finalTotal > 0 ? (
+          {/* 미결제/부분결제일 때만 수금 버튼 (이미 선결제 완료면 숨김) */}
+          {(!isFullyPaid && (!group.hasService || group.finalTotal > 0)) ? (
             <button
               onClick={() => onCashClick(group)}
               className="px-3 py-1.5 bg-white border-2 border-current rounded-lg text-xs font-bold active:scale-95 transition-all"
-              style={{ color: isFullyPaid ? '#059669' : isPartialPaid ? '#b45309' : '#b91c1c' }}
+              style={{ color: isPartialPaid ? '#b45309' : '#b91c1c' }}
             >
               💵 수금
             </button>
