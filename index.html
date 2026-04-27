@@ -2,12 +2,40 @@
 <html lang="ko">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" href="/icon-192.png" />
-    <link rel="apple-touch-icon" href="/icon-192.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <meta name="theme-color" content="#991B1B" />
-    <meta name="description" content="워커힐 김치 주문·고객·재고 관리 시스템" />
-    <title>워커힐김치 ERP</title>
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon.ico" />
+    <link rel="shortcut icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="apple-touch-icon" sizes="192x192" href="/icon-192.png" />
+    <!-- 📱 viewport: 아이패드/모바일 친화적 (확대 허용) -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#1B3A2A" />
+    <meta name="description" content="김치하우스 - Kimchi House AU 주문·고객·재고 관리 시스템" />
+    <!-- 📱 iOS PWA 설정 -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="김치하우스" />
+    <!-- 📱 모바일/태블릿 추가 최적화 -->
+    <meta name="format-detection" content="telephone=no" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <title>김치하우스 OMS · Kimchi House AU</title>
+    <style>
+      /* 📱 iOS Safari 안전 영역 */
+      html, body {
+        overscroll-behavior-y: none;
+        -webkit-tap-highlight-color: transparent;
+      }
+      body {
+        padding-top: env(safe-area-inset-top);
+        padding-bottom: env(safe-area-inset-bottom);
+      }
+      /* 📱 입력 필드 자동 줌 방지 (16px 이상 폰트 크기) - 모바일에만 */
+      @media (max-width: 768px) {
+        input, textarea, select {
+          font-size: 16px !important;
+        }
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
