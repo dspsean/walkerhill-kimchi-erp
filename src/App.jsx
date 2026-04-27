@@ -718,17 +718,56 @@ function clearAuthSession() {
   try { localStorage.removeItem(AUTH_KEY); } catch {}
 }
 
-// 🆕 관리자 사용자 목록 (localStorage 기반 - 사용자 직접 편집)
-// ⚠️ 누가 뭘 바꿨는지 추적하기 위한 용도 (비밀번호는 공용 admin1234)
+// ============================================================
+// 🆕 사용자 관리 시스템 (Admin/User 권한 분리 + 개별 비밀번호)
+// ============================================================
+// 데이터 구조:
+//   [
+//     { name: 'Admin', role: 'admin', password: 'admin1234' },
+//     { name: 'User1', role: 'user', password: 'user1234' },
+//     { name: 'User2', role: 'user', password: 'user1234' },
+//   ]
+// 역할:
+//   admin: 모든 권한 (변경 이력, 백업/복원, 사용자 관리, 모든 비밀번호 관리)
+//   user:  일상 업무 (고객/주문/상품 추가/수정/삭제, 자기 비밀번호만 변경)
+// ============================================================
 const ADMIN_USERS_KEY = 'wh:adminUsers';
-const DEFAULT_ADMIN_USERS = ['사장님', '와이프', '알바생'];
+
+// 기본 사용자 목록: Admin + User1, User2 (3명 시작)
+const DEFAULT_ADMIN_USERS = [
+  { name: 'Admin', role: 'admin', password: 'admin1234' },
+  { name: 'User1', role: 'user', password: 'admin1234' },
+  { name: 'User2', role: 'user', password: 'admin1234' },
+];
+
+// 🔧 마이그레이션: 옛날 데이터 (string 배열) → 새 객체 배열
+function migrateUsers(data) {
+  if (!Array.isArray(data) || data.length === 0) return DEFAULT_ADMIN_USERS;
+
+  // 첫 항목이 string이면 옛날 형식
+  if (typeof data[0] === 'string') {
+    // 첫 사용자를 admin, 나머지를 user로 변환
+    return data.map((name, idx) => ({
+      name: idx === 0 ? 'Admin' : `User${idx}`,  // 이름도 표준화
+      role: idx === 0 ? 'admin' : 'user',
+      password: 'admin1234',  // 모두 기본 비밀번호로 초기화 (보안상 권장)
+    }));
+  }
+
+  // 이미 객체 배열이면 그대로 (필드 누락 시 보충)
+  return data.map((u, idx) => ({
+    name: u.name || `User${idx}`,
+    role: u.role || (idx === 0 ? 'admin' : 'user'),
+    password: u.password || 'admin1234',
+  }));
+}
 
 function getAdminUsers() {
   try {
     const data = localStorage.getItem(ADMIN_USERS_KEY);
     if (data) {
-      const users = JSON.parse(data);
-      if (Array.isArray(users) && users.length > 0) return users;
+      const parsed = JSON.parse(data);
+      return migrateUsers(parsed);
     }
   } catch {}
   return DEFAULT_ADMIN_USERS;
@@ -736,7 +775,20 @@ function getAdminUsers() {
 
 function saveAdminUsers(users) {
   try {
-    const cleaned = users.map(u => String(u).trim()).filter(u => u.length > 0);
+    // 정리: 이름 trim + 빈 항목 제거 + 최소 1명의 admin 보장
+    const cleaned = users
+      .map(u => ({
+        name: String(u.name || '').trim(),
+        role: u.role === 'admin' ? 'admin' : 'user',
+        password: u.password || 'admin1234',
+      }))
+      .filter(u => u.name.length > 0);
+
+    // 🛡️ 안전장치: admin이 한 명도 없으면 첫 항목을 admin으로
+    if (cleaned.length > 0 && !cleaned.some(u => u.role === 'admin')) {
+      cleaned[0].role = 'admin';
+    }
+
     localStorage.setItem(ADMIN_USERS_KEY, JSON.stringify(cleaned));
     // 🚀 Supabase 동기화 (다른 PC와 공유)
     if (typeof setSetting === 'function') {
@@ -747,6 +799,29 @@ function saveAdminUsers(users) {
     return cleaned;
   } catch {
     return users;
+  }
+}
+
+// 🔐 사용자 비밀번호 검증
+function verifyUserPassword(userName, password) {
+  const users = getAdminUsers();
+  const user = users.find(u => u.name === userName);
+  if (!user) return null;
+  if (user.password !== password) return null;
+  return { name: user.name, role: user.role };
+}
+
+// 🔐 특정 사용자의 비밀번호 변경 (이름으로 식별)
+function setUserPassword(userName, newPassword) {
+  try {
+    const users = getAdminUsers();
+    const updated = users.map(u =>
+      u.name === userName ? { ...u, password: newPassword } : u
+    );
+    saveAdminUsers(updated);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -768,9 +843,9 @@ function verifyDriver(password, drivers) {
 }
 
 // ============================================================
-// 🔐 관리자 비밀번호 변경 모달
+// 🔐 비밀번호 변경 모달 (현재 로그인한 사용자의 비밀번호만 변경)
 // ============================================================
-function ChangePasswordModal({ onClose, showToast }) {
+function ChangePasswordModal({ currentUser, onClose, showToast }) {
   const [currentPwd, setCurrentPwd] = useState('');
   const [newPwd, setNewPwd] = useState('');
   const [confirmPwd, setConfirmPwd] = useState('');
@@ -799,8 +874,14 @@ function ChangePasswordModal({ onClose, showToast }) {
   const handleSubmit = () => {
     setError('');
 
-    // 1. 현재 비밀번호 확인
-    if (currentPwd !== getAdminPassword()) {
+    if (!currentUser) {
+      setError('로그인 정보를 확인할 수 없습니다');
+      return;
+    }
+
+    // 1. 현재 비밀번호 확인 (현재 로그인한 사용자의 비밀번호)
+    const verified = verifyUserPassword(currentUser, currentPwd);
+    if (!verified) {
       setError('현재 비밀번호가 일치하지 않습니다');
       return;
     }
@@ -823,9 +904,9 @@ function ChangePasswordModal({ onClose, showToast }) {
       return;
     }
 
-    // 저장
-    if (setAdminPassword(newPwd)) {
-      showToast('🔐 비밀번호가 변경되었습니다');
+    // 저장: 현재 사용자의 비밀번호만 변경
+    if (setUserPassword(currentUser, newPwd)) {
+      showToast(`🔐 ${currentUser}의 비밀번호가 변경되었습니다`);
       onClose();
     } else {
       setError('비밀번호 저장에 실패했습니다');
@@ -980,7 +1061,7 @@ function LoginScreen({ onSuccess, drivers = [] }) {
   const [adminUsers, setAdminUsers] = useState(() => getAdminUsers());  // 🆕 동적 로드
   const [showEditUsers, setShowEditUsers] = useState(false);  // 🆕 이름 편집 모달
   const [input, setInput] = useState('');
-  const [userName, setUserName] = useState(adminUsers[0] || '사장님');
+  const [userName, setUserName] = useState(adminUsers[0]?.name || 'Admin');
   const [error, setError] = useState('');
   const [shake, setShake] = useState(false);
   const [attempts, setAttempts] = useState(getAttempts());
@@ -1007,12 +1088,26 @@ function LoginScreen({ onSuccess, drivers = [] }) {
     e?.preventDefault();
     if (isLocked) return;
 
-    // 1. 관리자 비밀번호 확인
-    if (input === getAdminPassword()) {
-      saveAuthSession({ role: 'admin', userName });  // 🆕 사용자 이름 저장
-      saveAttempts({ count: 0, lockedUntil: 0 });
-      onSuccess({ role: 'admin', userName });
-      return;
+    // 1. 🆕 선택된 사용자의 비밀번호 확인 (개별 비밀번호)
+    if (userName) {
+      const verified = verifyUserPassword(userName, input);
+      if (verified) {
+        saveAuthSession({ role: verified.role, userName: verified.name });
+        saveAttempts({ count: 0, lockedUntil: 0 });
+        onSuccess({ role: verified.role, userName: verified.name });
+        return;
+      }
+    } else {
+      // userName 미선택: 모든 사용자에 대해 시도 (역호환성)
+      const users = getAdminUsers();
+      for (const user of users) {
+        if (user.password === input) {
+          saveAuthSession({ role: user.role, userName: user.name });
+          saveAttempts({ count: 0, lockedUntil: 0 });
+          onSuccess({ role: user.role, userName: user.name });
+          return;
+        }
+      }
     }
 
     // 2. 배송기사 비밀번호 확인
@@ -1099,18 +1194,21 @@ function LoginScreen({ onSuccess, drivers = [] }) {
               <div className="mb-4">
                 <label className="block text-xs font-semibold text-stone-600 mb-1.5">이름</label>
                 <div className={`grid gap-2 ${adminUsers.length <= 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
-                  {adminUsers.map(name => (
+                  {adminUsers.map(user => (
                     <button
-                      key={name}
+                      key={user.name}
                       type="button"
-                      onClick={() => setUserName(name)}
-                      className={`px-3 py-2.5 rounded-xl text-sm font-medium border-2 transition-all ${
-                        userName === name
+                      onClick={() => setUserName(user.name)}
+                      className={`px-3 py-2.5 rounded-xl text-sm font-medium border-2 transition-all relative ${
+                        userName === user.name
                           ? 'bg-[#09090B] text-white border-[#09090B]'
                           : 'bg-white text-stone-700 border-stone-200 hover:border-stone-300'
                       }`}
                     >
-                      {name}
+                      {user.role === 'admin' && (
+                        <span className="absolute top-0.5 right-1 text-[8px]">👑</span>
+                      )}
+                      {user.name}
                     </button>
                   ))}
                 </div>
@@ -1186,12 +1284,13 @@ function LoginScreen({ onSuccess, drivers = [] }) {
       {showEditUsers && (
         <EditUsersModal
           initialUsers={adminUsers}
+          currentUser={userName}
           onSave={(newUsers) => {
             const saved = saveAdminUsers(newUsers);
             setAdminUsers(saved);
             // 현재 선택한 이름이 삭제됐으면 첫 번째로 변경
-            if (!saved.includes(userName)) {
-              setUserName(saved[0] || '사용자');
+            if (!saved.some(u => u.name === userName)) {
+              setUserName(saved[0]?.name || 'Admin');
             }
             setShowEditUsers(false);
           }}
@@ -1203,51 +1302,66 @@ function LoginScreen({ onSuccess, drivers = [] }) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// 👥 사용자 이름 편집 모달
+// 👥 사용자 관리 모달 (고정 3계정: Admin/User1/User2)
 // ═══════════════════════════════════════════════════════════
-function EditUsersModal({ initialUsers, onSave, onClose }) {
+function EditUsersModal({ initialUsers, currentUser, onSave, onClose }) {
+  // initialUsers는 [{name, role, password}] 형식 (고정 3개)
   const [users, setUsers] = useState(initialUsers || []);
-  const [newName, setNewName] = useState('');
+  // 비밀번호 표시 토글
+  const [showPwd, setShowPwd] = useState({});
 
-  const addUser = () => {
-    const trimmed = newName.trim();
-    if (!trimmed) return;
-    if (users.includes(trimmed)) {
-      alert('이미 있는 이름입니다');
+  // 현재 로그인 사용자가 admin인지 확인
+  const currentUserData = users.find(u => u.name === currentUser);
+  const isAdmin = currentUserData?.role === 'admin';
+
+  const updateUserName = (idx, value) => {
+    const target = users[idx];
+    // Admin 이름은 변경 불가 (안전장치)
+    if (target.role === 'admin' && target.name === 'Admin') {
+      alert('Admin 계정의 이름은 변경할 수 없습니다');
       return;
     }
-    if (users.length >= 10) {
-      alert('최대 10명까지 추가 가능합니다');
-      return;
-    }
-    setUsers([...users, trimmed]);
-    setNewName('');
-  };
-
-  const removeUser = (idx) => {
-    if (users.length <= 1) {
-      alert('최소 1명은 남아있어야 합니다');
-      return;
-    }
-    setUsers(users.filter((_, i) => i !== idx));
-  };
-
-  const updateUser = (idx, value) => {
     const next = [...users];
-    next[idx] = value;
+    next[idx] = { ...next[idx], name: value };
     setUsers(next);
   };
 
+  const updateUserPassword = (idx, value) => {
+    const next = [...users];
+    next[idx] = { ...next[idx], password: value };
+    setUsers(next);
+  };
+
+  const togglePwdVisibility = (idx) => {
+    setShowPwd({ ...showPwd, [idx]: !showPwd[idx] });
+  };
+
   const handleSave = () => {
-    const cleaned = users.map(u => String(u).trim()).filter(u => u.length > 0);
+    const cleaned = users.map(u => ({
+      name: String(u.name || '').trim(),
+      role: u.role === 'admin' ? 'admin' : 'user',
+      password: u.password || 'admin1234',
+    })).filter(u => u.name.length > 0);
+
     if (cleaned.length === 0) {
       alert('최소 1명의 이름이 필요합니다');
       return;
     }
     // 중복 체크
-    const uniqueSet = new Set(cleaned);
-    if (uniqueSet.size !== cleaned.length) {
+    const uniqueNames = new Set(cleaned.map(u => u.name));
+    if (uniqueNames.size !== cleaned.length) {
       alert('중복된 이름이 있습니다');
+      return;
+    }
+    // admin 1명 이상 보장
+    if (!cleaned.some(u => u.role === 'admin')) {
+      alert('관리자(Admin)가 최소 1명 필요합니다');
+      return;
+    }
+    // 비밀번호 최소 길이
+    const tooShort = cleaned.find(u => !u.password || u.password.length < 4);
+    if (tooShort) {
+      alert(`'${tooShort.name}'의 비밀번호는 최소 4자 이상이어야 합니다`);
       return;
     }
     onSave(cleaned);
@@ -1255,75 +1369,93 @@ function EditUsersModal({ initialUsers, onSave, onClose }) {
 
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-[16px] shadow-2xl w-full max-w-md max-h-[88vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="px-6 py-4 border-b border-[#E4E4E7] flex items-center justify-between">
+      <div className="bg-white rounded-[16px] shadow-2xl w-full max-w-lg max-h-[88vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="px-6 py-4 border-b border-[#E4E4E7] flex items-center justify-between shrink-0">
           <div>
-            <h2 className="text-[16px] font-semibold text-[#09090B] tracking-tight">이름 목록 수정</h2>
-            <div className="text-[12px] text-[#71717A] mt-0.5">로그인 시 선택할 이름을 관리합니다</div>
+            <h2 className="text-[16px] font-semibold text-[#09090B] tracking-tight">사용자 관리</h2>
+            <div className="text-[12px] text-[#71717A] mt-0.5">
+              {isAdmin ? '이름과 비밀번호를 관리합니다 (계정 3개 고정)' : '⚠️ 본인 비밀번호만 변경 가능합니다'}
+            </div>
           </div>
           <button onClick={onClose} className="p-1.5 hover:bg-[#F4F4F5] rounded-[6px] transition-colors">
             <X size={18} />
           </button>
         </div>
 
-        <div className="p-6 space-y-4">
+        <div className="flex-1 overflow-y-auto p-6 space-y-4">
           {/* 안내 */}
-          <div className="p-3 bg-[#F0F9FF] border border-[#BFDBFE] rounded-[8px] text-[12px] text-[#1E40AF] leading-relaxed">
-            💡 이 목록은 <strong>이 브라우저에만 저장</strong>됩니다. 다른 PC에서도 수정하려면 그 PC에서 별도로 설정하세요.
+          <div className="p-3 bg-[#F0F9FF] border border-[#BFDBFE] rounded-[8px] text-[11px] text-[#1E40AF] leading-relaxed space-y-1">
+            <div>👑 <strong>Admin</strong>: 모든 권한 (사용자 관리, 백업 복원)</div>
+            <div>👤 <strong>User1, User2</strong>: 일반 업무 + 백업 내보내기 + 변경 이력 조회</div>
+            <div>🔄 모든 PC에 자동 동기화됩니다</div>
           </div>
 
-          {/* 현재 목록 */}
+          {/* 고정 3계정 */}
           <div>
-            <label className="block text-[12px] font-semibold text-[#52525B] mb-2">현재 이름 ({users.length}명)</label>
+            <label className="block text-[12px] font-semibold text-[#52525B] mb-2">고정 계정 (3개)</label>
             <div className="space-y-2">
-              {users.map((user, idx) => (
-                <div key={idx} className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={user}
-                    onChange={(e) => updateUser(idx, e.target.value)}
-                    className="flex-1 px-3 py-2 border border-[#E4E4E7] rounded-[8px] text-[13px] focus:outline-none focus:ring-2 focus:ring-[#09090B]/20"
-                    placeholder="이름"
-                    maxLength={20}
-                  />
-                  <button
-                    onClick={() => removeUser(idx)}
-                    className="p-2 text-[#71717A] hover:bg-[#FEF2F2] hover:text-[#B91C1C] rounded-[8px] transition-colors"
-                    title="삭제"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
+              {users.map((user, idx) => {
+                // 본인 계정 또는 Admin만 비밀번호 수정 가능
+                const canEditPwd = isAdmin || user.name === currentUser;
+                // Admin이 아니면 이름 변경 불가
+                const canEditName = isAdmin && !(user.role === 'admin' && user.name === 'Admin');
+                return (
+                  <div key={idx} className="border border-[#E4E4E7] rounded-[10px] p-3 bg-[#FAFAFA]">
+                    {/* 역할 + 이름 */}
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className={`text-[10px] px-2 py-0.5 rounded-[4px] font-bold ${
+                        user.role === 'admin'
+                          ? 'bg-[#09090B] text-white'
+                          : 'bg-[#E4E4E7] text-[#52525B]'
+                      }`}>
+                        {user.role === 'admin' ? '👑 ADMIN' : '👤 USER'}
+                      </span>
+                      <input
+                        type="text"
+                        value={user.name}
+                        onChange={(e) => updateUserName(idx, e.target.value)}
+                        disabled={!canEditName}
+                        className="flex-1 px-3 py-1.5 bg-white border border-[#E4E4E7] rounded-[6px] text-[13px] focus:outline-none focus:ring-2 focus:ring-[#09090B]/20 disabled:bg-[#F4F4F5] disabled:cursor-not-allowed disabled:text-[#71717A]"
+                        placeholder="사용자명"
+                        maxLength={20}
+                      />
+                    </div>
 
-          {/* 추가 */}
-          <div>
-            <label className="block text-[12px] font-semibold text-[#52525B] mb-2">새 이름 추가</label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addUser(); } }}
-                className="flex-1 px-3 py-2 border border-[#E4E4E7] rounded-[8px] text-[13px] focus:outline-none focus:ring-2 focus:ring-[#09090B]/20"
-                placeholder="예: 형"
-                maxLength={20}
-              />
-              <button
-                onClick={addUser}
-                disabled={!newName.trim()}
-                className="px-4 py-2 bg-[#09090B] hover:bg-black disabled:bg-[#D4D4D8] disabled:cursor-not-allowed text-white rounded-[8px] text-[13px] font-medium transition-colors"
-              >
-                <Plus size={14} />
-              </button>
+                    {/* 비밀번호 */}
+                    {canEditPwd ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-[#71717A] font-medium w-12">비번:</span>
+                        <input
+                          type={showPwd[idx] ? 'text' : 'password'}
+                          value={user.password}
+                          onChange={(e) => updateUserPassword(idx, e.target.value)}
+                          className="flex-1 px-3 py-1.5 bg-white border border-[#E4E4E7] rounded-[6px] text-[12px] font-mono focus:outline-none focus:ring-2 focus:ring-[#09090B]/20"
+                          placeholder="비밀번호 (최소 4자)"
+                          maxLength={50}
+                        />
+                        <button
+                          onClick={() => togglePwdVisibility(idx)}
+                          className="p-1.5 text-[#71717A] hover:bg-[#F4F4F5] rounded-[6px] transition-colors"
+                          title={showPwd[idx] ? '숨기기' : '표시'}
+                        >
+                          {showPwd[idx] ? '🙈' : '👁'}
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 text-[11px] text-[#A1A1AA]">
+                        <span className="w-12">비번:</span>
+                        <span>🔒 본인만 변경 가능</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
 
         {/* 하단 버튼 */}
-        <div className="px-6 py-4 bg-[#FAFAFA] border-t border-[#E4E4E7] flex items-center justify-end gap-2">
+        <div className="px-6 py-4 bg-[#FAFAFA] border-t border-[#E4E4E7] flex items-center justify-end gap-2 shrink-0">
           <button
             onClick={onClose}
             className="px-4 py-2 bg-white hover:bg-[#F4F4F5] border border-[#E4E4E7] text-[#52525B] rounded-[8px] text-[13px] font-medium transition-colors"
@@ -2052,7 +2184,7 @@ export default function App() {
     { id: 'gifts', label: '사은품', icon: Package, shortcut: '5' },
     { id: 'shipping', label: '배송관리', icon: Truck, shortcut: '6' },
     { id: 'drivers', label: '기사관리', icon: Truck, shortcut: '7' },
-    { id: 'audit', label: '변경 이력', icon: History, shortcut: '8' },  // 🆕
+    { id: 'audit', label: '변경 이력', icon: History, shortcut: '8' },  // 모두 접근 가능 (User는 읽기 전용)
   ];
 
   const lowStockCount = itemsWithStock.filter(i => i.availStock <= 20).length;
@@ -2308,6 +2440,7 @@ export default function App() {
             <div className="flex items-center gap-1.5 px-1">
               <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">💾 전체 데이터 백업</span>
             </div>
+            {/* 백업 내보내기: 모두 가능 */}
             <button
               onClick={() => {
                 try {
@@ -2325,12 +2458,21 @@ export default function App() {
               <span className="flex-1 text-left">백업 내보내기</span>
               <span className="text-[9px] opacity-80">.xlsx</span>
             </button>
-            <BackupRestoreButton
-              setCustomers={setCustomers}
-              setItems={setItems}
-              setOrders={setOrders}
-              showToast={showToast}
-            />
+            {/* 백업 복원: Admin만 가능 */}
+            {userRole === 'admin' ? (
+              <BackupRestoreButton
+                setCustomers={setCustomers}
+                setItems={setItems}
+                setOrders={setOrders}
+                showToast={showToast}
+              />
+            ) : (
+              <div className="w-full flex items-center gap-2 px-3 py-2.5 bg-stone-100 text-stone-400 rounded-lg text-xs font-medium cursor-not-allowed" title="복원은 관리자(Admin)만 가능합니다">
+                <span className="text-sm">🔒</span>
+                <span className="flex-1 text-left">백업 복원하기</span>
+                <span className="text-[9px] px-1 bg-stone-200 rounded font-bold">ADMIN</span>
+              </div>
+            )}
           </div>
 
           {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
@@ -2507,11 +2649,15 @@ export default function App() {
               </div>
             </div>
 
-            {/* 🆕 현재 사용자 */}
+            {/* 🆕 현재 사용자 + 역할 표시 */}
             {currentUser && (
-              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-[#09090B] rounded-[8px] text-[12px] font-medium text-white">
+              <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] text-[12px] font-medium ${
+                userRole === 'admin'
+                  ? 'bg-[#09090B] text-white'
+                  : 'bg-[#52525B] text-white'
+              }`}>
                 <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#22C55E]" />
-                {currentUser}
+                {userRole === 'admin' ? '👑' : '👤'} {currentUser}
               </div>
             )}
           </div>
@@ -2525,7 +2671,7 @@ export default function App() {
           {view === 'gifts' && <Gifts gifts={gifts} setGifts={saveGifts} orders={orders} setOrders={setOrders} customers={customers} items={itemsWithStock} showToast={showToast} setView={setView} />}
           {view === 'shipping' && <Shipping customers={customers} orders={orders} setOrders={setOrders} showToast={showToast} />}
           {view === 'drivers' && <DriversManagement drivers={drivers} setDrivers={setDrivers} orders={orders} showToast={showToast} />}
-          {view === 'audit' && <AuditLog currentUser={currentUser} />}
+          {view === 'audit' && <AuditLog currentUser={currentUser} userRole={userRole} />}
         </div>
       </main>
 
@@ -2539,6 +2685,7 @@ export default function App() {
 
       {showChangePassword && (
         <ChangePasswordModal
+          currentUser={currentUser}
           onClose={() => setShowChangePassword(false)}
           showToast={showToast}
         />
