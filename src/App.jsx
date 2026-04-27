@@ -1058,14 +1058,16 @@ function ChangePasswordModal({ currentUser, onClose, showToast }) {
 }
 
 function LoginScreen({ onSuccess, drivers = [] }) {
-  const [adminUsers, setAdminUsers] = useState(() => getAdminUsers());  // 🆕 동적 로드
-  const [showEditUsers, setShowEditUsers] = useState(false);  // 🆕 이름 편집 모달
+  const [adminUsers, setAdminUsers] = useState(() => getAdminUsers());
+  const [showEditUsers, setShowEditUsers] = useState(false);
   const [input, setInput] = useState('');
   const [userName, setUserName] = useState(adminUsers[0]?.name || 'Admin');
   const [error, setError] = useState('');
   const [shake, setShake] = useState(false);
   const [attempts, setAttempts] = useState(getAttempts());
   const [timeLeft, setTimeLeft] = useState(0);
+  // 🆕 로그인 모드: 'staff' (직원) | 'driver' (배송기사)
+  const [loginMode, setLoginMode] = useState('staff');
 
   useEffect(() => {
     if (attempts.lockedUntil > Date.now()) {
@@ -1088,38 +1090,31 @@ function LoginScreen({ onSuccess, drivers = [] }) {
     e?.preventDefault();
     if (isLocked) return;
 
-    // 1. 🆕 선택된 사용자의 비밀번호 확인 (개별 비밀번호)
-    if (userName) {
-      const verified = verifyUserPassword(userName, input);
-      if (verified) {
-        saveAuthSession({ role: verified.role, userName: verified.name });
-        saveAttempts({ count: 0, lockedUntil: 0 });
-        onSuccess({ role: verified.role, userName: verified.name });
-        return;
-      }
-    } else {
-      // userName 미선택: 모든 사용자에 대해 시도 (역호환성)
-      const users = getAdminUsers();
-      for (const user of users) {
-        if (user.password === input) {
-          saveAuthSession({ role: user.role, userName: user.name });
+    // 🆕 직원 모드: 선택된 사용자의 비밀번호 확인
+    if (loginMode === 'staff') {
+      if (userName) {
+        const verified = verifyUserPassword(userName, input);
+        if (verified) {
+          saveAuthSession({ role: verified.role, userName: verified.name });
           saveAttempts({ count: 0, lockedUntil: 0 });
-          onSuccess({ role: user.role, userName: user.name });
+          onSuccess({ role: verified.role, userName: verified.name });
           return;
         }
       }
     }
 
-    // 2. 배송기사 비밀번호 확인
-    const driver = verifyDriver(input, drivers);
-    if (driver) {
-      saveAuthSession({ role: 'driver', driverId: driver.id, driverName: driver.name });
-      saveAttempts({ count: 0, lockedUntil: 0 });
-      onSuccess({ role: 'driver', driver });
-      return;
+    // 🆕 배송기사 모드: 기사 비밀번호 확인
+    if (loginMode === 'driver') {
+      const driver = verifyDriver(input, drivers);
+      if (driver) {
+        saveAuthSession({ role: 'driver', driverId: driver.id, driverName: driver.name });
+        saveAttempts({ count: 0, lockedUntil: 0 });
+        onSuccess({ role: 'driver', driver });
+        return;
+      }
     }
 
-    // 3. 실패
+    // 실패 처리
     const newCount = attempts.count + 1;
     if (newCount >= MAX_ATTEMPTS) {
       const lockedUntil = Date.now() + LOCKOUT_MINUTES * 60 * 1000;
@@ -1145,137 +1140,209 @@ function LoginScreen({ onSuccess, drivers = [] }) {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-red-950 via-red-900 to-stone-900 flex items-center justify-center p-4"
-      style={{ fontFamily: "'Pretendard', -apple-system, 'Malgun Gothic', sans-serif" }}>
+    <div className="min-h-screen bg-[#FAFAFA] flex items-center justify-center p-4"
+      style={{ fontFamily: "'Pretendard Variable', 'Pretendard', -apple-system, 'Malgun Gothic', sans-serif", WebkitFontSmoothing: 'antialiased' }}>
       <style>{`
-        @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
-        @import url('https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&display=swap');
-        .font-serif-ko { font-family: 'Gowun Batang', serif; }
+        @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/variable/pretendardvariable.css');
         @keyframes shake {
           0%, 100% { transform: translateX(0); }
-          10%, 30%, 50%, 70%, 90% { transform: translateX(-8px); }
-          20%, 40%, 60%, 80% { transform: translateX(8px); }
+          10%, 30%, 50%, 70%, 90% { transform: translateX(-6px); }
+          20%, 40%, 60%, 80% { transform: translateX(6px); }
+        }
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(8px); }
+          to { opacity: 1; transform: translateY(0); }
         }
         .shake { animation: shake 0.5s; }
+        .fade-in { animation: fadeIn 0.3s ease-out; }
       `}</style>
 
-      <div className={`w-full max-w-md ${shake ? 'shake' : ''}`}>
+      <div className={`w-full max-w-[420px] ${shake ? 'shake' : ''}`}>
         {/* 로고 + 타이틀 */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-white/10 backdrop-blur mb-4 text-5xl">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-white shadow-sm border border-[#E4E4E7] mb-4 text-3xl">
             🥬
           </div>
-          <h1 className="font-serif-ko text-3xl font-bold text-white mb-2">워커힐김치</h1>
-          <div className="text-sm tracking-[0.5em] text-red-200/80 font-semibold pl-2">OMS</div>
+          <h1 className="text-[24px] font-bold text-[#09090B] tracking-tight mb-1">워커힐김치</h1>
+          <div className="text-[11px] tracking-[0.4em] text-[#71717A] font-medium uppercase pl-1">OMS System</div>
         </div>
 
-        {/* 로그인 카드 */}
-        <div className="bg-white/95 backdrop-blur-lg rounded-2xl shadow-2xl p-8">
+        {/* 메인 카드 */}
+        <div className="bg-white rounded-[16px] shadow-sm border border-[#E4E4E7] overflow-hidden">
           {isLocked ? (
-            <div className="text-center py-6">
+            <div className="p-8 text-center">
               <div className="text-5xl mb-4">🔒</div>
-              <h2 className="font-serif-ko text-xl font-bold text-red-800 mb-2">접속 차단됨</h2>
-              <p className="text-sm text-stone-600 mb-4">
-                비밀번호를 너무 많이 틀렸습니다.
+              <h2 className="text-[18px] font-semibold text-[#B91C1C] mb-2">접속 차단됨</h2>
+              <p className="text-[13px] text-[#71717A] mb-4 leading-relaxed">
+                비밀번호 5회 오류로 일시 차단되었습니다.<br/>
+                잠시 후 다시 시도해주세요.
               </p>
-              <div className="p-4 bg-red-50 rounded-xl">
-                <div className="text-xs text-red-600 mb-1">차단 해제까지</div>
-                <div className="text-3xl font-bold text-red-800 tabular-nums">
+              <div className="p-4 bg-[#FEF2F2] border border-[#FECACA] rounded-[10px]">
+                <div className="text-[11px] text-[#B91C1C] font-medium mb-1">차단 해제까지</div>
+                <div className="text-[28px] font-bold text-[#991B1B] tabular-nums tracking-tight">
                   {formatTimeLeft(timeLeft)}
                 </div>
               </div>
             </div>
           ) : (
-            <form onSubmit={handleSubmit}>
-              <h2 className="font-serif-ko text-xl font-bold text-stone-800 mb-1">로그인</h2>
-              <p className="text-xs text-stone-500 mb-5">누구이신가요?</p>
-
-              {/* 🆕 사용자 이름 선택 */}
-              <div className="mb-4">
-                <label className="block text-xs font-semibold text-stone-600 mb-1.5">이름</label>
-                <div className={`grid gap-2 ${adminUsers.length <= 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
-                  {adminUsers.map(user => (
-                    <button
-                      key={user.name}
-                      type="button"
-                      onClick={() => setUserName(user.name)}
-                      className={`px-3 py-2.5 rounded-xl text-sm font-medium border-2 transition-all relative ${
-                        userName === user.name
-                          ? 'bg-[#09090B] text-white border-[#09090B]'
-                          : 'bg-white text-stone-700 border-stone-200 hover:border-stone-300'
-                      }`}
-                    >
-                      {user.role === 'admin' && (
-                        <span className="absolute top-0.5 right-1 text-[8px]">👑</span>
-                      )}
-                      {user.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="mb-4">
-                <label className="block text-xs font-semibold text-stone-600 mb-1.5">비밀번호</label>
-                <input
-                  type="password"
-                  value={input}
-                  onChange={e => { setInput(e.target.value); setError(''); }}
-                  autoFocus
-                  placeholder="••••••••••••"
-                  className={`w-full px-4 py-3 border-2 rounded-xl text-sm focus:outline-none transition-colors ${
-                    error ? 'border-red-400 bg-red-50' : 'border-stone-200 focus:border-red-700 focus:ring-2 focus:ring-red-100'
+            <>
+              {/* 모드 선택 탭 */}
+              <div className="flex border-b border-[#E4E4E7]">
+                <button
+                  type="button"
+                  onClick={() => { setLoginMode('staff'); setInput(''); setError(''); }}
+                  className={`flex-1 px-5 py-3.5 text-[13px] font-medium transition-all relative ${
+                    loginMode === 'staff'
+                      ? 'text-[#09090B] bg-white'
+                      : 'text-[#71717A] bg-[#FAFAFA] hover:text-[#52525B]'
                   }`}
-                />
+                >
+                  <div className="flex items-center justify-center gap-2">
+                    <Users size={15} />
+                    <span>관리자 / 직원</span>
+                  </div>
+                  {loginMode === 'staff' && (
+                    <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#09090B]" />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setLoginMode('driver'); setInput(''); setError(''); }}
+                  className={`flex-1 px-5 py-3.5 text-[13px] font-medium transition-all relative ${
+                    loginMode === 'driver'
+                      ? 'text-[#09090B] bg-white'
+                      : 'text-[#71717A] bg-[#FAFAFA] hover:text-[#52525B]'
+                  }`}
+                >
+                  <div className="flex items-center justify-center gap-2">
+                    <Truck size={15} />
+                    <span>배송기사</span>
+                  </div>
+                  {loginMode === 'driver' && (
+                    <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#09090B]" />
+                  )}
+                </button>
               </div>
 
-              {error && (
-                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 flex items-start gap-2">
-                  <AlertTriangle size={14} className="shrink-0 mt-0.5" />
-                  <span>{error}</span>
-                </div>
-              )}
+              <form onSubmit={handleSubmit} className="p-7 fade-in" key={loginMode}>
+                {loginMode === 'staff' ? (
+                  <>
+                    {/* 직원 모드 */}
+                    <div className="mb-5">
+                      <label className="block text-[12px] font-semibold text-[#52525B] mb-2">사용자 선택</label>
+                      <div className={`grid gap-2 ${adminUsers.length <= 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                        {adminUsers.map(user => (
+                          <button
+                            key={user.name}
+                            type="button"
+                            onClick={() => setUserName(user.name)}
+                            className={`relative px-3 py-3 rounded-[10px] text-[13px] font-medium border transition-all ${
+                              userName === user.name
+                                ? 'bg-[#09090B] text-white border-[#09090B] shadow-sm'
+                                : 'bg-white text-[#52525B] border-[#E4E4E7] hover:border-[#A1A1AA] hover:bg-[#FAFAFA]'
+                            }`}
+                          >
+                            {user.role === 'admin' && (
+                              <span className="absolute top-1 right-1.5 text-[10px]">👑</span>
+                            )}
+                            <div className="text-[10px] uppercase tracking-wider opacity-60 mb-0.5">
+                              {user.role === 'admin' ? 'Admin' : 'User'}
+                            </div>
+                            <div>{user.name}</div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
 
-              <button
-                type="submit"
-                disabled={!input}
-                className="w-full py-3 bg-gradient-to-br from-red-700 to-red-900 hover:from-red-800 hover:to-red-950 disabled:from-stone-300 disabled:to-stone-400 disabled:cursor-not-allowed text-white rounded-xl text-sm font-bold shadow-lg transition-all"
-              >
-                🔓 로그인
-              </button>
+                    <div className="mb-4">
+                      <label className="block text-[12px] font-semibold text-[#52525B] mb-2">비밀번호</label>
+                      <input
+                        type="password"
+                        value={input}
+                        onChange={e => { setInput(e.target.value); setError(''); }}
+                        autoFocus
+                        placeholder="비밀번호 입력"
+                        className={`w-full px-4 py-2.5 border rounded-[10px] text-[14px] focus:outline-none transition-colors ${
+                          error
+                            ? 'border-[#FECACA] bg-[#FEF2F2] focus:ring-2 focus:ring-[#FECACA]'
+                            : 'border-[#E4E4E7] focus:border-[#09090B] focus:ring-2 focus:ring-[#09090B]/10'
+                        }`}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {/* 배송기사 모드 */}
+                    <div className="mb-5 p-3 bg-[#EFF6FF] border border-[#BFDBFE] rounded-[10px]">
+                      <div className="flex items-start gap-2">
+                        <Truck size={16} className="text-[#1D4ED8] mt-0.5 flex-shrink-0" />
+                        <div className="text-[12px] text-[#1E40AF] leading-relaxed">
+                          <strong>배송기사 전용 로그인</strong><br/>
+                          담당 Zone의 배송 정보만 확인 가능합니다
+                        </div>
+                      </div>
+                    </div>
 
-              {/* 🆕 사용자 이름 편집 버튼 */}
-              <button
-                type="button"
-                onClick={() => setShowEditUsers(true)}
-                className="w-full mt-2 py-2 bg-transparent hover:bg-stone-50 text-stone-500 hover:text-stone-700 rounded-lg text-xs transition-colors"
-              >
-                이름 목록 수정
-              </button>
+                    <div className="mb-4">
+                      <label className="block text-[12px] font-semibold text-[#52525B] mb-2">기사 비밀번호</label>
+                      <input
+                        type="password"
+                        value={input}
+                        onChange={e => { setInput(e.target.value); setError(''); }}
+                        autoFocus
+                        placeholder="기사 비밀번호 입력"
+                        className={`w-full px-4 py-2.5 border rounded-[10px] text-[14px] focus:outline-none transition-colors ${
+                          error
+                            ? 'border-[#FECACA] bg-[#FEF2F2] focus:ring-2 focus:ring-[#FECACA]'
+                            : 'border-[#E4E4E7] focus:border-[#09090B] focus:ring-2 focus:ring-[#09090B]/10'
+                        }`}
+                      />
+                      {drivers.length > 0 && (
+                        <div className="mt-2 text-[10px] text-[#A1A1AA]">
+                          등록된 기사: {drivers.length}명
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
 
-              <div className="mt-5 pt-4 border-t border-stone-100 space-y-1.5">
-                <div className="flex items-center gap-2 p-2 bg-stone-50 rounded-lg">
-                  <span className="text-base">👔</span>
-                  <div className="flex-1">
-                    <div className="text-[11px] font-bold text-stone-700">관리자</div>
-                    <div className="text-[10px] text-stone-500">전체 시스템 접근 가능</div>
+                {error && (
+                  <div className="mb-4 p-3 bg-[#FEF2F2] border border-[#FECACA] rounded-[8px] text-[12px] text-[#B91C1C] flex items-start gap-2">
+                    <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                    <span>{error}</span>
                   </div>
-                </div>
-                <div className="flex items-center gap-2 p-2 bg-sky-50 rounded-lg">
-                  <span className="text-base">🚚</span>
-                  <div className="flex-1">
-                    <div className="text-[11px] font-bold text-sky-800">배송기사</div>
-                    <div className="text-[10px] text-sky-600">담당 Zone 배송 확인 전용</div>
-                  </div>
-                </div>
-                <div className="text-[10px] text-stone-400 text-center pt-1">
+                )}
+
+                <button
+                  type="submit"
+                  disabled={!input}
+                  className="w-full py-3 bg-[#09090B] hover:bg-black disabled:bg-[#D4D4D8] disabled:cursor-not-allowed text-white rounded-[10px] text-[14px] font-semibold shadow-sm transition-all"
+                >
+                  로그인
+                </button>
+
+                {loginMode === 'staff' && (
+                  <button
+                    type="button"
+                    onClick={() => setShowEditUsers(true)}
+                    className="w-full mt-2.5 py-2 bg-transparent hover:bg-[#FAFAFA] text-[#71717A] hover:text-[#09090B] rounded-[8px] text-[12px] transition-colors"
+                  >
+                    사용자 관리
+                  </button>
+                )}
+              </form>
+
+              {/* 하단 안내 */}
+              <div className="px-7 py-3 bg-[#FAFAFA] border-t border-[#E4E4E7]">
+                <div className="text-[10px] text-[#A1A1AA] text-center leading-relaxed">
                   🔐 24시간 자동로그인 · 5회 오류 시 10분 차단
                 </div>
               </div>
-            </form>
+            </>
           )}
         </div>
 
-        <div className="text-center mt-6 text-[11px] text-red-200/60">
+        <div className="text-center mt-6 text-[11px] text-[#A1A1AA]">
           © 2026 워커힐김치 OMS
         </div>
       </div>
