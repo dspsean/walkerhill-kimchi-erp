@@ -7181,10 +7181,10 @@ function CustomerFormModal({ editTarget, items, onSave, onClose }) {
                       <input
                         type="number"
                         min="0"
-                        max="50"
+                        max="99"
                         step="0.5"
                         value={form.agedCareDiscount || 0}
-                        onChange={e => setForm({...form, agedCareDiscount: Math.max(0, Math.min(50, Number(e.target.value) || 0))})}
+                        onChange={e => setForm({...form, agedCareDiscount: Math.max(0, Math.min(99, Number(e.target.value) || 0))})}
                         className="flex-1 px-3 py-2 border border-stone-200 rounded-lg text-sm focus:outline-none focus:border-amber-600 focus:ring-2 focus:ring-amber-100 tabular-nums"
                       />
                       <span className="text-sm font-semibold text-stone-600">%</span>
@@ -8520,7 +8520,12 @@ function Shipping({ customers, orders, setOrders, showToast }) {
 
                 {/* Zone 내 주문 목록 (펼쳐진 경우) */}
                 {isExpanded && zoneOrderCount > 0 && (
-                  <div className="divide-y divide-stone-100">
+                  <>
+                    <div className="px-4 py-2 bg-blue-50/60 border-b border-blue-100 text-[11px] text-blue-700 flex items-center gap-2">
+                      <svg width="12" height="14" viewBox="0 0 16 22" fill="currentColor"><circle cx="5" cy="4" r="1.8"/><circle cx="11" cy="4" r="1.8"/><circle cx="5" cy="11" r="1.8"/><circle cx="11" cy="11" r="1.8"/><circle cx="5" cy="18" r="1.8"/><circle cx="11" cy="18" r="1.8"/></svg>
+                      <span>왼쪽 드래그 핸들을 잡고 끌어서 순서를 변경하세요</span>
+                    </div>
+                    <div className="divide-y divide-stone-100">
                     {zoneOrders.map((o, idx) => {
                       const c = customerMap[o.customerId];
                       const isServ = !!o.isService;
@@ -8531,33 +8536,36 @@ function Shipping({ customers, orders, setOrders, showToast }) {
                       return (
                         <div
                           key={o.id}
-                          draggable={!isEditingThis}
-                          onDragStart={() => handleDragStart(o.id)}
                           onDragOver={(e) => handleDragOver(e, o.id)}
                           onDragLeave={handleDragLeave}
                           onDrop={(e) => handleDrop(e, o.id)}
-                          onDragEnd={handleDragEnd}
                           className={`px-4 py-3 hover:bg-[#FAFAFA] transition-all ${
-                            isDragging ? 'opacity-30' :
+                            isDragging ? 'opacity-30 bg-stone-100' :
                             isDragOver ? 'bg-blue-50 border-l-4 border-l-blue-500' :
                             selectedIds.has(o.id) ? 'bg-red-50/30' :
                             isServ ? 'bg-amber-50/40' : ''
                           }`}
                         >
                           <div className="flex items-start gap-2">
-                            {/* 🆕 드래그 핸들 */}
+                            {/* 🆕 드래그 핸들 - 이 영역에서만 드래그 */}
                             <div
-                              className="flex flex-col items-center justify-center pt-1 cursor-grab active:cursor-grabbing text-stone-300 hover:text-stone-700 transition-colors flex-shrink-0 select-none"
+                              draggable={!isEditingThis}
+                              onDragStart={(e) => {
+                                e.dataTransfer.effectAllowed = 'move';
+                                handleDragStart(o.id);
+                              }}
+                              onDragEnd={handleDragEnd}
+                              className="flex flex-col items-center justify-center px-2 py-2 cursor-grab active:cursor-grabbing text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded-md transition-colors flex-shrink-0 select-none"
                               title="드래그하여 순서 변경"
                               style={{ touchAction: 'none' }}
                             >
-                              <svg width="14" height="20" viewBox="0 0 14 20" fill="currentColor">
-                                <circle cx="4" cy="4" r="1.5"/>
-                                <circle cx="10" cy="4" r="1.5"/>
-                                <circle cx="4" cy="10" r="1.5"/>
-                                <circle cx="10" cy="10" r="1.5"/>
-                                <circle cx="4" cy="16" r="1.5"/>
-                                <circle cx="10" cy="16" r="1.5"/>
+                              <svg width="16" height="22" viewBox="0 0 16 22" fill="currentColor">
+                                <circle cx="5" cy="4" r="1.8"/>
+                                <circle cx="11" cy="4" r="1.8"/>
+                                <circle cx="5" cy="11" r="1.8"/>
+                                <circle cx="11" cy="11" r="1.8"/>
+                                <circle cx="5" cy="18" r="1.8"/>
+                                <circle cx="11" cy="18" r="1.8"/>
                               </svg>
                             </div>
 
@@ -8569,13 +8577,8 @@ function Shipping({ customers, orders, setOrders, showToast }) {
                               onChange={() => toggleSelect(o.id)}
                             />
 
-                            {/* 순번 표시 + 컨트롤 */}
-                            <div className="flex flex-col items-center gap-0.5 flex-shrink-0">
-                              <button
-                                onClick={() => handleMoveOrder(o.id, 'up')}
-                                className="w-6 h-5 rounded text-[10px] text-stone-400 hover:bg-stone-200 hover:text-stone-900"
-                                title="위로"
-                              >▲</button>
+                            {/* 순번 표시 (직접 입력만) */}
+                            <div className="flex flex-col items-center justify-center flex-shrink-0">
                               <input
                                 type="number"
                                 min="0"
@@ -8583,13 +8586,9 @@ function Shipping({ customers, orders, setOrders, showToast }) {
                                 value={o.deliveryOrder || ''}
                                 onChange={(e) => handleChangeOrder(o.id, e.target.value)}
                                 placeholder={String(idx + 1)}
-                                className="w-12 px-1 py-0.5 text-center text-xs font-bold tabular-nums border border-stone-200 rounded focus:outline-none focus:border-stone-400 focus:ring-1 focus:ring-stone-300 bg-white"
+                                className="w-12 px-1 py-1 text-center text-sm font-bold tabular-nums border border-stone-200 rounded focus:outline-none focus:border-stone-400 focus:ring-1 focus:ring-stone-300 bg-white"
+                                title="순번 직접 입력"
                               />
-                              <button
-                                onClick={() => handleMoveOrder(o.id, 'down')}
-                                className="w-6 h-5 rounded text-[10px] text-stone-400 hover:bg-stone-200 hover:text-stone-900"
-                                title="아래로"
-                              >▼</button>
                             </div>
 
                             {/* 주요 정보 */}
@@ -8688,6 +8687,7 @@ function Shipping({ customers, orders, setOrders, showToast }) {
                       );
                     })}
                   </div>
+                  </>
                 )}
 
                 {isExpanded && zoneOrderCount === 0 && (
