@@ -3030,7 +3030,7 @@ function Dashboard({ customers, items, orders, gifts = [], setView }) {
     });
     const vipCount = Object.values(customerGrades).filter(g => g === 'VIP').length;
 
-    // 🆕 B2B/B2C 매출 분리
+    // 🆕 B2B/B2C 매출 분리 (단순 합계)
     const customerMap = {};
     customers.forEach(c => { customerMap[c.id] = c; });
 
@@ -3038,7 +3038,6 @@ function Dashboard({ customers, items, orders, gifts = [], setView }) {
     let b2bOrderCount = 0;
     let b2cSales = 0;
     let b2cOrderCount = 0;
-    const b2bSalesByCompany = {};  // 거래처별 매출 누적
 
     paidOrders.forEach(o => {
       const c = customerMap[o.customerId];
@@ -3046,31 +3045,11 @@ function Dashboard({ customers, items, orders, gifts = [], setView }) {
       if (c?.isB2B) {
         b2bSales += orderAmount;
         b2bOrderCount += 1;
-        if (!b2bSalesByCompany[c.id]) {
-          b2bSalesByCompany[c.id] = { id: c.id, name: c.name, sales: 0, orders: 0 };
-        }
-        b2bSalesByCompany[c.id].sales += orderAmount;
-        b2bSalesByCompany[c.id].orders += 1;
       } else {
         b2cSales += orderAmount;
         b2cOrderCount += 1;
       }
     });
-
-    // Top 5 거래처 매출
-    const b2bTop5 = Object.values(b2bSalesByCompany)
-      .sort((a, b) => b.sales - a.sales)
-      .slice(0, 5);
-
-    // 거래처 미수금 계산
-    const b2bUnpaidTotal = customers
-      .filter(c => c.isB2B)
-      .reduce((sum, c) => {
-        const customerOrders = paidOrders.filter(o => o.customerId === c.id);
-        const total = customerOrders.reduce((s, o) => s + (priceMap[o.itemName] || 0) * o.qty, 0);
-        const paid = customerOrders.reduce((s, o) => s + (o.cashReceived || 0) + (o.paymentStatus === 'paid' ? (priceMap[o.itemName] || 0) * o.qty : 0), 0);
-        return sum + Math.max(0, total - paid);
-      }, 0);
 
     return {
       totalOrders: paidOrders.length,
@@ -3086,14 +3065,11 @@ function Dashboard({ customers, items, orders, gifts = [], setView }) {
       shippingFeeCount,
       pickupCount,
       customerGrades,
-      // 🆕 B2B/B2C 분리
+      // 🆕 B2B/B2C 분리 (단순 합계)
       b2bSales,
       b2bOrderCount,
       b2cSales,
       b2cOrderCount,
-      b2bTop5,
-      b2bUnpaidTotal,
-      b2bCustomerCount: customers.filter(c => c.isB2B).length,
     };
   }, [customers, items, orders]);
 
@@ -3263,7 +3239,7 @@ function Dashboard({ customers, items, orders, gifts = [], setView }) {
           </div>
         </div>
 
-        {/* 🆕 매출 분리 - 개인 vs 거래처 */}
+        {/* 🆕 매출 분리 - 개인 vs 거래처 (단순 합계) */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
           {/* 개인 매출 (B2C) */}
           <div className="bg-white border border-[#E4E4E7] rounded-[12px] p-5">
@@ -3272,18 +3248,18 @@ function Dashboard({ customers, items, orders, gifts = [], setView }) {
                 <span className="text-base">👤</span>
                 <div className="text-[13px] font-semibold text-[#09090B]">개인 매출 (B2C)</div>
               </div>
-              <span className="text-[10px] px-2 py-0.5 bg-[#F4F4F5] text-[#52525B] rounded-full font-medium">
+              <span className="text-[10px] px-2 py-0.5 bg-[#F4F4F5] text-[#52525B] rounded-full font-medium tabular-nums">
                 {stats.totalSales > 0 ? ((stats.b2cSales / stats.totalSales) * 100).toFixed(1) : 0}%
               </span>
             </div>
-            <div className="text-[26px] font-semibold text-[#09090B] tabular-nums tracking-tight">
+            <div className="text-[28px] font-semibold text-[#09090B] tabular-nums tracking-tight">
               ${formatNum(stats.b2cSales)}
             </div>
             <div className="text-[12px] text-[#71717A] mt-1">
-              주문 {stats.b2cOrderCount}건 · 평균 ${formatNum(stats.b2cOrderCount > 0 ? Math.round(stats.b2cSales / stats.b2cOrderCount) : 0)}
+              주문 {stats.b2cOrderCount}건
             </div>
             <div className="mt-3 h-1.5 bg-[#F4F4F5] rounded-full overflow-hidden">
-              <div className="h-full bg-[#09090B] rounded-full" style={{ width: `${stats.totalSales > 0 ? (stats.b2cSales / stats.totalSales) * 100 : 0}%` }} />
+              <div className="h-full bg-[#09090B] rounded-full transition-all" style={{ width: `${stats.totalSales > 0 ? (stats.b2cSales / stats.totalSales) * 100 : 0}%` }} />
             </div>
           </div>
 
@@ -3294,48 +3270,19 @@ function Dashboard({ customers, items, orders, gifts = [], setView }) {
                 <span className="text-base">🏢</span>
                 <div className="text-[13px] font-semibold text-[#09090B]">거래처 매출 (B2B)</div>
               </div>
-              <span className="text-[10px] px-2 py-0.5 bg-[#F4F4F5] text-[#52525B] rounded-full font-medium">
+              <span className="text-[10px] px-2 py-0.5 bg-[#F4F4F5] text-[#52525B] rounded-full font-medium tabular-nums">
                 {stats.totalSales > 0 ? ((stats.b2bSales / stats.totalSales) * 100).toFixed(1) : 0}%
               </span>
             </div>
-            <div className="text-[26px] font-semibold text-[#09090B] tabular-nums tracking-tight">
+            <div className="text-[28px] font-semibold text-[#09090B] tabular-nums tracking-tight">
               ${formatNum(stats.b2bSales)}
             </div>
             <div className="text-[12px] text-[#71717A] mt-1">
-              주문 {stats.b2bOrderCount}건 · 거래처 {stats.b2bCustomerCount}곳
-              {stats.b2bUnpaidTotal > 0 && (
-                <span className="ml-2 text-[#B91C1C] font-semibold">
-                  · 미수금 ${formatNum(stats.b2bUnpaidTotal)}
-                </span>
-              )}
+              주문 {stats.b2bOrderCount}건
             </div>
             <div className="mt-3 h-1.5 bg-[#F4F4F5] rounded-full overflow-hidden">
-              <div className="h-full bg-[#09090B] rounded-full" style={{ width: `${stats.totalSales > 0 ? (stats.b2bSales / stats.totalSales) * 100 : 0}%` }} />
+              <div className="h-full bg-[#09090B] rounded-full transition-all" style={{ width: `${stats.totalSales > 0 ? (stats.b2bSales / stats.totalSales) * 100 : 0}%` }} />
             </div>
-
-            {/* 🏆 거래처 Top 5 */}
-            {stats.b2bTop5.length > 0 && (
-              <div className="mt-4 pt-3 border-t border-[#E4E4E7]">
-                <div className="text-[11px] font-semibold text-[#52525B] mb-2 flex items-center gap-1.5">
-                  <span>🏆</span>
-                  <span>거래처 매출 Top {stats.b2bTop5.length}</span>
-                </div>
-                <div className="space-y-1.5">
-                  {stats.b2bTop5.map((b, idx) => (
-                    <div key={b.id} className="flex items-center justify-between text-[12px]">
-                      <div className="flex items-center gap-2 min-w-0 flex-1">
-                        <span className="text-[10px] font-bold text-[#A1A1AA] w-3">{idx + 1}.</span>
-                        <span className="text-[#09090B] font-medium truncate">{b.name}</span>
-                        <span className="text-[10px] text-[#A1A1AA]">{b.orders}건</span>
-                      </div>
-                      <span className="text-[#09090B] font-semibold tabular-nums">
-                        ${formatNum(b.sales)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -7978,6 +7925,32 @@ function Shipping({ customers, orders, setOrders, showToast }) {
   const [editTarget, setEditTarget] = useState(null);
   const [displayLimit, setDisplayLimit] = useState(50);
 
+  // 🆕 뷰 모드: 'list' (테이블) | 'zone' (Zone별 카드)
+  const [viewMode, setViewMode] = useState(() => localStorage.getItem('wh:shippingViewMode') || 'zone');
+  useEffect(() => { localStorage.setItem('wh:shippingViewMode', viewMode); }, [viewMode]);
+
+  // 🆕 Zone 카드 펼침 상태 (Zone별 따로)
+  const [expandedZones, setExpandedZones] = useState(() => {
+    const saved = localStorage.getItem('wh:expandedZones');
+    if (saved) try { return new Set(JSON.parse(saved)); } catch {}
+    return new Set(SHIPPING_ZONES);  // 기본: 모두 펼침
+  });
+  useEffect(() => {
+    localStorage.setItem('wh:expandedZones', JSON.stringify([...expandedZones]));
+  }, [expandedZones]);
+
+  const toggleZoneExpand = (zone) => {
+    setExpandedZones(prev => {
+      const next = new Set(prev);
+      if (next.has(zone)) next.delete(zone); else next.add(zone);
+      return next;
+    });
+  };
+
+  // 🆕 인라인 주소 편집 상태
+  const [editingAddressId, setEditingAddressId] = useState(null);
+  const [tempAddressInput, setTempAddressInput] = useState('');
+
   // 🆕 체크박스
   const [selectedIds, setSelectedIds] = useState(new Set());
   const toggleSelect = (id) => {
@@ -8017,6 +7990,89 @@ function Shipping({ customers, orders, setOrders, showToast }) {
     clearSelection();
   };
 
+  // 🆕 픽업 ↔ 배송 토글
+  const handleTogglePickup = (orderId) => {
+    setOrders(orders.map(o => {
+      if (o.id !== orderId) return o;
+      const newIsPickup = !o.isPickup;
+      // 픽업으로 바꾸면 zone/순번 초기화, 배송으로 바꾸면 그대로 유지
+      return {
+        ...o,
+        isPickup: newIsPickup,
+        ...(newIsPickup ? { shippingGroup: '', deliveryOrder: 0 } : {})
+      };
+    }));
+    const order = orders.find(o => o.id === orderId);
+    showToast(`✅ ${order?.id} → ${order?.isPickup ? '🚚 배송' : '📍 픽업'}으로 변경`);
+  };
+
+  // 🆕 일괄 픽업/배송 토글
+  const handleBulkPickup = (toPickup) => {
+    if (selectedIds.size === 0) return;
+    setOrders(orders.map(o => {
+      if (!selectedIds.has(o.id)) return o;
+      return {
+        ...o,
+        isPickup: toPickup,
+        ...(toPickup ? { shippingGroup: '', deliveryOrder: 0 } : {})
+      };
+    }));
+    showToast(`✅ ${selectedIds.size}건 → ${toPickup ? '📍 픽업' : '🚚 배송'}`);
+    clearSelection();
+  };
+
+  // 🆕 배송 순번 변경
+  const handleChangeOrder = (orderId, newOrder) => {
+    const num = Math.max(0, Math.min(999, parseInt(newOrder) || 0));
+    setOrders(orders.map(o => o.id === orderId ? { ...o, deliveryOrder: num } : o));
+  };
+
+  // 🆕 순번 위로/아래로 이동 (같은 zone 내에서)
+  const handleMoveOrder = (orderId, direction) => {
+    const target = orders.find(o => o.id === orderId);
+    if (!target) return;
+    const sameZone = orders
+      .filter(o => o.shippingGroup === target.shippingGroup && !o.isPickup)
+      .sort((a, b) => (a.deliveryOrder || 999) - (b.deliveryOrder || 999));
+    const idx = sameZone.findIndex(o => o.id === orderId);
+    if (idx === -1) return;
+    const swapWith = direction === 'up' ? sameZone[idx - 1] : sameZone[idx + 1];
+    if (!swapWith) {
+      showToast(direction === 'up' ? '맨 위입니다' : '맨 아래입니다');
+      return;
+    }
+    // 순번 swap
+    const targetOrder = target.deliveryOrder || (idx + 1);
+    const swapOrder = swapWith.deliveryOrder || (direction === 'up' ? idx : idx + 2);
+    setOrders(orders.map(o => {
+      if (o.id === target.id) return { ...o, deliveryOrder: swapOrder };
+      if (o.id === swapWith.id) return { ...o, deliveryOrder: targetOrder };
+      return o;
+    }));
+  };
+
+  // 🆕 Zone 내 자동 번호 매기기 (1, 2, 3 ... 순서대로)
+  const handleAutoNumberZone = (zone) => {
+    if (!zone) return;
+    const zoneOrders = orders
+      .filter(o => o.shippingGroup === zone && !o.isPickup)
+      .sort((a, b) => (a.deliveryOrder || 999) - (b.deliveryOrder || 999) || a.id.localeCompare(b.id));
+    const numberedIds = new Map();
+    zoneOrders.forEach((o, i) => numberedIds.set(o.id, i + 1));
+    setOrders(orders.map(o => numberedIds.has(o.id) ? { ...o, deliveryOrder: numberedIds.get(o.id) } : o));
+    showToast(`✅ ${zone}: ${zoneOrders.length}건 자동 번호 매김 (1~${zoneOrders.length})`);
+  };
+
+  // 🆕 임시 주소 변경 (이번 배송만)
+  const handleTempAddress = (orderId, tempAddress) => {
+    setOrders(orders.map(o => o.id === orderId ? { ...o, tempAddress } : o));
+    if (tempAddress) {
+      showToast('📍 임시 주소가 설정되었습니다 (이번 배송만)');
+    } else {
+      showToast('📍 임시 주소가 해제되었습니다 (원래 주소로)');
+    }
+  };
+
   const toggleSort = (key) => {
     if (sortKey === key) setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
     else { setSortKey(key); setSortDir('desc'); }
@@ -8039,7 +8095,25 @@ function Shipping({ customers, orders, setOrders, showToast }) {
     result.sort((a, b) => {
       let av, bv;
       if (sortKey === 'id') { av = a.id; bv = b.id; }
-      else if (sortKey === 'zone') { av = a.shippingGroup || ''; bv = b.shippingGroup || ''; }
+      else if (sortKey === 'zone') {
+        // Zone 정렬 시 순번도 함께 고려
+        const zoneA = a.shippingGroup || 'zzz';  // 미지정은 맨 뒤
+        const zoneB = b.shippingGroup || 'zzz';
+        if (zoneA !== zoneB) return zoneA < zoneB ? -1 * dir : 1 * dir;
+        // 같은 Zone 안에서는 순번 오름차순
+        const ordA = a.deliveryOrder || 999;
+        const ordB = b.deliveryOrder || 999;
+        return ordA - ordB;  // 순번은 항상 오름차순
+      }
+      else if (sortKey === 'deliveryOrder') {
+        // 순번 정렬 시 zone도 함께 고려
+        const zoneA = a.shippingGroup || 'zzz';
+        const zoneB = b.shippingGroup || 'zzz';
+        if (zoneA !== zoneB) return zoneA < zoneB ? -1 : 1;
+        const ordA = a.deliveryOrder || 999;
+        const ordB = b.deliveryOrder || 999;
+        return (ordA - ordB) * dir;
+      }
       else if (sortKey === 'customer') {
         av = (customerMap[a.customerId]?.name || '').toLowerCase();
         bv = (customerMap[b.customerId]?.name || '').toLowerCase();
@@ -8055,12 +8129,60 @@ function Shipping({ customers, orders, setOrders, showToast }) {
     return result;
   }, [orders, statusFilter, zoneFilter, paymentFilter, pickupFilter, sortKey, sortDir, customerMap]);
 
+  // 🆕 Zone별 그룹화 (카드 뷰용)
+  const zoneGroups = useMemo(() => {
+    const groups = {};
+    SHIPPING_ZONES.forEach(z => { groups[z] = []; });
+    groups['미배정'] = [];
+    groups['픽업'] = [];
+
+    filtered.forEach(o => {
+      if (o.isPickup) {
+        groups['픽업'].push(o);
+      } else if (o.shippingGroup && groups[o.shippingGroup]) {
+        groups[o.shippingGroup].push(o);
+      } else {
+        groups['미배정'].push(o);
+      }
+    });
+
+    // 각 Zone 내에서 순번 정렬
+    Object.keys(groups).forEach(z => {
+      groups[z].sort((a, b) => {
+        const ordA = a.deliveryOrder || 999;
+        const ordB = b.deliveryOrder || 999;
+        if (ordA !== ordB) return ordA - ordB;
+        return a.id.localeCompare(b.id);
+      });
+    });
+
+    return groups;
+  }, [filtered]);
+
   useEffect(() => { setDisplayLimit(50); }, [statusFilter, zoneFilter, paymentFilter, pickupFilter]);
 
   const handleUpdate = (updated) => {
     setOrders(orders.map(o => o.id === updated.id ? updated : o));
     showToast('배송 정보가 업데이트되었습니다');
     setEditTarget(null);
+  };
+
+  // 🆕 인라인 주소 편집 시작
+  const startEditAddress = (order) => {
+    setEditingAddressId(order.id);
+    setTempAddressInput(order.tempAddress || '');
+  };
+  const saveTempAddress = () => {
+    if (!editingAddressId) return;
+    const trimmed = tempAddressInput.trim();
+    setOrders(orders.map(o => o.id === editingAddressId ? { ...o, tempAddress: trimmed } : o));
+    showToast(trimmed ? '📍 임시 주소 설정됨 (이번 배송만)' : '📍 임시 주소 해제됨');
+    setEditingAddressId(null);
+    setTempAddressInput('');
+  };
+  const cancelEditAddress = () => {
+    setEditingAddressId(null);
+    setTempAddressInput('');
   };
 
   const statusCounts = useMemo(() => ({
@@ -8125,6 +8247,35 @@ function Shipping({ customers, orders, setOrders, showToast }) {
             ))}
             <button onClick={() => handleBulkZone('')} className="px-2 py-1 bg-white hover:bg-[#F4F4F5] border border-[#E4E4E7] rounded-[6px] text-[11px] font-medium text-[#71717A] transition-colors">해제</button>
           </div>
+
+          {/* 🆕 픽업 ↔ 배송 일괄 토글 */}
+          <div className="flex items-center gap-1.5 pl-2 border-l border-[#E4E4E7]">
+            <span className="text-[11px] text-[#71717A] mr-1">방식</span>
+            <button onClick={() => handleBulkPickup(false)} className="px-2.5 py-1 bg-white hover:bg-blue-50 hover:text-blue-700 border border-[#E4E4E7] rounded-[6px] text-[12px] font-medium text-[#52525B] transition-colors">🚚 배송</button>
+            <button onClick={() => handleBulkPickup(true)} className="px-2.5 py-1 bg-white hover:bg-sky-50 hover:text-sky-700 border border-[#E4E4E7] rounded-[6px] text-[12px] font-medium text-[#52525B] transition-colors">📍 픽업</button>
+          </div>
+        </div>
+      )}
+
+      {/* 🆕 Zone별 자동 번호 매기기 */}
+      {selectedIds.size === 0 && (
+        <div className="bg-[#FAFAFA] border border-[#E4E4E7] rounded-[10px] px-3 py-2 flex items-center gap-2 flex-wrap">
+          <span className="text-[11px] font-semibold text-[#52525B]">⚡ Zone별 자동 번호:</span>
+          {SHIPPING_ZONES.map(z => {
+            const cnt = orders.filter(o => o.shippingGroup === z && !o.isPickup && o.shipStatus !== '취소').length;
+            if (cnt === 0) return null;
+            return (
+              <button
+                key={z}
+                onClick={() => handleAutoNumberZone(z)}
+                className="px-2 py-0.5 bg-white hover:bg-[#F4F4F5] border border-[#E4E4E7] rounded-[6px] text-[11px] font-medium text-[#52525B] transition-colors"
+                title={`${z}의 ${cnt}건을 1~${cnt}로 자동 번호 매김`}
+              >
+                {z.replace('Zone', 'Z')} <span className="text-[#A1A1AA]">({cnt})</span>
+              </button>
+            );
+          })}
+          <span className="text-[10px] text-[#A1A1AA] ml-1">기존 순번대로 1, 2, 3... 자동 부여</span>
         </div>
       )}
 
@@ -8219,8 +8370,311 @@ function Shipping({ customers, orders, setOrders, showToast }) {
             }`}>
             픽업만 <span className="tabular-nums ml-0.5 opacity-70">{orders.filter(o => o.isPickup).length}</span>
           </button>
+
+          {/* 🆕 뷰 모드 토글 */}
+          <div className="ml-auto flex items-center gap-1 bg-white border border-[#E4E4E7] rounded-[8px] p-0.5">
+            <button
+              onClick={() => setViewMode('zone')}
+              className={`px-2.5 py-1 rounded-[6px] text-[12px] font-medium transition-all ${
+                viewMode === 'zone'
+                  ? 'bg-[#09090B] text-white'
+                  : 'text-[#52525B] hover:bg-[#F4F4F5]'
+              }`}
+              title="Zone별 카드 보기"
+            >
+              📦 Zone별
+            </button>
+            <button
+              onClick={() => setViewMode('list')}
+              className={`px-2.5 py-1 rounded-[6px] text-[12px] font-medium transition-all ${
+                viewMode === 'list'
+                  ? 'bg-[#09090B] text-white'
+                  : 'text-[#52525B] hover:bg-[#F4F4F5]'
+              }`}
+              title="목록 보기"
+            >
+              📋 목록
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* 🆕 Zone별 카드 뷰 */}
+      {viewMode === 'zone' && (
+        <div className="space-y-3">
+          {/* Zone 1 ~ 8 */}
+          {SHIPPING_ZONES.map(zone => {
+            const zoneOrders = zoneGroups[zone] || [];
+            if (zoneOrders.length === 0 && zoneFilter && zoneFilter !== zone) return null;
+            const isExpanded = expandedZones.has(zone);
+            const zoneOrderCount = zoneOrders.length;
+            const totalQty = zoneOrders.reduce((s, o) => s + (o.qty || 0), 0);
+
+            return (
+              <div key={zone} className="bg-white rounded-[12px] border border-[#E4E4E7] overflow-hidden">
+                {/* Zone 헤더 */}
+                <div
+                  className={`px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-[#FAFAFA] transition-colors ${
+                    isExpanded ? 'border-b border-[#E4E4E7]' : ''
+                  }`}
+                  onClick={() => toggleZoneExpand(zone)}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className={`text-[10px] font-bold transition-transform ${isExpanded ? 'rotate-90' : ''}`}>▶</span>
+                    <span className={`text-[13px] font-bold px-2 py-0.5 rounded ${ZONE_COLORS[zone] || 'bg-stone-100 text-stone-700'}`}>
+                      {zone.replace('Zone', 'Zone ')}
+                    </span>
+                    <span className="text-[13px] font-semibold text-[#09090B] tabular-nums">{zoneOrderCount}건</span>
+                    <span className="text-[11px] text-[#71717A]">총 {totalQty}개</span>
+                    <span className="text-[10px] text-[#A1A1AA]">{ZONE_DAY_LABEL[zone] || ''}</span>
+                  </div>
+                  <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                    {zoneOrderCount > 0 && (
+                      <button
+                        onClick={() => handleAutoNumberZone(zone)}
+                        className="text-[10px] px-2 py-1 bg-white border border-[#E4E4E7] rounded text-[#52525B] hover:bg-[#F4F4F5] font-medium"
+                        title={`${zone}의 ${zoneOrderCount}건을 1~${zoneOrderCount}로 자동 번호 매김`}
+                      >
+                        ⚡ 자동 번호
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Zone 내 주문 목록 (펼쳐진 경우) */}
+                {isExpanded && zoneOrderCount > 0 && (
+                  <div className="divide-y divide-stone-100">
+                    {zoneOrders.map((o, idx) => {
+                      const c = customerMap[o.customerId];
+                      const isServ = !!o.isService;
+                      const tempAddr = o.tempAddress;
+                      const isEditingThis = editingAddressId === o.id;
+                      return (
+                        <div key={o.id} className={`px-4 py-3 hover:bg-[#FAFAFA] transition-colors ${selectedIds.has(o.id) ? 'bg-red-50/30' : isServ ? 'bg-amber-50/40' : ''}`}>
+                          <div className="flex items-start gap-3">
+                            {/* 체크박스 */}
+                            <input
+                              type="checkbox"
+                              className="mt-1 w-4 h-4 rounded accent-red-700 cursor-pointer flex-shrink-0"
+                              checked={selectedIds.has(o.id)}
+                              onChange={() => toggleSelect(o.id)}
+                            />
+
+                            {/* 순번 컨트롤 */}
+                            <div className="flex flex-col items-center gap-0.5 flex-shrink-0">
+                              <button
+                                onClick={() => handleMoveOrder(o.id, 'up')}
+                                className="w-6 h-5 rounded text-[10px] text-stone-500 hover:bg-stone-200 hover:text-stone-900"
+                                title="위로"
+                              >▲</button>
+                              <input
+                                type="number"
+                                min="0"
+                                max="999"
+                                value={o.deliveryOrder || ''}
+                                onChange={(e) => handleChangeOrder(o.id, e.target.value)}
+                                placeholder={String(idx + 1)}
+                                className="w-12 px-1 py-0.5 text-center text-xs font-bold tabular-nums border border-stone-200 rounded focus:outline-none focus:border-stone-400 focus:ring-1 focus:ring-stone-300 bg-white"
+                              />
+                              <button
+                                onClick={() => handleMoveOrder(o.id, 'down')}
+                                className="w-6 h-5 rounded text-[10px] text-stone-500 hover:bg-stone-200 hover:text-stone-900"
+                                title="아래로"
+                              >▼</button>
+                            </div>
+
+                            {/* 주요 정보 */}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-mono text-xs font-semibold text-red-800">{o.id}</span>
+                                {isServ && <span className="text-[9px] px-1 py-0.5 rounded bg-amber-500 text-white font-bold">🎁</span>}
+                                <button
+                                  onClick={() => handleTogglePickup(o.id)}
+                                  className="text-[9px] px-1.5 py-0.5 rounded font-bold cursor-pointer transition-colors bg-stone-100 text-stone-500 hover:bg-sky-100 hover:text-sky-700"
+                                  title="픽업으로 변경"
+                                >
+                                  🚚 배송
+                                </button>
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                                  o.shipStatus === '배송완료' ? 'bg-emerald-100 text-emerald-700' :
+                                  o.shipStatus === '배송중' ? 'bg-blue-100 text-blue-700' :
+                                  o.shipStatus === '출고대기' ? 'bg-amber-100 text-amber-700' :
+                                  o.shipStatus === '취소' ? 'bg-stone-100 text-stone-500' :
+                                  'bg-stone-100 text-stone-700'
+                                }`}>{o.shipStatus}</span>
+                                {o.paymentStatus === 'paid' && <span className="text-[9px] px-1 py-0.5 rounded bg-emerald-600 text-white font-bold">💰 {o.paymentMethod === 'cash' ? '현금' : '입금'}</span>}
+                                {o.giftQty > 0 && <span className="text-[9px] px-1 py-0.5 rounded bg-pink-500 text-white font-bold">🎁 {o.giftQty}</span>}
+                                {o.receiptCount > 0 && <span className="text-[9px] px-1 py-0.5 rounded bg-blue-600 text-white font-bold">🧾 {o.receiptCount}</span>}
+                              </div>
+
+                              <div className="mt-1.5 flex items-center gap-2">
+                                <span className="font-medium text-stone-800 text-sm">{c?.name || '-'}</span>
+                                {c?.agedCare && <span className="text-[9px] px-1 py-0.5 rounded bg-amber-200 text-amber-900 font-bold">🏥</span>}
+                                {c?.phone && <span className="text-[11px] text-stone-500">{c.phone}</span>}
+                              </div>
+
+                              <div className="mt-1 text-[12px] text-stone-700">
+                                {o.itemName} × {o.qty}개
+                                {o.cashReceived > 0 && <span className="ml-2 text-[10px] text-emerald-700">수금: ${o.cashReceived}</span>}
+                              </div>
+
+                              {/* 🆕 인라인 주소 편집 */}
+                              <div className="mt-1.5">
+                                {isEditingThis ? (
+                                  <div className="flex items-center gap-1.5">
+                                    <input
+                                      type="text"
+                                      value={tempAddressInput}
+                                      onChange={e => setTempAddressInput(e.target.value)}
+                                      placeholder={c?.address || '임시 주소 입력 (비우면 원래 주소 사용)'}
+                                      className="flex-1 px-2 py-1 text-xs border border-blue-400 rounded focus:outline-none focus:ring-2 focus:ring-blue-200"
+                                      autoFocus
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') saveTempAddress();
+                                        if (e.key === 'Escape') cancelEditAddress();
+                                      }}
+                                    />
+                                    <button
+                                      onClick={saveTempAddress}
+                                      className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-[11px] font-bold"
+                                    >저장</button>
+                                    <button
+                                      onClick={cancelEditAddress}
+                                      className="px-2 py-1 bg-stone-200 hover:bg-stone-300 text-stone-700 rounded text-[11px]"
+                                    >취소</button>
+                                  </div>
+                                ) : tempAddr ? (
+                                  <div className="space-y-0.5">
+                                    <div
+                                      onClick={() => startEditAddress(o)}
+                                      className="text-xs text-blue-700 font-medium hover:bg-blue-50 px-1 py-0.5 rounded cursor-pointer"
+                                    >
+                                      <span className="text-[9px] px-1 py-0.5 bg-blue-600 text-white rounded font-bold mr-1">임시</span>
+                                      📍 {tempAddr}
+                                    </div>
+                                    <div className="text-[10px] text-stone-400 line-through px-1">원래: {c?.address || '-'}</div>
+                                  </div>
+                                ) : (
+                                  <div
+                                    onClick={() => startEditAddress(o)}
+                                    className="text-xs text-stone-600 hover:bg-stone-100 px-1 py-0.5 rounded cursor-pointer group flex items-center gap-1"
+                                    title="클릭하여 임시 주소 설정"
+                                  >
+                                    📍 {c?.address || '-'}
+                                    <span className="opacity-0 group-hover:opacity-100 text-[10px] text-blue-600 ml-1">✏️ 수정</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* 액션 버튼 */}
+                            <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                              <button
+                                onClick={() => setEditTarget(o)}
+                                className="text-[10px] px-2 py-1 bg-white border border-[#E4E4E7] hover:bg-[#F4F4F5] rounded text-[#52525B] font-medium"
+                              >상세</button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {isExpanded && zoneOrderCount === 0 && (
+                  <div className="px-4 py-6 text-center text-stone-400 text-xs">
+                    이 Zone에 배정된 주문이 없습니다
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {/* 미배정 */}
+          {zoneGroups['미배정']?.length > 0 && (
+            <div className="bg-white rounded-[12px] border-2 border-dashed border-amber-300 overflow-hidden">
+              <div
+                className="px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-amber-50 transition-colors bg-amber-50/50"
+                onClick={() => toggleZoneExpand('미배정')}
+              >
+                <div className="flex items-center gap-3">
+                  <span className={`text-[10px] font-bold transition-transform ${expandedZones.has('미배정') ? 'rotate-90' : ''}`}>▶</span>
+                  <span className="text-[13px] font-bold px-2 py-0.5 rounded bg-amber-200 text-amber-900">⚠️ 미배정</span>
+                  <span className="text-[13px] font-semibold text-[#09090B] tabular-nums">{zoneGroups['미배정'].length}건</span>
+                  <span className="text-[10px] text-amber-700">Zone 배정 필요</span>
+                </div>
+              </div>
+              {expandedZones.has('미배정') && (
+                <div className="divide-y divide-stone-100">
+                  {zoneGroups['미배정'].map((o) => {
+                    const c = customerMap[o.customerId];
+                    return (
+                      <div key={o.id} className="px-4 py-3 flex items-center gap-3">
+                        <input type="checkbox" className="w-4 h-4 rounded accent-red-700 cursor-pointer" checked={selectedIds.has(o.id)} onChange={() => toggleSelect(o.id)} />
+                        <span className="font-mono text-xs font-semibold text-red-800">{o.id}</span>
+                        <span className="text-sm font-medium text-stone-800">{c?.name || '-'}</span>
+                        <span className="text-xs text-stone-600 truncate flex-1" title={c?.address}>{c?.address || '-'}</span>
+                        <button onClick={() => setEditTarget(o)} className="text-[10px] px-2 py-1 bg-white border border-[#E4E4E7] hover:bg-[#F4F4F5] rounded text-[#52525B] font-medium">상세</button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 픽업 섹션 */}
+          {zoneGroups['픽업']?.length > 0 && (
+            <div className="bg-white rounded-[12px] border border-sky-200 overflow-hidden">
+              <div
+                className="px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-sky-50 transition-colors bg-sky-50/30"
+                onClick={() => toggleZoneExpand('픽업')}
+              >
+                <div className="flex items-center gap-3">
+                  <span className={`text-[10px] font-bold transition-transform ${expandedZones.has('픽업') ? 'rotate-90' : ''}`}>▶</span>
+                  <span className="text-[13px] font-bold px-2 py-0.5 rounded bg-sky-100 text-sky-700">📍 픽업 주문</span>
+                  <span className="text-[13px] font-semibold text-[#09090B] tabular-nums">{zoneGroups['픽업'].length}건</span>
+                  <span className="text-[10px] text-sky-700">고객이 매장 방문</span>
+                </div>
+              </div>
+              {expandedZones.has('픽업') && (
+                <div className="divide-y divide-stone-100">
+                  {zoneGroups['픽업'].map((o) => {
+                    const c = customerMap[o.customerId];
+                    return (
+                      <div key={o.id} className="px-4 py-3 flex items-center gap-3">
+                        <input type="checkbox" className="w-4 h-4 rounded accent-red-700 cursor-pointer" checked={selectedIds.has(o.id)} onChange={() => toggleSelect(o.id)} />
+                        <span className="font-mono text-xs font-semibold text-red-800">{o.id}</span>
+                        <button
+                          onClick={() => handleTogglePickup(o.id)}
+                          className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-sky-500 text-white hover:bg-sky-600"
+                          title="배송으로 변경"
+                        >📍 픽업</button>
+                        <span className="text-sm font-medium text-stone-800">{c?.name || '-'}</span>
+                        <span className="text-xs text-stone-600 flex-1">{o.itemName} × {o.qty}개</span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                          o.shipStatus === '배송완료' ? 'bg-emerald-100 text-emerald-700' : 'bg-stone-100 text-stone-700'
+                        }`}>{o.shipStatus}</span>
+                        <button onClick={() => setEditTarget(o)} className="text-[10px] px-2 py-1 bg-white border border-[#E4E4E7] hover:bg-[#F4F4F5] rounded text-[#52525B] font-medium">상세</button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 빈 상태 */}
+          {filtered.length === 0 && (
+            <div className="bg-white rounded-[12px] border border-[#E4E4E7] p-12 text-center">
+              <div className="text-stone-400 text-sm">조건에 맞는 주문이 없습니다</div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 📋 목록 뷰 (테이블) */}
+      {viewMode === 'list' && (
 
       <div className="bg-white rounded-[12px] border border-[#E4E4E7] overflow-hidden">
         <div className="overflow-x-auto scrollbar-slim">
@@ -8238,6 +8692,12 @@ function Shipping({ customers, orders, setOrders, showToast }) {
                 </th>
                 <SortHeader label="주문번호" field="id" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="left" />
                 <SortHeader label="Zone" field="zone" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="center" />
+                <th className="text-center px-2 py-3 font-medium text-[#71717A] text-[12px] whitespace-nowrap">
+                  <button onClick={() => toggleSort('deliveryOrder')} className="hover:text-[#09090B] flex items-center gap-1 mx-auto">
+                    순번
+                    {sortKey === 'deliveryOrder' && <span className="text-[10px]">{sortDir === 'asc' ? '▲' : '▼'}</span>}
+                  </button>
+                </th>
                 <SortHeader label="고객" field="customer" sortKey={sortKey} sortDir={sortDir} onClick={toggleSort} align="left" />
                 <th className="text-left px-4 py-3 font-medium text-[#71717A] text-[12px]">주문내역</th>
                 <th className="text-left px-4 py-3 font-medium text-[#71717A] text-[12px]">배송지</th>
@@ -8267,23 +8727,60 @@ function Shipping({ customers, orders, setOrders, showToast }) {
                       <div className="flex items-center gap-1.5">
                         <span className="font-mono text-xs font-semibold text-red-800">{o.id}</span>
                         {isServ && <span className="text-[9px] px-1 py-0.5 rounded bg-amber-500 text-white font-bold">🎁</span>}
-                        {o.isPickup && <span className="text-[9px] px-1 py-0.5 rounded bg-sky-500 text-white font-bold">📍</span>}
+                        <button
+                          onClick={() => handleTogglePickup(o.id)}
+                          className={`text-[9px] px-1.5 py-0.5 rounded font-bold cursor-pointer transition-colors ${
+                            o.isPickup
+                              ? 'bg-sky-500 text-white hover:bg-sky-600'
+                              : 'bg-stone-100 text-stone-500 hover:bg-blue-100 hover:text-blue-700'
+                          }`}
+                          title={o.isPickup ? '클릭하여 배송으로 변경' : '클릭하여 픽업으로 변경'}
+                        >
+                          {o.isPickup ? '📍 픽업' : '🚚 배송'}
+                        </button>
                       </div>
                     </td>
                     <td className="px-4 py-3 text-center">
                       {o.shippingGroup ? (
-                        <div className="space-y-0.5">
-                          <span className={`inline-block text-[10px] px-1.5 py-0.5 rounded font-bold ${ZONE_COLORS[o.shippingGroup] || 'bg-stone-100 text-stone-600'}`}>
-                            {o.shippingGroup.replace('Zone', 'Zone ')}
-                          </span>
-                          {o.sequence && (
-                            <div className="text-[9px] text-stone-500">
-                              순번 <span className="font-bold">{o.sequence}</span>
-                              {o.arrivalTime && <span className="ml-1 text-blue-600">⏰ {o.arrivalTime}</span>}
-                            </div>
-                          )}
-                        </div>
+                        <span className={`inline-block text-[10px] px-1.5 py-0.5 rounded font-bold ${ZONE_COLORS[o.shippingGroup] || 'bg-stone-100 text-stone-600'}`}>
+                          {o.shippingGroup.replace('Zone', 'Zone ')}
+                        </span>
                       ) : <span className="text-stone-400 text-xs">-</span>}
+                    </td>
+                    {/* 🆕 순번 셀 */}
+                    <td className="px-2 py-3 text-center">
+                      {o.isPickup ? (
+                        <span className="text-stone-300 text-xs">-</span>
+                      ) : o.shippingGroup ? (
+                        <div className="flex items-center gap-0.5 justify-center">
+                          <button
+                            onClick={() => handleMoveOrder(o.id, 'up')}
+                            className="w-5 h-5 rounded text-[10px] text-stone-500 hover:bg-stone-200 hover:text-stone-900 transition-colors"
+                            title="위로"
+                          >
+                            ▲
+                          </button>
+                          <input
+                            type="number"
+                            min="0"
+                            max="999"
+                            value={o.deliveryOrder || ''}
+                            onChange={(e) => handleChangeOrder(o.id, e.target.value)}
+                            placeholder="-"
+                            className="w-12 px-1 py-1 text-center text-xs font-bold tabular-nums border border-stone-200 rounded focus:outline-none focus:border-stone-400 focus:ring-1 focus:ring-stone-300"
+                            title="배송 순번"
+                          />
+                          <button
+                            onClick={() => handleMoveOrder(o.id, 'down')}
+                            className="w-5 h-5 rounded text-[10px] text-stone-500 hover:bg-stone-200 hover:text-stone-900 transition-colors"
+                            title="아래로"
+                          >
+                            ▼
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-stone-300 text-xs">미배정</span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1">
@@ -8299,7 +8796,48 @@ function Shipping({ customers, orders, setOrders, showToast }) {
                         </div>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-stone-600 text-xs max-w-[180px] truncate" title={c?.address}>{c?.address || '-'}</td>
+                    {/* 🆕 배송지 - 임시 주소 표시 + 편집 */}
+                    <td className="px-4 py-3 text-stone-600 text-xs max-w-[200px]">
+                      {o.tempAddress ? (
+                        <div>
+                          <div className="text-blue-700 font-medium truncate" title={o.tempAddress}>
+                            📍 {o.tempAddress}
+                          </div>
+                          <div className="flex items-center gap-1 mt-0.5">
+                            <span className="text-[9px] px-1 py-0.5 rounded bg-blue-100 text-blue-700 font-bold">임시</span>
+                            <button
+                              onClick={() => handleTempAddress(o.id, '')}
+                              className="text-[9px] text-stone-500 hover:text-red-700 hover:underline"
+                              title="원래 주소로 복원"
+                            >
+                              취소
+                            </button>
+                          </div>
+                          <div className="text-[10px] text-stone-400 truncate mt-0.5" title={c?.address}>
+                            원래: {c?.address || '-'}
+                          </div>
+                        </div>
+                      ) : (
+                        <div>
+                          <div className="truncate" title={c?.address}>{c?.address || '-'}</div>
+                          <button
+                            onClick={() => {
+                              const newAddr = prompt(
+                                `${c?.name || '고객'}님의 임시 배송지를 입력하세요\n(이번 배송에만 적용, 고객 정보는 변경되지 않음)\n\n현재 주소: ${c?.address || '-'}`,
+                                ''
+                              );
+                              if (newAddr !== null && newAddr.trim()) {
+                                handleTempAddress(o.id, newAddr.trim());
+                              }
+                            }}
+                            className="text-[9px] text-blue-600 hover:underline mt-0.5"
+                            title="이번 배송만 다른 주소로"
+                          >
+                            📍 임시 주소 설정
+                          </button>
+                        </div>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-center text-xs">
                       {o.shipDate ? (
                         <div>
@@ -8381,6 +8919,7 @@ function Shipping({ customers, orders, setOrders, showToast }) {
           )}
         </div>
       </div>
+      )}{/* viewMode list 끝 */}
 
       {editTarget && (
         <ShippingModal order={editTarget} customer={customerMap[editTarget.customerId]} onSave={handleUpdate} onClose={() => setEditTarget(null)} />
@@ -9899,6 +10438,8 @@ function DriverApp({ driver, customers, items, orders, setOrders, onLogout, show
           // 대표값 (첫 주문 기준)
           shippingGroup: o.shippingGroup,
           sequence: o.sequence || 999,
+          deliveryOrder: o.deliveryOrder || 999,  // 🆕 배송 순번
+          tempAddress: o.tempAddress || '',         // 🆕 임시 주소
           arrivalTime: o.arrivalTime || '',
           shipDate: o.shipDate || '',
           shipStatus: o.shipStatus,
@@ -9913,6 +10454,14 @@ function DriverApp({ driver, customers, items, orders, setOrders, onLogout, show
         };
       }
       groups[o.customerId].orders.push(o);
+      // 🆕 임시 주소가 있는 주문이 하나라도 있으면 그룹에도 표시
+      if (o.tempAddress && !groups[o.customerId].tempAddress) {
+        groups[o.customerId].tempAddress = o.tempAddress;
+      }
+      // 🆕 가장 작은 deliveryOrder를 그룹의 대표 순번으로
+      if (o.deliveryOrder && o.deliveryOrder < (groups[o.customerId].deliveryOrder || 999)) {
+        groups[o.customerId].deliveryOrder = o.deliveryOrder;
+      }
       if (o.isService) groups[o.customerId].hasService = true;
       if (!o.isService) {
         groups[o.customerId].totalAmount += (priceMap[o.itemName] || 0) * o.qty;
@@ -10418,7 +10967,11 @@ function DriverDeliveryGroupCard({ group, customer, items, onGroupUpdate, onEdit
 
   const isDone = group.shipStatus === '배송완료';
   const phone = customer?.phone?.replace(/\s/g, '');
-  const address = customer?.address || '';
+  // 🆕 임시 주소가 있으면 우선 사용, 없으면 고객 등록 주소
+  const originalAddress = customer?.address || '';
+  const tempAddress = group.tempAddress || '';
+  const address = tempAddress || originalAddress;
+  const isUsingTempAddress = !!tempAddress;
   const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
 
   // 결제 상태 판단
@@ -10601,9 +11154,24 @@ function DriverDeliveryGroupCard({ group, customer, items, onGroupUpdate, onEdit
 
       {/* 주소 + 액션 버튼 */}
       <div className="px-4 py-3 bg-stone-50 border-b border-stone-100">
-        <div className="text-xs text-stone-700 mb-2 leading-relaxed">
-          📍 {address || '-'}
-        </div>
+        {isUsingTempAddress ? (
+          <div className="mb-2">
+            <div className="flex items-center gap-1.5 mb-1">
+              <span className="text-[9px] px-1.5 py-0.5 bg-blue-600 text-white rounded font-bold">⚠️ 임시 배송지</span>
+              <span className="text-[10px] text-blue-700 font-medium">이번 배송만</span>
+            </div>
+            <div className="text-xs text-blue-900 font-bold leading-relaxed">
+              📍 {tempAddress}
+            </div>
+            <div className="text-[10px] text-stone-400 leading-relaxed mt-1 line-through">
+              원래: {originalAddress || '-'}
+            </div>
+          </div>
+        ) : (
+          <div className="text-xs text-stone-700 mb-2 leading-relaxed">
+            📍 {address || '-'}
+          </div>
+        )}
         <div className="grid grid-cols-3 gap-1.5">
           {address && (
             <a
