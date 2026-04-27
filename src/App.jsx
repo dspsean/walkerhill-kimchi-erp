@@ -116,16 +116,26 @@ const DEFAULT_GIFT_TIERS = [
 ];
 
 // 현재 활성 사은품 이벤트 가져오기
-function getActiveGift(gifts) {
+function getActiveGift(gifts, orders) {
   if (!gifts || !Array.isArray(gifts)) return null;
-  // active=true이고, remaining이 undefined거나 > 0인 사은품 반환
-  // (remaining이 명시적으로 0이면 재고 없음으로 제외)
-  return gifts.find(g => {
-    if (!g.active) return false;
-    // remaining 필드 자체가 없거나 (옛날 데이터) 0보다 크면 사용 가능
-    if (g.remaining === undefined || g.remaining === null) return true;
-    return g.remaining > 0;
-  }) || null;
+  // 활성 사은품 찾기
+  // 1. active=true 우선
+  // 2. 동적으로 재고 계산 (gift.remaining 필드는 신뢰 안 함, 옛날 데이터일 수 있음)
+  for (const g of gifts) {
+    if (!g.active) continue;
+    // orders가 제공되면 동적 재고 계산
+    if (orders && Array.isArray(orders)) {
+      const stats = calcGiftStats(g, orders);
+      if (stats.remaining > 0) return g;
+      // 재고 0이지만 totalStock도 0이면 (무제한) 사용 가능
+      if (!g.totalStock || g.totalStock <= 0) return g;
+    } else {
+      // orders 없으면 fallback: remaining 필드 사용
+      if (g.remaining === undefined || g.remaining === null) return g;
+      if (g.remaining > 0) return g;
+    }
+  }
+  return null;
 }
 
 // 🎁 사은품 지급 현황 계산 (대시보드/사은품 페이지 공통)
@@ -5038,8 +5048,8 @@ function OrderFormModal({ customers, items, editTarget, gifts = [], orders = [],
   const [expectedStockDate, setExpectedStockDate] = useState(editTarget?.expectedStockDate || '');
   const [splitDeliveries, setSplitDeliveries] = useState(editTarget?.splitDeliveries || []);
   const [showSplitUI, setShowSplitUI] = useState(!!editTarget?.splitDeliveries?.length);
-  // 🎁 사은품 관련
-  const activeGift = getActiveGift(gifts);
+  // 🎁 사은품 관련 (orders 전달하여 동적 재고 계산)
+  const activeGift = getActiveGift(gifts, orders);
   const [giftQty, setGiftQty] = useState(
     editTarget?.giftQty !== undefined ? editTarget.giftQty : null
   );
@@ -5793,7 +5803,11 @@ function OrderFormModal({ customers, items, editTarget, gifts = [], orders = [],
           </div>
 
           {/* 🎁 사은품 섹션 - 수동 수량 변경 가능 (개인/거래처 모두) */}
-          {activeGift && !isService && customerId && (
+          {activeGift && !isService && customerId && (() => {
+            // 🆕 활성 사은품의 실제 재고 (동적 계산)
+            const giftStats = calcGiftStats(activeGift, orders);
+            const dynamicRemaining = giftStats.remaining;
+            return (
             <div className={`rounded-2xl border-2 transition-all overflow-hidden ${
               effectiveGiftQty > 0
                 ? 'bg-rose-50 border-rose-300'
@@ -5810,9 +5824,9 @@ function OrderFormModal({ customers, items, editTarget, gifts = [], orders = [],
                       {activeGift.tiers && activeGift.tiers[0] && (
                         <span className="ml-1">(${activeGift.tiers[0].minAmount}+ 시 1개)</span>
                       )}
-                      {activeGift.remaining !== undefined && (
-                        <span className="ml-1 text-stone-600">· 재고 {activeGift.remaining}개</span>
-                      )}
+                      <span className={`ml-1 font-semibold ${dynamicRemaining > 50 ? 'text-emerald-700' : dynamicRemaining > 10 ? 'text-amber-700' : 'text-red-700'}`}>
+                        · 재고 {dynamicRemaining}개
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -5889,7 +5903,8 @@ function OrderFormModal({ customers, items, editTarget, gifts = [], orders = [],
                 )}
               </div>
             </div>
-          )}
+            );
+          })()}
 
           {/* 🎁 사은품이 없을 때 안내 (디버깅용) */}
           {!activeGift && !isService && customerId && (
@@ -5905,20 +5920,25 @@ function OrderFormModal({ customers, items, editTarget, gifts = [], orders = [],
                       <>
                         등록된 사은품 {gifts.length}개:
                         <ul className="mt-1 ml-3 space-y-0.5">
-                          {gifts.map((g, i) => (
+                          {gifts.map((g, i) => {
+                            // 동적 재고 계산
+                            const stats = calcGiftStats(g, orders);
+                            const realRemaining = stats.remaining;
+                            return (
                             <li key={i} className="text-[10px]">
                               • <strong>{g.name}</strong>:
                               {' '}
                               {g.active ? <span className="text-emerald-700 font-bold">✅ 활성</span> : <span className="text-stone-400">⏸️ 비활성</span>}
                               {' · '}
-                              재고 <span className={`font-bold ${(g.remaining || 0) > 0 ? 'text-blue-700' : 'text-red-700'}`}>{g.remaining ?? '?'}</span>개
-                              {(!g.active || (g.remaining !== undefined && g.remaining <= 0)) && (
+                              재고 <span className={`font-bold ${realRemaining > 0 ? 'text-blue-700' : 'text-red-700'}`}>{realRemaining}</span>개
+                              {(!g.active || realRemaining <= 0) && (
                                 <span className="ml-1 text-amber-700 text-[9px]">
                                   → {!g.active ? '비활성 상태' : '재고 없음'}
                                 </span>
                               )}
                             </li>
-                          ))}
+                            );
+                          })}
                         </ul>
                         <div className="mt-2 text-[10px] text-blue-700">
                           💡 [사은품] 메뉴에서 활성화 + 재고를 추가해주세요
