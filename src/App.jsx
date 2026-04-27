@@ -1383,6 +1383,7 @@ export default function App() {
     let unsubItems = null;
     let unsubOrders = null;
     let unsubDrivers = null;
+    let unsubGifts = null;
 
     if (isSupabaseConfigured) {
       // 🔥 Firebase 실시간 구독 모드
@@ -1496,6 +1497,20 @@ export default function App() {
             }
           }, handleFirebaseError);
 
+          // 🎁 gifts subscription (다른 PC와 사은품 이벤트 공유)
+          unsubGifts = subscribeToTable(TABLES.gifts, (data) => {
+            if (data.length > 0) {
+              isReceivingFromFirebaseRef.current = true;
+              setGifts(current => {
+                if (arraysEqual(current, data)) return current;
+                saveData(GIFT_STORAGE_KEY, data);
+                return data;
+              });
+              setTimeout(() => { isReceivingFromFirebaseRef.current = false; }, 100);
+              initialSyncDoneRef.current = true;  // 🔑 동기화 완료 플래그
+            }
+          }, handleFirebaseError);
+
           // 🛡️ 안전망: 5초 후 강제로 initialSyncDone 활성화 (subscribe 응답 없어도 저장은 가능하게)
           setTimeout(() => {
             if (!initialSyncDoneRef.current) {
@@ -1531,6 +1546,7 @@ export default function App() {
       if (unsubItems) unsubItems();
       if (unsubOrders) unsubOrders();
       if (unsubDrivers) unsubDrivers();
+      if (unsubGifts) unsubGifts();
     };
   }, []);
 
@@ -1864,14 +1880,39 @@ export default function App() {
     setRefreshing(false);
   };
 
-  // 🎁 사은품 저장 래퍼 (localStorage만)
+  // 🎁 사은품 저장 래퍼 (localStorage + Supabase 동기화)
   const saveGifts = (newGifts) => {
     const resolved = typeof newGifts === 'function' ? newGifts(gifts) : newGifts;
     const prevGifts = gifts;  // 📋
     setGifts(resolved);
     saveData(GIFT_STORAGE_KEY, resolved);
+
+    // 🛡️ Firebase에서 받은 데이터이면 다시 업로드 안 함 (에코 방지)
+    if (isReceivingFromFirebaseRef.current) return;
+
     // 📋 변경 이력 기록
     recordAuditDiff('gift', prevGifts, resolved, g => g.name || g.id);
+
+    // 🚀 Supabase 동기화 (다른 PC와 공유)
+    if (isSupabaseConfigured && initialSyncDoneRef.current) {
+      suppressRealtimeEcho(TABLES.gifts, 3000);
+      setSaveState('saving');
+      saveBatch(TABLES.gifts, resolved)
+        .then(result => {
+          const saved = result?.saved || 0;
+          const deleted = result?.deleted || 0;
+          if (saved > 0 || deleted > 0) {
+            log(`✓ gifts 저장됨: ${saved}건 업로드${deleted > 0 ? ` + ${deleted}건 삭제` : ''}`);
+          }
+          setSaveState('saved');
+          setLastSaveTime(Date.now());
+        })
+        .catch(err => {
+          console.error('❌ gifts 저장 실패:', err);
+          setSaveState('error');
+          showToast('사은품 저장 실패: ' + (err.message || '알 수 없는 오류'), 'error');
+        });
+    }
   };
 
   const itemsWithStock = useMemo(() => calcAvailStock(items, orders), [items, orders]);
