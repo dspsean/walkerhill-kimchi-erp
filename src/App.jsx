@@ -447,7 +447,7 @@ function exportToExcel(customers, items, orders) {
   const d = String(now.getDate()).padStart(2, '0');
   const hh = String(now.getHours()).padStart(2, '0');
   const mm = String(now.getMinutes()).padStart(2, '0');
-  const filename = `김치하우스_백업_${y}${m}${d}_${hh}${mm}.xlsx`;
+  const filename = `워커힐김치_백업_${y}${m}${d}_${hh}${mm}.xlsx`;
 
   XLSX.writeFile(wb, filename);
   return filename;
@@ -5674,9 +5674,9 @@ function MessageModal({ order, customers, items, orders, onClose }) {
     ? `\n🎁 사은품: ${order.giftName} ${order.giftQty}개`
     : '';
 
-  const orderMsg = `[김치하우스 주문 안내] ${c?.name}고객님, ${koDate(order.date)}에 ${order.itemName} ${order.qty}개 주문해주셨습니다. 총 $${formatNum(finalTotal)}${shippingLine} 입니다.${giftLine ? ' ' + giftLine.replace(/\n/g, ' ') : ''} 감사합니다~♥`;
-  const confirmMsg = `[김치하우스 배송 전 확인] ${c?.name}고객님, 곧 배송 예정인 주문 내역을 확인 부탁드립니다.\n- 품목: ${order.itemName}\n- 수량: ${order.qty}개\n- 금액: $${formatNum(finalTotal)}${shippingLine}${giftLine}\n- 배송지: ${c?.address}\n내역이 맞으시면 "확인" 답장 부탁드려요~♥`;
-  const shipMsg = (order.shipStatus === '배송완료' || order.shipStatus === '배송중') ? `[김치하우스 배송 안내] ${c?.name}고객님, 주문하신 ${order.itemName} x${order.qty}${giftLine ? ` + ${order.giftName} ${order.giftQty}개(사은품)` : ''}이(가) ${order.shipDate ? order.shipDate + ' 출고되었습니다. ' : '배송 중입니다. '}${order.deliveryMethod ? '(' + order.deliveryMethod + ') ' : ''}감사합니다~♥` : null;
+  const orderMsg = `[워커힐호텔김치 주문 안내] ${c?.name}고객님, ${koDate(order.date)}에 ${order.itemName} ${order.qty}개 주문해주셨습니다. 총 $${formatNum(finalTotal)}${shippingLine} 입니다.${giftLine ? ' ' + giftLine.replace(/\n/g, ' ') : ''} 감사합니다~♥`;
+  const confirmMsg = `[워커힐호텔김치 배송 전 확인] ${c?.name}고객님, 곧 배송 예정인 주문 내역을 확인 부탁드립니다.\n- 품목: ${order.itemName}\n- 수량: ${order.qty}개\n- 금액: $${formatNum(finalTotal)}${shippingLine}${giftLine}\n- 배송지: ${c?.address}\n내역이 맞으시면 "확인" 답장 부탁드려요~♥`;
+  const shipMsg = (order.shipStatus === '배송완료' || order.shipStatus === '배송중') ? `[워커힐호텔김치 배송 안내] ${c?.name}고객님, 주문하신 ${order.itemName} x${order.qty}${giftLine ? ` + ${order.giftName} ${order.giftQty}개(사은품)` : ''}이(가) ${order.shipDate ? order.shipDate + ' 출고되었습니다. ' : '배송 중입니다. '}${order.deliveryMethod ? '(' + order.deliveryMethod + ') ' : ''}감사합니다~♥` : null;
 
   const copy = (text) => {
     navigator.clipboard.writeText(text);
@@ -10264,7 +10264,7 @@ function DriverDeliveryGroupCard({ group, customer, items, onGroupUpdate, onEdit
           )}
           {phone && (
             <a
-              href={`sms:${phone}?body=${encodeURIComponent(`[김치하우스] ${customer?.name || ''}고객님, 주문하신 ${group.orders[0]?.itemName || ''} 외 ${group.orders.length - 1}건 배송 중입니다. 잠시 후 도착 예정입니다.`)}`}
+              href={`sms:${phone}?body=${encodeURIComponent(`[워커힐호텔김치] ${customer?.name || ''}고객님, 주문하신 ${group.orders[0]?.itemName || ''} 외 ${group.orders.length - 1}건 배송 중입니다. 잠시 후 도착 예정입니다.`)}`}
               className="flex items-center justify-center gap-1 px-2 py-2.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl text-xs font-bold active:scale-95 transition-all"
             >
               💬 문자
@@ -10577,7 +10577,7 @@ function BackupRestoreButton({ setCustomers, setItems, setOrders, showToast }) {
       setPreview(result);
     } catch (err) {
       console.error(err);
-      showToast('백업 파일 읽기 실패. "김치하우스_백업_xxx.xlsx" 형식이 맞는지 확인해주세요.', 'error');
+      showToast('백업 파일 읽기 실패. "워커힐김치_백업_xxx.xlsx" 형식이 맞는지 확인해주세요.', 'error');
     }
     setParsing(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -11763,7 +11763,7 @@ function generateBatchTemplate(customers, items, orders) {
 
   // 파일 다운로드
   const today = new Date().toISOString().slice(0, 10);
-  XLSX.writeFile(wb, `김치하우스_배차양식_${today}.xlsx`);
+  XLSX.writeFile(wb, `워커힐김치_배차양식_${today}.xlsx`);
 }
 
 // ============================================================
