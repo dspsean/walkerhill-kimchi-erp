@@ -7933,7 +7933,7 @@ function Shipping({ customers, orders, setOrders, showToast }) {
   const [expandedZones, setExpandedZones] = useState(() => {
     const saved = localStorage.getItem('wh:expandedZones');
     if (saved) try { return new Set(JSON.parse(saved)); } catch {}
-    return new Set(SHIPPING_ZONES);  // 기본: 모두 펼침
+    return new Set();  // 기본: 모두 접힌 상태
   });
   useEffect(() => {
     localStorage.setItem('wh:expandedZones', JSON.stringify([...expandedZones]));
@@ -7950,6 +7950,83 @@ function Shipping({ customers, orders, setOrders, showToast }) {
   // 🆕 인라인 주소 편집 상태
   const [editingAddressId, setEditingAddressId] = useState(null);
   const [tempAddressInput, setTempAddressInput] = useState('');
+
+  // 🆕 드래그 앤 드롭 상태
+  const [draggingId, setDraggingId] = useState(null);
+  const [dragOverId, setDragOverId] = useState(null);
+
+  // 🆕 드래그로 순서 변경
+  const handleDragStart = (orderId) => {
+    setDraggingId(orderId);
+  };
+
+  const handleDragOver = (e, targetId) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (targetId !== dragOverId) setDragOverId(targetId);
+  };
+
+  const handleDragLeave = () => {
+    setDragOverId(null);
+  };
+
+  const handleDrop = (e, targetId) => {
+    e.preventDefault();
+    if (!draggingId || draggingId === targetId) {
+      setDraggingId(null);
+      setDragOverId(null);
+      return;
+    }
+
+    const dragOrder = orders.find(o => o.id === draggingId);
+    const targetOrder = orders.find(o => o.id === targetId);
+    if (!dragOrder || !targetOrder) {
+      setDraggingId(null);
+      setDragOverId(null);
+      return;
+    }
+
+    // 같은 Zone 안에서만 가능
+    if (dragOrder.shippingGroup !== targetOrder.shippingGroup) {
+      showToast('같은 Zone 안에서만 순서 변경 가능합니다');
+      setDraggingId(null);
+      setDragOverId(null);
+      return;
+    }
+
+    // 같은 Zone 모든 주문을 deliveryOrder 순으로 정렬
+    const zone = dragOrder.shippingGroup;
+    const zoneOrders = orders
+      .filter(o => o.shippingGroup === zone && !o.isPickup)
+      .sort((a, b) => (a.deliveryOrder || 999) - (b.deliveryOrder || 999) || a.id.localeCompare(b.id));
+
+    // 드래그한 주문을 빼고 타겟 위치에 삽입
+    const fromIdx = zoneOrders.findIndex(o => o.id === draggingId);
+    const toIdx = zoneOrders.findIndex(o => o.id === targetId);
+    if (fromIdx === -1 || toIdx === -1) {
+      setDraggingId(null);
+      setDragOverId(null);
+      return;
+    }
+
+    const [moved] = zoneOrders.splice(fromIdx, 1);
+    zoneOrders.splice(toIdx, 0, moved);
+
+    // 모든 주문에 새 순번 부여 (1, 2, 3, ...)
+    const newOrderMap = new Map();
+    zoneOrders.forEach((o, i) => newOrderMap.set(o.id, i + 1));
+
+    setOrders(orders.map(o => newOrderMap.has(o.id) ? { ...o, deliveryOrder: newOrderMap.get(o.id) } : o));
+    showToast(`✅ ${dragOrder.id} 순서 변경됨`);
+
+    setDraggingId(null);
+    setDragOverId(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggingId(null);
+    setDragOverId(null);
+  };
 
   // 🆕 체크박스
   const [selectedIds, setSelectedIds] = useState(new Set());
@@ -8449,9 +8526,41 @@ function Shipping({ customers, orders, setOrders, showToast }) {
                       const isServ = !!o.isService;
                       const tempAddr = o.tempAddress;
                       const isEditingThis = editingAddressId === o.id;
+                      const isDragging = draggingId === o.id;
+                      const isDragOver = dragOverId === o.id;
                       return (
-                        <div key={o.id} className={`px-4 py-3 hover:bg-[#FAFAFA] transition-colors ${selectedIds.has(o.id) ? 'bg-red-50/30' : isServ ? 'bg-amber-50/40' : ''}`}>
-                          <div className="flex items-start gap-3">
+                        <div
+                          key={o.id}
+                          draggable={!isEditingThis}
+                          onDragStart={() => handleDragStart(o.id)}
+                          onDragOver={(e) => handleDragOver(e, o.id)}
+                          onDragLeave={handleDragLeave}
+                          onDrop={(e) => handleDrop(e, o.id)}
+                          onDragEnd={handleDragEnd}
+                          className={`px-4 py-3 hover:bg-[#FAFAFA] transition-all ${
+                            isDragging ? 'opacity-30' :
+                            isDragOver ? 'bg-blue-50 border-l-4 border-l-blue-500' :
+                            selectedIds.has(o.id) ? 'bg-red-50/30' :
+                            isServ ? 'bg-amber-50/40' : ''
+                          }`}
+                        >
+                          <div className="flex items-start gap-2">
+                            {/* 🆕 드래그 핸들 */}
+                            <div
+                              className="flex flex-col items-center justify-center pt-1 cursor-grab active:cursor-grabbing text-stone-300 hover:text-stone-700 transition-colors flex-shrink-0 select-none"
+                              title="드래그하여 순서 변경"
+                              style={{ touchAction: 'none' }}
+                            >
+                              <svg width="14" height="20" viewBox="0 0 14 20" fill="currentColor">
+                                <circle cx="4" cy="4" r="1.5"/>
+                                <circle cx="10" cy="4" r="1.5"/>
+                                <circle cx="4" cy="10" r="1.5"/>
+                                <circle cx="10" cy="10" r="1.5"/>
+                                <circle cx="4" cy="16" r="1.5"/>
+                                <circle cx="10" cy="16" r="1.5"/>
+                              </svg>
+                            </div>
+
                             {/* 체크박스 */}
                             <input
                               type="checkbox"
@@ -8460,11 +8569,11 @@ function Shipping({ customers, orders, setOrders, showToast }) {
                               onChange={() => toggleSelect(o.id)}
                             />
 
-                            {/* 순번 컨트롤 */}
+                            {/* 순번 표시 + 컨트롤 */}
                             <div className="flex flex-col items-center gap-0.5 flex-shrink-0">
                               <button
                                 onClick={() => handleMoveOrder(o.id, 'up')}
-                                className="w-6 h-5 rounded text-[10px] text-stone-500 hover:bg-stone-200 hover:text-stone-900"
+                                className="w-6 h-5 rounded text-[10px] text-stone-400 hover:bg-stone-200 hover:text-stone-900"
                                 title="위로"
                               >▲</button>
                               <input
@@ -8478,7 +8587,7 @@ function Shipping({ customers, orders, setOrders, showToast }) {
                               />
                               <button
                                 onClick={() => handleMoveOrder(o.id, 'down')}
-                                className="w-6 h-5 rounded text-[10px] text-stone-500 hover:bg-stone-200 hover:text-stone-900"
+                                className="w-6 h-5 rounded text-[10px] text-stone-400 hover:bg-stone-200 hover:text-stone-900"
                                 title="아래로"
                               >▼</button>
                             </div>
