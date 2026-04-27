@@ -1703,6 +1703,8 @@ export default function App() {
 
           unsubCustomers = subscribeToTable(TABLES.customers, (data) => {
             clearTimeout(connectionTimeout);
+            initialSyncDoneRef.current = true;  // 🔑 항상 활성화 (저장 가능 상태)
+            setLoaded(true);  // 🔑 화면 로딩 완료
             // 🔑 핵심 원칙: Supabase 데이터가 항상 "진실"
             // - 데이터가 있으면 그대로 반영
             // - 데이터가 없어도 함부로 덮어쓰지 않음 (다른 PC의 데이터가 증발할 수 있음!)
@@ -1715,19 +1717,15 @@ export default function App() {
                 return data;
               });
               setTimeout(() => { isReceivingFromFirebaseRef.current = false; }, 100);
-              initialSyncDoneRef.current = true;
             } else {
-              // 🆕 Supabase가 비어있을 때는 "마이그레이션 필요" 플래그만 설정
-              // 실제 업로드는 사용자 확인 후 수동으로만
-              if (!initialSyncDoneRef.current) {
-                warn('⚠️ Supabase가 비어있습니다. 초기 데이터를 업로드하려면 "즉시 저장" 버튼을 클릭하세요.');
-                initialSyncDoneRef.current = true;  // 한 번만 경고
-              }
+              // 🆕 Supabase가 비어있을 때는 "마이그레이션 필요" 안내
+              warn('⚠️ Supabase가 비어있습니다. 초기 데이터를 업로드하려면 "즉시 저장" 버튼을 클릭하세요.');
             }
             setSyncStatus('synced');
           }, handleFirebaseError);
 
           unsubItems = subscribeToTable(TABLES.items, (data) => {
+            initialSyncDoneRef.current = true;  // 🔑 항상 활성화 (빈 데이터든 아니든)
             if (data.length > 0) {
               isReceivingFromFirebaseRef.current = true;
               _setItemsInternal(current => {
@@ -1736,11 +1734,11 @@ export default function App() {
                 return data;
               });
               setTimeout(() => { isReceivingFromFirebaseRef.current = false; }, 100);
-              initialSyncDoneRef.current = true;  // 🔑 동기화 완료 플래그
             }
           }, handleFirebaseError);
 
           unsubOrders = subscribeToTable(TABLES.orders, (data) => {
+            initialSyncDoneRef.current = true;  // 🔑 항상 활성화
             if (data.length > 0) {
               isReceivingFromFirebaseRef.current = true;
               _setOrdersInternal(current => {
@@ -1749,11 +1747,11 @@ export default function App() {
                 return data;
               });
               setTimeout(() => { isReceivingFromFirebaseRef.current = false; }, 100);
-              initialSyncDoneRef.current = true;  // 🔑 동기화 완료 플래그
             }
           }, handleFirebaseError);
 
           unsubDrivers = subscribeToTable(TABLES.drivers, (data) => {
+            initialSyncDoneRef.current = true;  // 🔑 항상 활성화
             if (data.length > 0) {
               isReceivingFromFirebaseRef.current = true;
               _setDriversInternal(current => {
@@ -1762,12 +1760,12 @@ export default function App() {
                 return data;
               });
               setTimeout(() => { isReceivingFromFirebaseRef.current = false; }, 100);
-              initialSyncDoneRef.current = true;  // 🔑 동기화 완료 플래그
             }
           }, handleFirebaseError);
 
           // 🎁 gifts subscription (다른 PC와 사은품 이벤트 공유)
           unsubGifts = subscribeToTable(TABLES.gifts, (data) => {
+            initialSyncDoneRef.current = true;  // 🔑 항상 활성화
             if (data.length > 0) {
               isReceivingFromFirebaseRef.current = true;
               setGifts(current => {
@@ -1776,7 +1774,6 @@ export default function App() {
                 return data;
               });
               setTimeout(() => { isReceivingFromFirebaseRef.current = false; }, 100);
-              initialSyncDoneRef.current = true;  // 🔑 동기화 완료 플래그
             }
           }, handleFirebaseError);
 
@@ -2087,16 +2084,25 @@ export default function App() {
       suppressRealtimeEcho(TABLES.items, 3000);
       suppressRealtimeEcho(TABLES.orders, 3000);
       suppressRealtimeEcho(TABLES.drivers, 3000);
+      suppressRealtimeEcho(TABLES.gifts, 3000);  // 🎁 사은품도
+
       saveBatch(TABLES.customers, customers);
       saveBatch(TABLES.items, items.map(({ availStock, ...rest }) => rest));
       saveBatch(TABLES.orders, orders);
       saveBatch(TABLES.drivers, drivers);
 
+      // 🎁 사은품도 저장 (계산 필드 제거)
+      const cleanedGifts = gifts.map(g => {
+        const { givenQty, recipientCount, reservedQty, reservedCount, totalUsed, totalRecipients, remaining, ...giftBase } = g;
+        return giftBase;
+      });
+      saveBatch(TABLES.gifts, cleanedGifts);
+
       // saveBatch는 debounce 500ms + 실제 저장 시간 필요
       setTimeout(() => {
         setSaveState('saved');
         setLastSaveTime(Date.now());
-        showToast('✓ 저장 완료');
+        showToast('✓ 저장 완료 (모든 데이터 업로드됨)');
       }, 1200);
     } catch (err) {
       console.error('저장 실패:', err);
@@ -2130,16 +2136,18 @@ export default function App() {
     setRefreshing(true);
     try {
       log('🔄 ========== 수동 새로고침 시작 ==========');
-      log(`현재 로컬 상태: 고객 ${customers.length}명, 주문 ${orders.length}건`);
+      log(`현재 로컬 상태: 고객 ${customers.length}명, 주문 ${orders.length}건, 사은품 ${gifts.length}개`);
 
-      const [customers2, items2, orders2, drivers2] = await Promise.all([
+      const [customers2, items2, orders2, drivers2, gifts2, settings2] = await Promise.all([
         fetchAll(TABLES.customers),
         fetchAll(TABLES.items),
         fetchAll(TABLES.orders),
         fetchAll(TABLES.drivers),
+        fetchAll(TABLES.gifts),  // 🎁 사은품도 같이 fetch
+        getAllSettings(),  // ⚙️ 앱 설정도 같이 fetch
       ]);
 
-      log(`Supabase 데이터: 고객 ${customers2.length}명, 주문 ${orders2.length}건`);
+      log(`Supabase 데이터: 고객 ${customers2.length}명, 주문 ${orders2.length}건, 사은품 ${gifts2.length}개`);
 
       // 🔍 주문 diff 상세 분석
       const localOrderIds = new Set(orders.map(o => o.id));
@@ -2171,17 +2179,36 @@ export default function App() {
       _setItemsInternal(items2);
       _setOrdersInternal(orders2);
       _setDriversInternal(drivers2);
+      setGifts(gifts2);  // 🎁 사은품 업데이트
 
       saveData(STORAGE_KEYS.customers, customers2);
       saveData(STORAGE_KEYS.items, items2);
       saveData(STORAGE_KEYS.orders, orders2);
       saveData(DRIVERS_KEY, drivers2);
+      saveData(GIFT_STORAGE_KEY, gifts2);  // 🎁 localStorage 업데이트
+
+      // ⚙️ 앱 설정 동기화
+      if (settings2.admin_password !== undefined && settings2.admin_password !== null) {
+        const pwd = settings2.admin_password;
+        if (pwd === DEFAULT_PASSWORD) {
+          localStorage.removeItem(PASSWORD_KEY);
+        } else if (pwd) {
+          localStorage.setItem(PASSWORD_KEY, pwd);
+        }
+      }
+      if (Array.isArray(settings2.admin_users) && settings2.admin_users.length > 0) {
+        localStorage.setItem(ADMIN_USERS_KEY, JSON.stringify(settings2.admin_users));
+        setAdminUsers(settings2.admin_users);
+      }
+      if (settings2.per_box_memory && typeof settings2.per_box_memory === 'object') {
+        localStorage.setItem('wh:perBoxMemory', JSON.stringify(settings2.per_box_memory));
+      }
 
       setTimeout(() => { isReceivingFromFirebaseRef.current = false; }, 100);
 
       log('🔄 ========== 새로고침 완료 ==========');
       showToast(
-        `✓ 새로고침 완료: 주문 ${orders2.length}건` +
+        `✓ 새로고침 완료: 주문 ${orders2.length}건, 사은품 ${gifts2.length}개` +
         (onlyCloud.length > 0 ? ` (신규 ${onlyCloud.length}건)` : '') +
         (diffOrders.length > 0 ? ` (변경 ${diffOrders.length}건)` : '')
       );
