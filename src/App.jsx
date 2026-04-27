@@ -5784,21 +5784,27 @@ function OrderFormModal({ customers, items, editTarget, gifts = [], orders = [],
             )}
           </div>
 
-          {/* 🎁 사은품 섹션 - 미니멀 */}
+          {/* 🎁 사은품 섹션 - 수동 수량 변경 가능 (개인/거래처 모두) */}
           {activeGift && !isService && customerId && (
-            <div className={`rounded-2xl border transition-all overflow-hidden ${
+            <div className={`rounded-2xl border-2 transition-all overflow-hidden ${
               effectiveGiftQty > 0
-                ? 'bg-rose-50/50 border-rose-200'
-                : 'bg-white border-stone-200'
+                ? 'bg-rose-50 border-rose-300'
+                : 'bg-stone-50 border-stone-200'
             }`}>
-              <div className="flex items-center justify-between px-4 py-2.5 border-b border-stone-100">
-                <div className="flex items-center gap-2">
-                  <span className="text-base">🎁</span>
-                  <div>
-                    <div className="text-xs font-semibold text-stone-900">{activeGift.name}</div>
-                    <div className="text-[10px] text-stone-500">
-                      총 주문액 ${formatNum(totalForGift)} · 자동 {autoGiftQty}개
-                      {activeGift.remaining !== undefined && ` · 재고 ${activeGift.remaining}개`}
+              {/* 헤더 */}
+              <div className="flex items-center justify-between px-4 py-3 border-b border-stone-100 bg-white/50">
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <span className="text-xl">🎁</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-bold text-stone-900 truncate">{activeGift.name}</div>
+                    <div className="text-[10px] text-stone-500 leading-tight">
+                      자동: {autoGiftQty}개
+                      {activeGift.tiers && activeGift.tiers[0] && (
+                        <span className="ml-1">(${activeGift.tiers[0].minAmount}+ 시 1개)</span>
+                      )}
+                      {activeGift.remaining !== undefined && (
+                        <span className="ml-1 text-stone-600">· 재고 {activeGift.remaining}개</span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -5806,41 +5812,86 @@ function OrderFormModal({ customers, items, editTarget, gifts = [], orders = [],
                   <button
                     type="button"
                     onClick={() => setGiftQty(null)}
-                    className="text-[10px] text-stone-500 hover:text-stone-900 font-medium"
+                    className="text-[10px] px-2 py-1 bg-white border border-stone-300 hover:bg-stone-100 rounded-md font-medium text-stone-600 flex-shrink-0"
+                    title="자동 계산으로 복원"
                   >
-                    자동 복원
+                    🔄 자동 복원
                   </button>
                 )}
               </div>
-              <div className="px-4 py-2.5 flex items-center gap-3">
-                <span className="text-[11px] text-stone-500 flex-shrink-0">지급</span>
-                <div className="flex items-center gap-1">
+
+              {/* +/- 컨트롤 */}
+              <div className="px-4 py-3 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-stone-700">지급 수량</span>
+                  {giftQty !== null && giftQty !== autoGiftQty && (
+                    <span className="text-[9px] px-1.5 py-0.5 bg-amber-200 text-amber-900 rounded font-bold">✏️ 수동</span>
+                  )}
+                  {giftQty === null && autoGiftQty > 0 && (
+                    <span className="text-[9px] px-1.5 py-0.5 bg-blue-200 text-blue-900 rounded font-bold">⚙️ 자동</span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1.5">
                   <button
                     type="button"
                     onClick={() => setGiftQty(Math.max(0, effectiveGiftQty - 1))}
-                    className="w-7 h-7 bg-white hover:bg-stone-50 border border-stone-200 rounded-lg font-semibold text-stone-700"
+                    disabled={effectiveGiftQty <= 0}
+                    className="w-9 h-9 bg-white hover:bg-stone-100 border-2 border-stone-300 rounded-xl font-bold text-stone-900 active:scale-95 transition-all disabled:opacity-30 disabled:cursor-not-allowed text-lg"
+                    title="감소"
                   >
                     −
                   </button>
                   <input
                     type="number"
                     min="0"
+                    max="99"
                     value={effectiveGiftQty}
-                    onChange={e => setGiftQty(Number(e.target.value) || 0)}
-                    className="w-12 h-7 text-center bg-white border border-stone-200 rounded-lg font-bold tabular-nums text-stone-900 focus:outline-none focus:border-stone-400"
+                    onChange={e => {
+                      const val = Math.max(0, Math.min(99, parseInt(e.target.value) || 0));
+                      setGiftQty(val);
+                    }}
+                    className="w-16 h-9 text-center bg-white border-2 border-stone-300 rounded-xl font-bold text-base tabular-nums text-stone-900 focus:outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-200"
+                    title="직접 입력"
                   />
                   <button
                     type="button"
                     onClick={() => setGiftQty(effectiveGiftQty + 1)}
-                    className="w-7 h-7 bg-white hover:bg-stone-50 border border-stone-200 rounded-lg font-semibold text-stone-700"
+                    className="w-9 h-9 bg-white hover:bg-stone-100 border-2 border-stone-300 rounded-xl font-bold text-stone-900 active:scale-95 transition-all text-lg"
+                    title="증가"
                   >
                     +
                   </button>
+                  <span className="text-xs font-semibold text-stone-600 ml-1">개</span>
                 </div>
-                <span className="text-[11px] text-stone-500">개</span>
-                {giftQty !== null && giftQty !== autoGiftQty && (
-                  <span className="ml-auto text-[10px] text-amber-700 font-semibold">수동 조정</span>
+              </div>
+
+              {/* 안내 메시지 */}
+              <div className="px-4 pb-3 text-[10px] text-stone-500 leading-relaxed">
+                💡 자동 계산: 총 주문액 ${formatNum(totalForGift)} 기준 → {autoGiftQty}개
+                {giftQty !== null && (
+                  <span className="block mt-0.5 text-amber-700 font-medium">
+                    ✏️ 수동으로 {effectiveGiftQty}개 설정 (자동값과 다름)
+                  </span>
                 )}
+                {isB2B && (
+                  <span className="block mt-0.5 text-blue-700 font-medium">
+                    🏢 거래처(B2B) 고객 - 사은품 지급 가능
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* 🎁 사은품이 없을 때 안내 (디버깅용) */}
+          {!activeGift && !isService && customerId && (
+            <div className="rounded-2xl border border-dashed border-stone-200 bg-stone-50/30 px-4 py-3">
+              <div className="flex items-center gap-2 text-stone-500">
+                <span className="text-base">🎁</span>
+                <div className="text-xs">
+                  현재 활성 사은품이 없습니다.
+                  <span className="ml-1 text-stone-400">(사은품 페이지에서 설정 가능)</span>
+                </div>
               </div>
             </div>
           )}
