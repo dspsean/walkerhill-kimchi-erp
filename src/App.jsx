@@ -1953,20 +1953,28 @@ export default function App() {
   const saveGifts = (newGifts) => {
     const resolved = typeof newGifts === 'function' ? newGifts(gifts) : newGifts;
     const prevGifts = gifts;  // 📋
-    setGifts(resolved);
-    saveData(GIFT_STORAGE_KEY, resolved);
+
+    // 🛡️ 계산 필드 제거 (Supabase 스키마와 충돌 방지)
+    // givenQty, recipientCount 등은 calcGiftStats로 계산되는 값이므로 저장 안 함
+    const cleaned = resolved.map(g => {
+      const { givenQty, recipientCount, reservedQty, reservedCount, totalUsed, totalRecipients, remaining, ...giftBase } = g;
+      return giftBase;
+    });
+
+    setGifts(cleaned);
+    saveData(GIFT_STORAGE_KEY, cleaned);
 
     // 🛡️ Firebase에서 받은 데이터이면 다시 업로드 안 함 (에코 방지)
     if (isReceivingFromFirebaseRef.current) return;
 
     // 📋 변경 이력 기록
-    recordAuditDiff('gift', prevGifts, resolved, g => g.name || g.id);
+    recordAuditDiff('gift', prevGifts, cleaned, g => g.name || g.id);
 
     // 🚀 Supabase 동기화 (다른 PC와 공유)
     if (isSupabaseConfigured && initialSyncDoneRef.current) {
       suppressRealtimeEcho(TABLES.gifts, 3000);
       setSaveState('saving');
-      saveBatch(TABLES.gifts, resolved)
+      saveBatch(TABLES.gifts, cleaned)
         .then(result => {
           const saved = result?.saved || 0;
           const deleted = result?.deleted || 0;
@@ -8010,15 +8018,19 @@ function Gifts({ gifts, setGifts, orders, setOrders, customers, items, showToast
             )}
           </div>
           <div className="grid grid-cols-2 gap-4">
-            {activeGifts.map(g => (
-              <GiftCard
-                key={g.id}
-                gift={g}
-                onEdit={() => { setEditTarget(g); setShowForm(true); }}
-                onToggle={() => handleToggleActive(g.id)}
-                onDelete={() => handleDelete(g.id)}
-              />
-            ))}
+            {activeGifts.map(g => {
+              // 🛡️ 계산 필드 제거 (저장 시 Supabase 스키마와 충돌 방지)
+              const { givenQty, recipientCount, reservedQty, reservedCount, totalUsed, totalRecipients, remaining, ...giftBase } = g;
+              return (
+                <GiftCard
+                  key={g.id}
+                  gift={g}
+                  onEdit={() => { setEditTarget(giftBase); setShowForm(true); }}
+                  onToggle={() => handleToggleActive(g.id)}
+                  onDelete={() => handleDelete(g.id)}
+                />
+              );
+            })}
           </div>
         </div>
       )}
@@ -8158,16 +8170,20 @@ function Gifts({ gifts, setGifts, orders, setOrders, customers, items, showToast
             <span className="text-xs font-bold text-stone-500 uppercase tracking-wider">종료된 이벤트 ({inactiveGifts.length})</span>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            {inactiveGifts.map(g => (
-              <GiftCard
-                key={g.id}
-                gift={g}
-                onEdit={() => { setEditTarget(g); setShowForm(true); }}
-                onToggle={() => handleToggleActive(g.id)}
-                onDelete={() => handleDelete(g.id)}
-                inactive
-              />
-            ))}
+            {inactiveGifts.map(g => {
+              // 🛡️ 계산 필드 제거 (저장 시 Supabase 스키마와 충돌 방지)
+              const { givenQty, recipientCount, reservedQty, reservedCount, totalUsed, totalRecipients, remaining, ...giftBase } = g;
+              return (
+                <GiftCard
+                  key={g.id}
+                  gift={g}
+                  onEdit={() => { setEditTarget(giftBase); setShowForm(true); }}
+                  onToggle={() => handleToggleActive(g.id)}
+                  onDelete={() => handleDelete(g.id)}
+                  inactive
+                />
+              );
+            })}
           </div>
         </div>
       )}
