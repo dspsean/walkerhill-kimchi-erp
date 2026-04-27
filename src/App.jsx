@@ -252,6 +252,12 @@ function getEffectivePrice(item, customer) {
     }
   }
 
+  // 🏥 Aged Care 할인 (B2C 고객 중 Aged Care)
+  if (customer?.agedCare && customer?.agedCareDiscount > 0) {
+    const discounted = basePrice * (1 - customer.agedCareDiscount / 100);
+    return Math.round(discounted * 100) / 100;  // 소수점 둘째자리까지
+  }
+
   // ④ B2C 정가 (기본)
   return basePrice;
 }
@@ -4286,6 +4292,7 @@ function Orders({ customers, items, orders, setOrders, gifts, setGifts, showToas
                         {isWaitingStock && <span className="text-[9px] px-1 py-0.5 rounded bg-purple-500 text-white font-bold">⏳ 입고대기</span>}
                         {o.splitDeliveries?.length > 0 && <span className="text-[9px] px-1 py-0.5 rounded bg-indigo-500 text-white font-bold">📦 분할{o.splitDeliveries.length}회</span>}
                         {o.giftQty > 0 && <span className="text-[9px] px-1 py-0.5 rounded bg-pink-500 text-white font-bold" title={o.giftName || '사은품'}>🎁 {o.giftQty}</span>}
+                        {o.receiptCount > 0 && <span className="text-[9px] px-1 py-0.5 rounded bg-blue-600 text-white font-bold" title={`영수증 ${o.receiptCount}장`}>🧾 {o.receiptCount}</span>}
                         {o.paymentStatus === 'paid' && (
                           <span
                             className="text-[9px] px-1 py-0.5 rounded bg-emerald-600 text-white font-bold"
@@ -4960,6 +4967,8 @@ function OrderFormModal({ customers, items, editTarget, gifts = [], orders = [],
   // paymentMethod: null | 'transfer' | 'cash'
   const [paymentStatus, setPaymentStatus] = useState(editTarget?.paymentStatus || 'unpaid');
   const [paymentMethod, setPaymentMethod] = useState(editTarget?.paymentMethod || null);
+  // 🧾 영수증 장수 (주문별 - 에이지케어 고객 배송 시)
+  const [receiptCount, setReceiptCount] = useState(editTarget?.receiptCount || 0);
 
   // 🔍 고객 검색 - debounce
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -4992,6 +5001,9 @@ function OrderFormModal({ customers, items, editTarget, gifts = [], orders = [],
   const selectedCustomer = customers.find(c => c.id === customerId);
   const isB2B = !!selectedCustomer?.isB2B;
   const discountRate = selectedCustomer?.b2bDiscount || 0;
+  // 🏥 에이지케어 정보
+  const isAgedCare = !!selectedCustomer?.agedCare;
+  const agedCareDiscount = selectedCustomer?.agedCareDiscount || 0;
 
   // 🚀 성능 최적화: items를 Map으로 캐싱 (find 반복 방지)
   const itemMap = useMemo(() => {
@@ -5142,22 +5154,37 @@ function OrderFormModal({ customers, items, editTarget, gifts = [], orders = [],
     if (showSplitUI && splitDeliveries.length > 0) {
       data.splitDeliveries = splitDeliveries;
     }
-    // 🎁 사은품
+    // 🎁 사은품 (결제 상태와 무관하게 독립적으로 처리)
+    // 핵심 원칙: 사은품은 주문 금액 기준으로 결정됨, 결제 방식과 무관
     if (activeGift && effectiveGiftQty > 0) {
       data.giftId = activeGift.id;
       data.giftName = activeGift.name;
       data.giftQty = effectiveGiftQty;
-    } else if (giftQty !== null) {
+    } else if (giftQty !== null && giftQty === 0) {
+      // 🛡️ 명시적으로 0으로 설정한 경우만 0 저장 (결제 변경 시 사은품 풀림 방지)
       data.giftQty = 0;
+    } else if (editTarget && editTarget.giftQty > 0 && (!activeGift || effectiveGiftQty === 0)) {
+      // 🛡️ 기존 주문에 사은품이 있었는데 자동 계산이 0이 된 경우 → 기존 값 유지
+      // (선결제 체크 등으로 인한 의도치 않은 사은품 풀림 방지)
+      data.giftId = editTarget.giftId;
+      data.giftName = editTarget.giftName;
+      data.giftQty = editTarget.giftQty;
     }
 
-    // 💰 결제 정보 (배송 전 선결제) - 단순 체크
+    // 💰 결제 정보 (배송 전 선결제) - 사은품과 완전히 독립적
     data.paymentStatus = paymentStatus;
     if (paymentStatus === 'paid') {
       data.paymentMethod = paymentMethod || 'transfer';  // 기본: 계좌이체
     } else {
-      // 미결제: 결제 정보 초기화
+      // 미결제: 결제 정보 초기화 (사은품은 건드리지 않음!)
       data.paymentMethod = null;
+    }
+
+    // 🧾 영수증 장수 (에이지케어 고객 배송 시)
+    if (receiptCount > 0) {
+      data.receiptCount = receiptCount;
+    } else {
+      data.receiptCount = 0;
     }
 
     onSave(data);
@@ -5436,6 +5463,68 @@ function OrderFormModal({ customers, items, editTarget, gifts = [], orders = [],
                 </div>
               </label>
             </div>
+
+            {/* 🏥 에이지케어 정보 (고객이 에이지케어인 경우) */}
+            {isAgedCare && (
+              <div className="rounded-xl border-2 border-amber-300 bg-amber-50 px-3 py-2.5">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="text-base">🏥</span>
+                  <div className="flex-1">
+                    <div className="text-xs font-bold text-amber-900">Aged Care 고객</div>
+                    {selectedCustomer.agedCareCompany && (
+                      <div className="text-[10px] text-amber-700">
+                        {selectedCustomer.agedCareCompany}
+                        {selectedCustomer.agedCareManager && ` · ${selectedCustomer.agedCareManager}`}
+                      </div>
+                    )}
+                  </div>
+                  {agedCareDiscount > 0 && (
+                    <span className="text-[11px] px-2 py-1 bg-emerald-600 text-white rounded font-bold tabular-nums">
+                      자동 할인 -{agedCareDiscount}%
+                    </span>
+                  )}
+                </div>
+
+                {/* 🧾 영수증 장수 입력 (주문별) */}
+                <div className="mt-2 pt-2 border-t border-amber-200">
+                  <label className="block text-[11px] font-semibold text-amber-900 mb-1.5">
+                    🧾 영수증 장수 <span className="text-amber-600 font-normal">(이번 배송에 함께 전달)</span>
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setReceiptCount(Math.max(0, receiptCount - 1))}
+                      disabled={receiptCount <= 0}
+                      className="w-8 h-8 rounded-lg bg-white border border-amber-300 text-amber-700 hover:bg-amber-100 disabled:opacity-40 disabled:cursor-not-allowed font-bold transition-colors"
+                    >
+                      −
+                    </button>
+                    <input
+                      type="number"
+                      min="0"
+                      max="10"
+                      value={receiptCount}
+                      onChange={e => setReceiptCount(Math.max(0, Math.min(10, parseInt(e.target.value) || 0)))}
+                      className="flex-1 px-3 py-1.5 bg-white border border-amber-300 rounded-lg text-sm text-center font-bold tabular-nums focus:outline-none focus:ring-2 focus:ring-amber-500/30"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setReceiptCount(Math.min(10, receiptCount + 1))}
+                      disabled={receiptCount >= 10}
+                      className="w-8 h-8 rounded-lg bg-white border border-amber-300 text-amber-700 hover:bg-amber-100 disabled:opacity-40 disabled:cursor-not-allowed font-bold transition-colors"
+                    >
+                      +
+                    </button>
+                    <span className="text-xs font-semibold text-amber-700">장</span>
+                  </div>
+                  {receiptCount > 0 && (
+                    <div className="mt-1.5 text-[10px] text-blue-700 font-medium">
+                      ✓ 배송기사 화면에 "영수증 {receiptCount}장 전달" 강조 표시됩니다
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* 💰 선결제 (배송 전 결제) */}
             {!isService && (
@@ -5877,7 +5966,9 @@ function Customers({ customers, setCustomers, items, orders, showToast, setOrder
         c.name.toLowerCase().includes(s) ||
         c.id.toLowerCase().includes(s) ||
         (c.phone || '').includes(s) ||
-        (c.address || '').toLowerCase().includes(s)
+        (c.address || '').toLowerCase().includes(s) ||
+        (c.agedCareCompany || '').toLowerCase().includes(s) ||  // 🏥 에이지케어 회사명
+        (c.agedCareManager || '').toLowerCase().includes(s)     // 🏥 담당자명
       );
     }
     // 정렬
@@ -6199,7 +6290,19 @@ function Customers({ customers, setCustomers, items, orders, showToast, setOrder
                     </td>
                     <td className="px-4 py-3 text-center">
                       {c.agedCare ? (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-amber-200 text-amber-900">🏥 Aged</span>
+                        <div className="flex flex-col items-center gap-0.5">
+                          <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-amber-200 text-amber-900">🏥 Aged</span>
+                          {c.agedCareCompany && (
+                            <span className="text-[9px] text-amber-700 font-semibold leading-tight" title={c.agedCareManager ? `담당: ${c.agedCareManager}` : ''}>
+                              {c.agedCareCompany}
+                            </span>
+                          )}
+                          {c.agedCareDiscount > 0 && (
+                            <span className="text-[9px] text-emerald-700 font-bold tabular-nums">
+                              -{c.agedCareDiscount}%
+                            </span>
+                          )}
+                        </div>
                       ) : (
                         <span className="text-stone-300 text-xs">일반</span>
                       )}
@@ -6709,7 +6812,11 @@ function CustomerFormModal({ editTarget, items, onSave, onClose }) {
     name: '', phone: '', agedCare: false, address: '', grade: '일반',
     joinDate: new Date().toISOString().slice(0,10), memo: '',
     isB2B: false, b2bDiscount: 0, b2bPaymentTerms: '즉시결제', b2bContact: '',
-    itemPriceOverrides: {}  // { itemCode: customPrice }
+    itemPriceOverrides: {},  // { itemCode: customPrice }
+    // 🏥 에이지케어 세분화
+    agedCareCompany: '',     // 회사명 (예: "BlueCare", "Anglicare")
+    agedCareManager: '',     // 담당자 (예: "Jenny Park")
+    agedCareDiscount: 0,     // 할인율 % (회사/담당자별로 다름)
   });
 
   // 상품별 가격 오버라이드 업데이트
@@ -6924,7 +7031,7 @@ function CustomerFormModal({ editTarget, items, onSave, onClose }) {
               className="w-full px-3 py-2 border border-stone-200 rounded-lg text-sm focus:outline-none focus:border-red-700 focus:ring-2 focus:ring-red-100" />
           </div>
           {!form.isB2B && (
-            <div className="col-span-2">
+            <div className="col-span-2 space-y-3">
               <label className="flex items-center gap-2 p-3 bg-amber-50 border-2 border-amber-200 rounded-lg cursor-pointer hover:bg-amber-100 transition-all">
                 <input
                   type="checkbox"
@@ -6939,6 +7046,64 @@ function CustomerFormModal({ editTarget, items, onSave, onClose }) {
                   (체크 시 고객 목록에서 배지로 구분 표시됨)
                 </span>
               </label>
+
+              {/* 🏥 Aged Care 세부정보 (체크 시에만 표시) */}
+              {form.agedCare && (
+                <div className="p-4 bg-amber-50/50 border border-amber-200 rounded-lg space-y-3">
+                  <div className="text-[11px] font-bold text-amber-800 uppercase tracking-wider mb-1">
+                    🏥 Aged Care 세부정보
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-stone-600 mb-1.5">
+                        회사명 <span className="text-stone-400 font-normal">(예: BlueCare)</span>
+                      </label>
+                      <input
+                        value={form.agedCareCompany || ''}
+                        onChange={e => setForm({...form, agedCareCompany: e.target.value})}
+                        placeholder="예: BlueCare, Anglicare..."
+                        className="w-full px-3 py-2 border border-stone-200 rounded-lg text-sm focus:outline-none focus:border-amber-600 focus:ring-2 focus:ring-amber-100"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-stone-600 mb-1.5">
+                        담당자 <span className="text-stone-400 font-normal">(선택)</span>
+                      </label>
+                      <input
+                        value={form.agedCareManager || ''}
+                        onChange={e => setForm({...form, agedCareManager: e.target.value})}
+                        placeholder="예: Jenny Park"
+                        className="w-full px-3 py-2 border border-stone-200 rounded-lg text-sm focus:outline-none focus:border-amber-600 focus:ring-2 focus:ring-amber-100"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-stone-600 mb-1.5">
+                      할인율 (%)
+                      <span className="text-stone-400 font-normal ml-1">회사/담당자별</span>
+                    </label>
+                    <div className="flex items-center gap-1.5 max-w-[200px]">
+                      <input
+                        type="number"
+                        min="0"
+                        max="50"
+                        step="0.5"
+                        value={form.agedCareDiscount || 0}
+                        onChange={e => setForm({...form, agedCareDiscount: Math.max(0, Math.min(50, Number(e.target.value) || 0))})}
+                        className="flex-1 px-3 py-2 border border-stone-200 rounded-lg text-sm focus:outline-none focus:border-amber-600 focus:ring-2 focus:ring-amber-100 tabular-nums"
+                      />
+                      <span className="text-sm font-semibold text-stone-600">%</span>
+                    </div>
+                  </div>
+
+                  <div className="text-[10px] text-amber-700 leading-relaxed">
+                    💡 <strong>할인율</strong>은 주문 시 자동 적용됩니다.<br/>
+                    🧾 <strong>영수증 장수</strong>는 주문 등록/수정 시 주문별로 입력합니다.
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -10182,6 +10347,29 @@ function DriverDeliveryGroupCard({ group, customer, items, onGroupUpdate, onEdit
               <span className="font-mono tabular-nums text-stone-700">${group.shippingFee}</span>
             </div>
           )}
+
+          {/* 🧾 영수증 알림 (Aged Care 고객 배송 시 필수) */}
+          {(() => {
+            // 주문별 영수증 합산 (여러 주문이 한 고객에게 배송되는 경우)
+            const totalReceipts = group.orders.reduce((s, o) => s + (o.receiptCount || 0), 0);
+            if (totalReceipts === 0) return null;
+            return (
+              <div className="mt-2 p-2.5 bg-gradient-to-r from-blue-100 to-indigo-100 border-2 border-blue-400 rounded-lg shadow-sm">
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl">🧾</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[10px] font-bold text-blue-700 uppercase">영수증 전달</div>
+                    <div className="text-xs font-bold text-blue-900 truncate">
+                      {customer?.agedCareCompany ? `${customer.agedCareCompany}${customer.agedCareManager ? ' · ' + customer.agedCareManager : ''}` : 'Aged Care 영수증'}
+                    </div>
+                  </div>
+                  <div className="text-2xl font-bold text-blue-700 tabular-nums">
+                    {totalReceipts}<span className="text-xs font-normal text-blue-500 ml-0.5">장</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* 🎁 사은품 알림 (배송기사가 꼭 확인) */}
           {(() => {
